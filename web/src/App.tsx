@@ -137,10 +137,15 @@ export default function App() {
 
   useEffect(() => {
     if (!manifest) return;
-    setJuan(null);
-    setActiveParagraphId(null);
+    // Don't blank the current juan while the next one loads — that causes
+    // the right-pane YearToc to unmount and the LookupPanel below it to
+    // visibly jump. Keep the old juan on screen and swap atomically once
+    // the new one resolves.
+    let cancelled = false;
     loadJuan(juanNo)
       .then(j => {
+        if (cancelled) return;
+        setActiveParagraphId(null);
         setJuan(j);
         localStorage.setItem(LAST_JUAN_KEY, String(juanNo));
         if (pendingScrollRef.current === null && readerPaneRef.current) {
@@ -159,7 +164,8 @@ export default function App() {
         // useLayoutEffect below, which runs after the new juan's DOM is
         // committed.
       })
-      .catch(e => setError(String(e)));
+      .catch(e => !cancelled && setError(String(e)));
+    return () => { cancelled = true; };
   }, [juanNo, manifest]);
 
   // After the new juan's DOM is committed, scroll to the pending target

@@ -53,7 +53,11 @@ export default function LookupPanel({ query, maxYear, currentJuan, onJump }: Pro
       return;
     }
     let cancelled = false;
-    setLoading(true);
+    // Only show the loading skeleton on the very first fetch. Once we have
+    // hits, re-filters (e.g. when currentJuan changes after a jump) should
+    // be silent — the corpus is cached and the recompute is synchronous, so
+    // flashing the loading state would just make the panel flicker.
+    if (hits === null) setLoading(true);
     setError(null);
     loadLookup()
       .then(corpus => {
@@ -66,6 +70,9 @@ export default function LookupPanel({ query, maxYear, currentJuan, onJump }: Pro
       .catch(e => !cancelled && setError(String(e)))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
+    // hits intentionally omitted from deps: it's only read to decide whether
+    // to show the loading skeleton on first fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, maxYear, currentJuan]);
 
   if (!query) {
