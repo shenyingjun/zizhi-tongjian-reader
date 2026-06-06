@@ -420,9 +420,7 @@ export default function App() {
                 checked={filterByJuan}
                 onChange={e => setFilterByJuan(e.target.checked)}
               />
-              <span>仅显示当前卷之前
-                <span className="muted">（≤ 卷{juanNo}）</span>
-              </span>
+              <span>仅显示当前卷之前</span>
             </label>
           </div>
           <div className="lookup-body">
