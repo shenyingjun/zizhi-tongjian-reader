@@ -209,6 +209,7 @@ export default function App() {
           <LookupPanel
             query={lookupQuery}
             maxYear={filterByYear ? effectiveYear : null}
+            currentJuan={juanNo}
             onJump={jumpToHit}
           />
         </div>

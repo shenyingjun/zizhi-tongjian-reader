@@ -143,21 +143,42 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .toggle.small { font-size: 0.8rem; color: var(--muted); display: flex; gap: 0.4rem; align-items: center; }
 .toggle.small input { margin: 0; }
 .lookup-summary { margin: 0.6rem 0 0.4rem; }
+.lookup-summary b { font-weight: 600; padding: 0 0.1em; }
 .lookup-empty { line-height: 1.6; }
 .lookup-empty p { margin: 0.4rem 0; }
+.lookup-groups { display: flex; flex-direction: column; gap: 0.5rem; }
+.lookup-juan-group {
+  border: 1px solid var(--border); border-radius: 4px;
+  background: #f8f0d8; padding: 0.4rem 0.5rem;
+}
+.lookup-juan-group.is-current {
+  border-color: var(--accent);
+  background: #f1e1c0;
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.lookup-juan-header {
+  display: flex; align-items: baseline; gap: 0.5rem;
+  border-bottom: 1px dotted var(--border); padding-bottom: 0.25rem; margin-bottom: 0.3rem;
+}
+.lookup-juan-label { font-weight: 600; color: var(--accent); font-size: 0.92rem; }
+.lookup-juan-group.is-current .lookup-juan-label::after {
+  content: '· 本卷'; margin-left: 0.4em; font-weight: 400; font-size: 0.78rem; color: var(--accent);
+}
+.lookup-juan-count { color: var(--muted); font-size: 0.78rem; margin-left: auto; font-variant-numeric: tabular-nums; }
+.lookup-year-group { margin-top: 0.2rem; }
+.lookup-year-header {
+  font-size: 0.78rem; color: var(--muted); padding: 0.1rem 0.3rem;
+  font-variant-numeric: tabular-nums;
+}
 .lookup-list { list-style: none; padding: 0; margin: 0; }
 .lookup-hit { border-bottom: 1px dotted var(--border); }
 .lookup-hit:last-child { border-bottom: 0; }
 .lookup-jump {
   display: block; width: 100%; text-align: left;
-  background: none; border: 0; padding: 0.5rem 0.3rem;
+  background: none; border: 0; padding: 0.35rem 0.3rem;
   cursor: pointer; font: inherit; color: var(--fg);
 }
-.lookup-jump:hover { background: #ddd0b0; }
-.lookup-meta {
-  display: block; color: var(--muted); font-size: 0.78rem;
-  font-variant-numeric: tabular-nums; margin-bottom: 0.15rem;
-}
+.lookup-jump:hover { background: #ead7a8; }
 .lookup-snippet {
   display: block; font-size: 0.88rem; line-height: 1.55;
   color: var(--fg);
@@ -167,8 +188,6 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   padding: 0 0.1em; border-radius: 2px; font-weight: 600;
 }
 .kind-commentary .lookup-snippet { color: var(--hu); font-style: italic; }
-.kind-emperor .lookup-meta::after { content: ' · 帝纪'; }
-.kind-year .lookup-meta::after { content: ' · 纪年'; }
 
 .loading, .error {
   padding: 2rem; color: var(--muted); text-align: center;
