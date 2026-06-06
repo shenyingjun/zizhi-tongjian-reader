@@ -153,6 +153,8 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .reader-body { max-width: 720px; margin: 0 auto; padding: 1.5rem 2rem 5rem; }
 .paragraph {
   margin: 0.6em 0;
+  /* Headroom for scroll-into-view so we land below the sticky reader header. */
+  scroll-margin-top: 70px;
   /* Skip paint/layout for off-screen paragraphs. Each juan has 100-300
      paragraphs with inline 胡注 markers; without this the browser pays the
      full layout/paint cost up front on every 卷 switch (~seconds). The

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import type { Manifest, Juan } from './corpus';
 import { loadManifest, loadJuan } from './corpus';
 import Sidebar from './Sidebar';
@@ -143,16 +143,7 @@ export default function App() {
       .then(j => {
         setJuan(j);
         localStorage.setItem(LAST_JUAN_KEY, String(juanNo));
-        if (pendingScrollRef.current !== null) {
-          const pid = pendingScrollRef.current;
-          pendingScrollRef.current = null;
-          // Wait for next paint so the paragraph DOM is in place.
-          requestAnimationFrame(() => {
-            const pane = readerPaneRef.current;
-            const el = pane?.querySelector<HTMLElement>(`[data-pid="${pid}"]`);
-            if (pane && el) pane.scrollTo({ top: el.offsetTop - 70, behavior: 'auto' });
-          });
-        } else if (readerPaneRef.current) {
+        if (pendingScrollRef.current === null && readerPaneRef.current) {
           const pane = readerPaneRef.current;
           const saved = restoreScrollRef.current ? scrollMapRef.current[juanNo] : undefined;
           restoreScrollRef.current = true;
@@ -164,9 +155,21 @@ export default function App() {
             pane.scrollTop = 0;
           }
         }
+        // Note: when pendingScrollRef is set, the scroll is handled by the
+        // useLayoutEffect below, which runs after the new juan's DOM is
+        // committed.
       })
       .catch(e => setError(String(e)));
   }, [juanNo, manifest]);
+
+  // After the new juan's DOM is committed, scroll to the pending target
+  // paragraph (set by jumpToHit when navigating across juans from search).
+  useLayoutEffect(() => {
+    if (!juan || pendingScrollRef.current === null) return;
+    const pid = pendingScrollRef.current;
+    pendingScrollRef.current = null;
+    scrollParagraphIntoView(pid);
+  }, [juan]);
 
   useEffect(() => {
     localStorage.setItem('zztj.showHu', showHu ? '1' : '0');
@@ -249,14 +252,64 @@ export default function App() {
     };
   }, [juan]);
 
-  const jumpToParagraph = (pid: number) => {
+  // Scroll the given paragraph into view. Reliable even with
+  // .paragraph { content-visibility: auto }, which makes offsetTop and
+  // single-shot scrollIntoView wrong for off-screen paragraphs (above
+  // content uses placeholder heights). We iterate a few times with
+  // instant scrolls — each pass paints paragraphs near the target so
+  // `contain-intrinsic-size: auto` records their real sizes, and the
+  // estimate converges within ~3 frames. We finish with one smooth scroll
+  // to the final position so the motion feels intentional.
+  const scrollParagraphIntoView = (pid: number) => {
     const pane = readerPaneRef.current;
     if (!pane) return;
-    const el = pane.querySelector<HTMLElement>(`[data-pid="${pid}"]`);
-    if (el) {
-      pane.scrollTo({ top: el.offsetTop - 70, behavior: 'smooth' });
-    }
+    const HEADER_OFFSET = 70;
+    const DURATION = 350;
+
+    // Re-measure the target's desired scrollTop based on current layout.
+    // .paragraph uses content-visibility: auto, so this estimate may shift
+    // across frames as nearby paragraphs paint — re-measuring per frame
+    // lets us keep the animation pointed at the right place.
+    const measureTarget = (): number | null => {
+      const el = pane.querySelector<HTMLElement>(`[data-pid="${pid}"]`);
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      const paneRect = pane.getBoundingClientRect();
+      return Math.max(0, pane.scrollTop + (rect.top - paneRect.top) - HEADER_OFFSET);
+    };
+
+    const start = pane.scrollTop;
+    let startTime: number | null = null;
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+    const animate = (now: number) => {
+      if (startTime === null) startTime = now;
+      const progress = Math.min(1, (now - startTime) / DURATION);
+      const target = measureTarget();
+      if (target === null) {
+        // Element not in DOM yet; try again next frame.
+        if (progress < 1) requestAnimationFrame(animate);
+        return;
+      }
+      pane.scrollTop = start + (target - start) * easeOutCubic(progress);
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        // Final instant settle in case layout shifted right at the end.
+        let settleAttempts = 0;
+        const settle = () => {
+          const t = measureTarget();
+          if (t === null) return;
+          if (Math.abs(t - pane.scrollTop) > 2) pane.scrollTop = t;
+          if (settleAttempts++ < 3) requestAnimationFrame(settle);
+        };
+        settle();
+      }
+    };
+    requestAnimationFrame(animate);
   };
+
+  const jumpToParagraph = (pid: number) => scrollParagraphIntoView(pid);
 
   // Jump from a lookup hit: may be same juan or another juan.
   const jumpToHit = (targetJuan: number, paragraphId: number) => {
