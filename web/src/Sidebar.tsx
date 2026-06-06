@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Manifest } from './corpus';
+import type { Manifest, JuanMeta } from './corpus';
 
 interface Props {
   manifest: Manifest;
@@ -7,8 +7,30 @@ interface Props {
   onSelect: (n: number) => void;
 }
 
+function fmtYear(y: number): string {
+  return y < 0 ? `前${-y}` : String(y);
+}
+
+function formatMeta(j: JuanMeta): { years: string; emperors: string } {
+  let years = '';
+  if (j.ce_start != null && j.ce_end != null) {
+    years = j.ce_start === j.ce_end
+      ? fmtYear(j.ce_start)
+      : `${fmtYear(j.ce_start)}–${fmtYear(j.ce_end)}`;
+  }
+  const chunks = j.year_range.split(/[\s\u3000]+/);
+  const list: string[] = [];
+  for (const c of chunks) {
+    const m = /^([^年载\s\u3000]{1,8}?(?:帝|王|后|公))/.exec(c);
+    if (m && !list.includes(m[1])) list.push(m[1]);
+  }
+  let emperors = '';
+  if (list.length === 1) emperors = list[0];
+  else if (list.length >= 2) emperors = `${list[0]}–${list[list.length - 1]}`;
+  return { years, emperors };
+}
+
 export default function Sidebar({ manifest, currentJuan, onSelect }: Props) {
-  // Auto-expand the group containing the current juan.
   const currentDynasty =
     manifest.juans.find(j => j.juan_no === currentJuan)?.dynasty || '';
   const [openGroups, setOpenGroups] = useState<Set<string>>(
@@ -43,18 +65,22 @@ export default function Sidebar({ manifest, currentJuan, onSelect }: Props) {
               </button>
               {open && (
                 <ul className="juan-list">
-                  {group.juans.map(j => (
-                    <li key={j.juan_no}>
-                      <button
-                        className={'juan-link' + (j.juan_no === currentJuan ? ' active' : '')}
-                        onClick={() => onSelect(j.juan_no)}
-                        title={j.title}
-                      >
-                        <span className="juan-no">卷{String(j.juan_no).padStart(3, '0')}</span>
-                        <span className="juan-range">{j.year_range}</span>
-                      </button>
-                    </li>
-                  ))}
+                  {group.juans.map(j => {
+                    const { years, emperors } = formatMeta(j);
+                    return (
+                      <li key={j.juan_no}>
+                        <button
+                          className={'juan-link' + (j.juan_no === currentJuan ? ' active' : '')}
+                          onClick={() => onSelect(j.juan_no)}
+                          title={j.title}
+                        >
+                          <span className="juan-no">卷{String(j.juan_no).padStart(3, '0')}</span>
+                          <span className="juan-years">{years}</span>
+                          <span className="juan-emperors">{emperors}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </li>

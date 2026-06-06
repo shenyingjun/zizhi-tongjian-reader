@@ -40,11 +40,11 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .dynasty-toggle:hover { background: #3a2c1f; }
 .caret { width: 1em; color: #b8a888; }
 .count { margin-left: auto; color: #8a7a64; font-size: 0.8em; }
-.juan-list { padding-left: 1.4rem; padding-bottom: 0.3rem; }
+.juan-list { padding-left: 0; padding-bottom: 0.3rem; }
 .juan-link {
   width: 100%; text-align: left; background: none; border: 0; color: #d6c9a8;
   padding: 0.2rem 0.4rem; cursor: pointer; font: inherit;
-  display: flex; gap: 0.5rem; border-radius: 3px;
+  display: flex; gap: 0.4rem; border-radius: 3px;
   align-items: baseline;
 }
 .juan-link:hover { background: #3a2c1f; color: var(--fg-inv); }
@@ -54,11 +54,19 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   flex: 0 0 auto; white-space: nowrap;
 }
 .juan-link.active .juan-no { color: var(--fg-inv); }
-.juan-range {
+.juan-years {
+  font-size: 0.78em; color: #8a7a64;
+  flex: 0 0 auto; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.juan-emperors {
   font-size: 0.78em; color: #8a7a64;
   flex: 1 1 auto; min-width: 0;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  text-align: right;
 }
+.juan-link.active .juan-years,
+.juan-link.active .juan-emperors { color: #f4d8b8; }
 
 .reader-pane { overflow-y: auto; background: var(--bg); }
 .reader-header {
