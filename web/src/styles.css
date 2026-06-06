@@ -204,14 +204,20 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   box-shadow: 0 0 0 1px #d9b860;
 }
 
-/* Pulse the paragraph the user jumped to from a lookup hit. */
+/* Pulse the paragraph the user jumped to, then keep a soft tint so it
+   stays easy to spot until the next navigation. */
 @keyframes target-pulse {
   0%   { background: #ffd87a; }
-  100% { background: transparent; }
+  20%  { background: #ffd87a; }
+  100% { background: #fff1c8; }
 }
 .paragraph.is-target {
-  animation: target-pulse 2.4s ease-out;
+  background: #fff1c8;
+  animation: target-pulse 1.6s ease-out;
   scroll-margin-top: 80px;
+  border-left: 3px solid #d9a13a;
+  padding-left: 0.6em;
+  margin-left: -0.6em;
 }
 .paragraph.is-target .search-hit {
   background: #ffb84d;
