@@ -156,13 +156,18 @@ def parse_juan(html_path: Path, entry: dict) -> dict:
 
     paragraphs: list[dict] = []
     para_id = 0
-    capture_tags = ("p", "dl", "dd", "blockquote")
+    # Include h2/h3 — many 卷 put year markers inside <h2> headings like
+    # <h2>四十三年<small>〈己丑、前二七二〉</small></h2>. Skipping them caused
+    # ~45% of 卷 to lose their year navigation.
+    capture_tags = ("p", "dl", "dd", "blockquote", "h2", "h3")
+    nesting_check = ("p", "dl", "dd", "blockquote")
     for el in body.find_all(capture_tags, recursive=True):
-        # Skip if any ancestor is also a capture-target — avoids double-counting
-        # text that lives in nested structures like <dl><dd><p>...</p></dd></dl>.
+        # Skip if any ancestor is also a nestable capture-target — avoids
+        # double-counting text in <dl><dd><p>...</p></dd></dl>. Headings (h2/h3)
+        # are not nested so don't add them here.
         skip = False
         for anc in el.parents:
-            if isinstance(anc, Tag) and anc.name in capture_tags:
+            if isinstance(anc, Tag) and anc.name in nesting_check:
                 skip = True
                 break
         if skip:

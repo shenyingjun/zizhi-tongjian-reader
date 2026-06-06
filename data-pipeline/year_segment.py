@@ -35,14 +35,47 @@ CN_DIGITS = "零一二三四五六七八九十百"
 GANZHI_STEMS = "甲乙丙丁戊己庚辛壬癸"
 GANZHI_BRANCHES = "子丑寅卯辰巳午未申酉戌亥"
 
-YEAR_RE = re.compile(rf"^(元|[{CN_DIGITS}]+)年(春|夏|秋|冬)?$")
-# Year-with-ganzhi-and-month, e.g. "元年春王正月" "二年冬十月"
-YEAR_GANZHI_RE = re.compile(rf"^(元|[{CN_DIGITS}]+)年[，。]?\s*(春|夏|秋|冬)?")
-EMPEROR_TAIL_RE = re.compile(r"[帝王后公]$")
+# Year paragraph: optional era-name prefix (年号, typically 2 chars) +
+# (元 | Chinese digits) + 年/载 + optional season.
+# Tongjian uses 载 instead of 年 during 玄宗 天宝 — 肃宗 至德 era (744-758),
+# e.g. "天宝六载", "至德元载".
+# Examples that must match: "二十三年", "元年", "兴元元年", "永徽六年",
+# "元初三年", "广顺元年春", "永宁元年", "永和十一年", "天宝六载", "至德元载".
+# The era class excludes CN digits and 年/载 themselves so the (digits|元)+年/载
+# tail can always be peeled off the right of the string.
+_ERA_CLASS = r"[^\d\s年载，。；：、！？,.;:?!\-\(\)（）「」『』《》〈〉" + CN_DIGITS + "]"
+YEAR_RE = re.compile(
+    rf"^({_ERA_CLASS}{{0,4}})(元|[{CN_DIGITS}]+)[年载](春|夏|秋|冬)?$"
+)
+# Same pattern but allowing trailing month/punct.
+YEAR_GANZHI_RE = re.compile(
+    rf"^({_ERA_CLASS}{{0,4}})(元|[{CN_DIGITS}]+)[年载][，。]?\s*(春|夏|秋|冬)?"
+)
+
+# Emperor paragraph: typically a 谥号 ending in 帝|王|后|公, possibly followed by
+# positional markers 上|中|下|之, sequence number (一二三四五六七八九十),
+# or 干支 stems (甲乙丙丁戊己庚辛壬癸) used as sequence markers in some 卷.
+# Examples to match:
+#   "威烈王", "孝安皇帝中", "高祖武皇帝六", "孝宗穆皇帝中之下",
+#   "宪宗昭文章武大圣至神孝皇帝中之下", "世宗睿武孝文皇帝下",
+#   "安皇帝己", "赧王下"
+# Must not match:
+#   "唐纪七十六" (dynasty/juan label — no 帝/王/后/公)
+#   long event sentences (use ^...$ + length cap + no punctuation)
+_EMP_SUFFIX_CLASS = r"[上中下之" + GANZHI_STEMS + r"一二三四五六七八九十○]"
+EMPEROR_RE = re.compile(
+    rf"^[^\s\d，。；：、！？,.;:?!]{{1,15}}(帝|王|后|公){_EMP_SUFFIX_CLASS}{{0,5}}$"
+)
+
 SEASON_RE = re.compile(r"^(春|夏|秋|冬)(正月|[一二三四五六七八九十]+月)?$")
 
-# Match the CE start anchor in 卷 title: "起戊寅（前403）" or "起癸亥(3)"
-CE_RANGE_RE = re.compile(r"起(\S{2})[（(](前)?(\d+)[）)]")
+# Match the CE start anchor in 卷 title. Tongjian uses two formats:
+#   1) "起戊寅（前403）" or "起癸亥(3)"  — main format
+#   2) "丙申(936)一年"                  — sometimes no 起 prefix (single-year 卷)
+# We take the FIRST 干支+CE-with-parens combo in the title.
+CE_RANGE_RE = re.compile(
+    rf"(?:起)?([{GANZHI_STEMS}][{GANZHI_BRANCHES}])[（(]\s*(前)?(\d+)\s*[）)]"
+)
 
 
 def cn_to_int(s: str) -> int | None:
@@ -90,19 +123,24 @@ def ganzhi_index(gz: str) -> int | None:
     return None
 
 
+def _emperor_key(text: str) -> str:
+    """Normalize emperor text by stripping trailing positional/sequence markers.
+    'Same emperor' across paragraphs uses this key."""
+    return re.sub(_EMP_SUFFIX_CLASS + r"+$", "", text.strip())
+
+
 def classify(text: str) -> str:
-    if YEAR_RE.match(text):
-        return "year"
-    if SEASON_RE.match(text):
-        return "season"
-    # Emperor: very short, ends with 帝|王|后|公, no digits.
     t = text.strip()
-    if 1 <= len(t) <= 6 and EMPEROR_TAIL_RE.search(t) and not any(c.isdigit() for c in t):
+    if not t:
+        return "event"
+    if YEAR_RE.match(t):
+        return "year"
+    if SEASON_RE.match(t):
+        return "season"
+    if EMPEROR_RE.match(t):
         return "emperor"
     if t.startswith("臣光曰"):
         return "commentary"
-    if YEAR_GANZHI_RE.match(t):
-        return "year"
     return "event"
 
 
@@ -129,7 +167,8 @@ def annotate_juan(data: dict) -> dict:
     years: list[dict] = []
     cur_emperor = ""
     prev_year_in_reign: int | None = None
-    prev_emperor: str | None = None
+    prev_emperor_key: str | None = None
+    prev_era: str | None = None
     first_year_seen = False
 
     for p in data["paragraphs"]:
@@ -138,25 +177,33 @@ def annotate_juan(data: dict) -> dict:
         if typ == "emperor":
             cur_emperor = p["main"].strip()
         if typ == "year":
-            m = YEAR_RE.match(p["main"]) or YEAR_GANZHI_RE.match(p["main"])
-            yr_in_reign = cn_to_int(m.group(1)) if m else None
-            # Compute CE based on (emperor, year-in-reign) deltas.
+            m = YEAR_RE.match(p["main"])
+            era = (m.group(1) or "").strip() if m else ""
+            yr_in_reign = cn_to_int(m.group(2)) if m else None
+            cur_emperor_key = _emperor_key(cur_emperor) if cur_emperor else ""
+            # Compute CE based on (emperor, era, year-in-reign) deltas.
             if cur_ce is not None and yr_in_reign is not None:
                 if not first_year_seen:
                     # First year-marker in 卷 — already anchored at cur_ce from title.
                     first_year_seen = True
                 else:
-                    if prev_emperor == cur_emperor and prev_year_in_reign is not None:
-                        delta = yr_in_reign - prev_year_in_reign
+                    same_context = (
+                        prev_emperor_key == cur_emperor_key
+                        and prev_era == era
+                        and prev_year_in_reign is not None
+                    )
+                    if same_context:
+                        delta = yr_in_reign - prev_year_in_reign  # type: ignore[operator]
                     else:
-                        # Emperor transition: new emperor's 元年 immediately follows
-                        # predecessor's last year, so CE += 1.
+                        # Emperor or era transition (改元 / 新君即位): the new
+                        # period's 元年 immediately follows the previous year, so +1.
                         delta = 1
                     if delta > 0:
                         cur_ce += delta
                         if cur_gi is not None:
                             cur_gi = (cur_gi + delta) % 60
-                prev_emperor = cur_emperor
+                prev_emperor_key = cur_emperor_key
+                prev_era = era
                 prev_year_in_reign = yr_in_reign
             p["ce_year"] = cur_ce
             years.append({
