@@ -434,12 +434,14 @@ export default function App() {
               </span>
             </label>
           </div>
-          <LookupPanel
-            query={lookupQuery}
-            maxYear={filterByYear ? effectiveYear : null}
-            currentJuan={juanNo}
-            onJump={jumpToHit}
-          />
+          <div className="lookup-body">
+            <LookupPanel
+              query={lookupQuery}
+              maxYear={filterByYear ? effectiveYear : null}
+              currentJuan={juanNo}
+              onJump={jumpToHit}
+            />
+          </div>
         </div>
       </aside>
     </div>

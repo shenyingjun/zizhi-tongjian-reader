@@ -219,13 +219,22 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 
 .person-pane {
   background: var(--bg-panel); border-left: 1px solid var(--border);
-  overflow-y: auto; padding: 1.25rem;
+  padding: 1.25rem;
+  display: flex; flex-direction: column;
+  min-height: 0; overflow: hidden;
 }
 .person-placeholder h3 { margin-top: 0; color: var(--accent); }
 .muted { color: var(--muted); }
 .small { font-size: 0.85em; }
 
-.lookup-section { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.year-toc { flex-shrink: 0; }
+
+.lookup-section {
+  margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border);
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+.lookup-header { flex-shrink: 0; }
+.lookup-body { flex: 1; min-height: 0; overflow-y: auto; }
 .lookup-section h3 { margin: 0 0 0.5rem; color: var(--accent); font-size: 1rem; }
 .lookup-controls { position: relative; margin-bottom: 0.4rem; }
 .lookup-input {
