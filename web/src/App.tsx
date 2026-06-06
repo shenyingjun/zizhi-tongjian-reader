@@ -151,6 +151,7 @@ export default function App() {
   useEffect(() => {
     const pane = readerPaneRef.current;
     if (!pane) return;
+    const onMouseDown = () => setHighlightPid(null);
     const onMouseUp = () => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) return;
@@ -161,8 +162,12 @@ export default function App() {
       if (!anchor || !pane.contains(anchor instanceof Element ? anchor : anchor.parentElement)) return;
       setLookupQuery(txt);
     };
+    pane.addEventListener('mousedown', onMouseDown);
     pane.addEventListener('mouseup', onMouseUp);
-    return () => pane.removeEventListener('mouseup', onMouseUp);
+    return () => {
+      pane.removeEventListener('mousedown', onMouseDown);
+      pane.removeEventListener('mouseup', onMouseUp);
+    };
   }, [juan]);
 
   const jumpToParagraph = (pid: number) => {
