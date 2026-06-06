@@ -4,6 +4,7 @@ import type { Manifest, JuanMeta } from './corpus';
 interface Props {
   manifest: Manifest;
   currentJuan: number;
+  readJuans: Set<number>;
   onSelect: (n: number) => void;
 }
 
@@ -32,7 +33,7 @@ function formatMeta(j: JuanMeta): { years: string; emperors: string } {
   return { years, emperors };
 }
 
-export default function Sidebar({ manifest, currentJuan, onSelect }: Props) {
+export default function Sidebar({ manifest, currentJuan, readJuans, onSelect }: Props) {
   const currentDynasty =
     manifest.juans.find(j => j.juan_no === currentJuan)?.dynasty || '';
   const [openGroups, setOpenGroups] = useState<Set<string>>(
@@ -55,6 +56,10 @@ export default function Sidebar({ manifest, currentJuan, onSelect }: Props) {
       <ul className="dynasty-list">
         {manifest.grouped.map(group => {
           const open = openGroups.has(group.dynasty);
+          const readCount = group.juans.reduce(
+            (n, j) => n + (readJuans.has(j.juan_no) ? 1 : 0),
+            0,
+          );
           return (
             <li key={group.dynasty} className="dynasty">
               <button
@@ -63,18 +68,25 @@ export default function Sidebar({ manifest, currentJuan, onSelect }: Props) {
               >
                 <span className="caret">{open ? '▾' : '▸'}</span>
                 <span>{group.dynasty}</span>
-                <span className="count">{group.juans.length}</span>
+                <span className="count">
+                  {readCount > 0 ? `${readCount}/${group.juans.length}` : group.juans.length}
+                </span>
               </button>
               {open && (
                 <ul className="juan-list">
                   {group.juans.map(j => {
                     const { years, emperors } = formatMeta(j);
+                    const isRead = readJuans.has(j.juan_no);
+                    const isActive = j.juan_no === currentJuan;
+                    const cls = 'juan-link'
+                      + (isActive ? ' active' : '')
+                      + (isRead ? ' read' : '');
                     return (
                       <li key={j.juan_no}>
                         <button
-                          className={'juan-link' + (j.juan_no === currentJuan ? ' active' : '')}
+                          className={cls}
                           onClick={() => onSelect(j.juan_no)}
-                          title={j.title}
+                          title={isRead ? `${j.title}（已读）` : j.title}
                         >
                           <span className="juan-no">卷{String(j.juan_no).padStart(3, '0')}</span>
                           <span className="juan-body">
