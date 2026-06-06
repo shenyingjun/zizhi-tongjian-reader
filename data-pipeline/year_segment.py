@@ -129,6 +129,21 @@ def _emperor_key(text: str) -> str:
     return re.sub(_EMP_SUFFIX_CLASS + r"+$", "", text.strip())
 
 
+# Historian-commentary openings quoted by 司马光 throughout 通鉴. These run
+# from the era under discussion: 太史公 (Sima Qian), 班固/班彪, 范晔, 陈寿,
+# 习凿齿, 裴松之/裴子野, 干宝, 孙盛, 袁宏, 沈约, 萧子显, 魏徵, 欧阳修, etc.
+# 臣光曰 is 司马光's own commentary; "史臣曰"/"论曰" are the official-history
+# editor formulae. The opening is always "<2-4 char name>曰" followed by 「/︰/：.
+_COMMENTARY_OPENERS = (
+    "臣光曰", "太史公曰", "史臣曰", "论曰", "赞曰",
+)
+_COMMENTARY_RE = re.compile(
+    r"^("
+    + r"|".join(_COMMENTARY_OPENERS)
+    + r"|[\u4e00-\u9fff]{2,4}曰[：︰「『])"
+)
+
+
 def classify(text: str) -> str:
     t = text.strip()
     if not t:
@@ -139,7 +154,7 @@ def classify(text: str) -> str:
         return "season"
     if EMPEROR_RE.match(t):
         return "emperor"
-    if t.startswith("臣光曰"):
+    if _COMMENTARY_RE.match(t):
         return "commentary"
     return "event"
 
