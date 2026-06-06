@@ -78,6 +78,9 @@ export default function App() {
   const [showHu, setShowHu] = useState<boolean>(() => {
     return localStorage.getItem('zztj.showHu') !== '0';
   });
+  const [showSidebar, setShowSidebar] = useState<boolean>(() => {
+    return localStorage.getItem('zztj.showSidebar') !== '0';
+  });
   const [activeParagraphId, setActiveParagraphId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const readerPaneRef = useRef<HTMLElement | null>(null);
@@ -168,6 +171,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('zztj.showHu', showHu ? '1' : '0');
   }, [showHu]);
+
+  useEffect(() => {
+    localStorage.setItem('zztj.showSidebar', showSidebar ? '1' : '0');
+  }, [showSidebar]);
 
   // Track which paragraph is most prominent in viewport. Also persist scroll
   // position per juan and mark a juan as "read" once the reader has scrolled
@@ -283,7 +290,7 @@ export default function App() {
   })();
 
   return (
-    <div className="layout">
+    <div className={`layout${showSidebar ? '' : ' sidebar-collapsed'}`}>
       <Sidebar
         manifest={manifest}
         currentJuan={juanNo}
@@ -292,6 +299,20 @@ export default function App() {
       />
       <main className="reader-pane" ref={readerPaneRef as React.RefObject<HTMLElement>}>
         <header className="reader-header">
+          <button
+            type="button"
+            className="sidebar-toggle"
+            onClick={() => setShowSidebar(s => !s)}
+            title={showSidebar ? '隐藏目录' : '显示目录'}
+            aria-label={showSidebar ? '隐藏目录' : '显示目录'}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+                 aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <line x1="9" y1="4" x2="9" y2="20" />
+            </svg>
+          </button>
           <div className="reader-title">
             {juan?.title || `卷${String(juanNo).padStart(3, '0')}`}
           </div>
