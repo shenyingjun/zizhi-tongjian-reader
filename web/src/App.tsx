@@ -9,13 +9,44 @@ import './styles.css';
 
 const LAST_JUAN_KEY = 'zztj.lastJuan';
 
+interface RouteState {
+  juanNo: number;
+  q: string;
+  p: number | null;
+}
+
+function parseHash(): RouteState | null {
+  const m = /^#\/juan\/(\d+)(?:\?(.*))?/.exec(window.location.hash);
+  if (!m) return null;
+  const params = new URLSearchParams(m[2] || '');
+  const p = params.get('p');
+  return {
+    juanNo: Number(m[1]),
+    q: params.get('q') || '',
+    p: p ? Number(p) : null,
+  };
+}
+
+function buildHash(juanNo: number, q: string, p: number | null): string {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (p != null) params.set('p', String(p));
+  const qs = params.toString();
+  return `#/juan/${juanNo}${qs ? '?' + qs : ''}`;
+}
+
 export default function App() {
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const [juan, setJuan] = useState<Juan | null>(null);
-  const [juanNo, setJuanNo] = useState<number>(() => {
+
+  const initialRoute: RouteState = (() => {
+    const fromHash = parseHash();
+    if (fromHash) return fromHash;
     const saved = localStorage.getItem(LAST_JUAN_KEY);
-    return saved ? Number(saved) : 1;
-  });
+    return { juanNo: saved ? Number(saved) : 1, q: '', p: null };
+  })();
+
+  const [juanNo, setJuanNo] = useState<number>(initialRoute.juanNo);
   const [showHu, setShowHu] = useState<boolean>(() => {
     return localStorage.getItem('zztj.showHu') !== '0';
   });
@@ -23,14 +54,48 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const readerPaneRef = useRef<HTMLElement | null>(null);
 
-  // Lookup state: query is what the user has selected/clicked.
-  const [lookupQuery, setLookupQuery] = useState<string>('');
+  const [lookupQuery, setLookupQuery] = useState<string>(initialRoute.q);
   const [filterByYear, setFilterByYear] = useState<boolean>(true);
-  // Paragraph to scroll to once the target juan finishes loading (cross-juan jump).
-  const pendingScrollRef = useRef<number | null>(null);
+  // Paragraph that should be visually highlighted as the lookup target.
+  const [highlightPid, setHighlightPid] = useState<number | null>(initialRoute.p);
+  // Paragraph to scroll to once the target juan finishes loading.
+  const pendingScrollRef = useRef<number | null>(initialRoute.p);
+  // Suppress URL writes when state was just synced FROM the URL (popstate).
+  const skipUrlSyncRef = useRef<boolean>(true);
 
   useEffect(() => {
     loadManifest().then(setManifest).catch(e => setError(String(e)));
+  }, []);
+
+  // Push URL on juanNo / query / highlight change (unless coming from popstate).
+  useEffect(() => {
+    if (skipUrlSyncRef.current) {
+      skipUrlSyncRef.current = false;
+      // Still seed the initial hash so the first state is bookmarkable.
+      const hash = buildHash(juanNo, lookupQuery, highlightPid);
+      if (window.location.hash !== hash) {
+        window.history.replaceState(null, '', hash);
+      }
+      return;
+    }
+    const hash = buildHash(juanNo, lookupQuery, highlightPid);
+    if (window.location.hash === hash) return;
+    window.history.pushState(null, '', hash);
+  }, [juanNo, lookupQuery, highlightPid]);
+
+  // React to browser back/forward.
+  useEffect(() => {
+    const onPop = () => {
+      const r = parseHash();
+      if (!r) return;
+      skipUrlSyncRef.current = true;
+      if (r.p !== null) pendingScrollRef.current = r.p;
+      setHighlightPid(r.p);
+      setLookupQuery(r.q);
+      setJuanNo(r.juanNo);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
   }, []);
 
   useEffect(() => {
@@ -111,6 +176,7 @@ export default function App() {
 
   // Jump from a lookup hit: may be same juan or another juan.
   const jumpToHit = (targetJuan: number, paragraphId: number) => {
+    setHighlightPid(paragraphId);
     if (targetJuan === juanNo) {
       jumpToParagraph(paragraphId);
     } else {
@@ -145,7 +211,7 @@ export default function App() {
       <Sidebar
         manifest={manifest}
         currentJuan={juanNo}
-        onSelect={setJuanNo}
+        onSelect={n => { setHighlightPid(null); setJuanNo(n); }}
       />
       <main className="reader-pane" ref={readerPaneRef as React.RefObject<HTMLElement>}>
         <header className="reader-header">
@@ -162,7 +228,12 @@ export default function App() {
           </label>
         </header>
         {juan
-          ? <Reader juan={juan} showHu={showHu} />
+          ? <Reader
+              juan={juan}
+              showHu={showHu}
+              highlightQuery={lookupQuery}
+              highlightPid={highlightPid}
+            />
           : <div className="loading">载入卷 {juanNo} 中……</div>}
       </main>
       <aside className="person-pane">
@@ -170,7 +241,7 @@ export default function App() {
           <YearToc
             years={juan.years}
             activeParagraphId={activeParagraphId}
-            onJump={jumpToParagraph}
+            onJump={pid => { setHighlightPid(null); jumpToParagraph(pid); }}
           />
         )}
         <div className="lookup-section">
@@ -182,13 +253,13 @@ export default function App() {
                 className="lookup-input"
                 value={lookupQuery}
                 placeholder="选中正文或在此输入"
-                onChange={e => setLookupQuery(e.target.value)}
+                onChange={e => { setHighlightPid(null); setLookupQuery(e.target.value); }}
               />
               {lookupQuery && (
                 <button
                   type="button"
                   className="lookup-clear"
-                  onClick={() => setLookupQuery('')}
+                  onClick={() => { setHighlightPid(null); setLookupQuery(''); }}
                   title="清除"
                 >×</button>
               )}

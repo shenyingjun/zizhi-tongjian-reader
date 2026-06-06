@@ -197,6 +197,27 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 /* Make selectable text a clear affordance in the reader. */
 .reader-pane ::selection { background: #f4d089; }
 
+/* Highlight all occurrences of the current lookup query. */
+.search-hit {
+  background: #ffe6a0;
+  padding: 0 0.05em; border-radius: 2px;
+  box-shadow: 0 0 0 1px #d9b860;
+}
+
+/* Pulse the paragraph the user jumped to from a lookup hit. */
+@keyframes target-pulse {
+  0%   { background: #ffd87a; }
+  100% { background: transparent; }
+}
+.paragraph.is-target {
+  animation: target-pulse 2.4s ease-out;
+  scroll-margin-top: 80px;
+}
+.paragraph.is-target .search-hit {
+  background: #ffb84d;
+  box-shadow: 0 0 0 1px #b8741a;
+}
+
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .sidebar { max-height: 30vh; }

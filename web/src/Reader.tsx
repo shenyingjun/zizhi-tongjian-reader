@@ -4,6 +4,8 @@ import type { Juan, Paragraph, HuNote } from './corpus';
 interface Props {
   juan: Juan;
   showHu: boolean;
+  highlightQuery: string;
+  highlightPid: number | null;
 }
 
 interface Segment {
@@ -26,10 +28,27 @@ function splitParagraph(p: Paragraph): Segment[] {
   return segs;
 }
 
-function ParagraphView({ p, showHu }: { p: Paragraph; showHu: boolean }) {
+function highlight(text: string, q: string) {
+  if (!q) return text;
+  const parts: React.ReactNode[] = [];
+  let from = 0;
+  let k = 0;
+  while (true) {
+    const idx = text.indexOf(q, from);
+    if (idx < 0) break;
+    if (idx > from) parts.push(text.slice(from, idx));
+    parts.push(<mark key={k++} className="search-hit">{text.slice(idx, idx + q.length)}</mark>);
+    from = idx + q.length;
+  }
+  if (!parts.length) return text;
+  if (from < text.length) parts.push(text.slice(from));
+  return parts;
+}
+
+function ParagraphView({
+  p, showHu, highlightQuery, isTarget,
+}: { p: Paragraph; showHu: boolean; highlightQuery: string; isTarget: boolean }) {
   const segments = useMemo(() => splitParagraph(p), [p]);
-  // Per-marker override of the global default. If a marker isn't in the set,
-  // it follows `showHu`; if it is, its state is inverted.
   const [overridden, setOverridden] = useState<Set<number>>(new Set());
 
   const toggleNote = (i: number) =>
@@ -41,14 +60,13 @@ function ParagraphView({ p, showHu }: { p: Paragraph; showHu: boolean }) {
     });
 
   const cls =
-    'paragraph paragraph-' + (p.type || 'event');
+    'paragraph paragraph-' + (p.type || 'event') + (isTarget ? ' is-target' : '');
 
   return (
     <p className={cls} data-pid={p.id} data-type={p.type}>
       {segments.map((seg, i) => {
-        if (seg.kind === 'text') return <span key={i}>{seg.text}</span>;
+        if (seg.kind === 'text') return <span key={i}>{highlight(seg.text, highlightQuery)}</span>;
         const idx = seg.noteIdx!;
-        // Default = showHu; per-marker toggle inverts that default.
         const open = overridden.has(idx) ? !showHu : showHu;
         return (
           <span key={i} className="hu-note-wrap">
@@ -59,7 +77,7 @@ function ParagraphView({ p, showHu }: { p: Paragraph; showHu: boolean }) {
             >
               {open ? '［收］' : '［注］'}
             </button>
-            {open && <span className="hu-note">{seg.text}</span>}
+            {open && <span className="hu-note">{highlight(seg.text, highlightQuery)}</span>}
           </span>
         );
       })}
@@ -67,11 +85,17 @@ function ParagraphView({ p, showHu }: { p: Paragraph; showHu: boolean }) {
   );
 }
 
-export default function Reader({ juan, showHu }: Props) {
+export default function Reader({ juan, showHu, highlightQuery, highlightPid }: Props) {
   return (
     <article className="reader-body">
       {juan.paragraphs.map(p => (
-        <ParagraphView key={p.id} p={p} showHu={showHu} />
+        <ParagraphView
+          key={p.id}
+          p={p}
+          showHu={showHu}
+          highlightQuery={highlightQuery}
+          isTarget={highlightPid === p.id}
+        />
       ))}
     </article>
   );
