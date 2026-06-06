@@ -11,12 +11,15 @@ function fmtYear(y: number): string {
   return y < 0 ? `前${-y}` : String(y);
 }
 
-function formatMeta(j: JuanMeta): { years: string; emperors: string } {
+function formatMeta(j: JuanMeta): { years: string; span: string; emperors: string } {
   let years = '';
+  let span = '';
   if (j.ce_start != null && j.ce_end != null) {
     years = j.ce_start === j.ce_end
       ? fmtYear(j.ce_start)
       : `${fmtYear(j.ce_start)}–${fmtYear(j.ce_end)}`;
+    const n = j.ce_end - j.ce_start + 1;
+    span = n > 1 ? `${n}年` : '';
   }
   const chunks = j.year_range.split(/[\s\u3000]+/);
   const list: string[] = [];
@@ -27,7 +30,7 @@ function formatMeta(j: JuanMeta): { years: string; emperors: string } {
   let emperors = '';
   if (list.length === 1) emperors = list[0];
   else if (list.length >= 2) emperors = `${list[0]}–${list[list.length - 1]}`;
-  return { years, emperors };
+  return { years, span, emperors };
 }
 
 export default function Sidebar({ manifest, currentJuan, onSelect }: Props) {
@@ -66,7 +69,7 @@ export default function Sidebar({ manifest, currentJuan, onSelect }: Props) {
               {open && (
                 <ul className="juan-list">
                   {group.juans.map(j => {
-                    const { years, emperors } = formatMeta(j);
+                    const { years, span, emperors } = formatMeta(j);
                     return (
                       <li key={j.juan_no}>
                         <button
@@ -76,6 +79,7 @@ export default function Sidebar({ manifest, currentJuan, onSelect }: Props) {
                         >
                           <span className="juan-no">卷{String(j.juan_no).padStart(3, '0')}</span>
                           <span className="juan-years">{years}</span>
+                          {span && <span className="juan-span">{span}</span>}
                           <span className="juan-emperors">{emperors}</span>
                         </button>
                       </li>
