@@ -129,18 +129,26 @@ def _emperor_key(text: str) -> str:
     return re.sub(_EMP_SUFFIX_CLASS + r"+$", "", text.strip())
 
 
-# Historian-commentary openings quoted by 司马光 throughout 通鉴. These run
-# from the era under discussion: 太史公 (Sima Qian), 班固/班彪, 范晔, 陈寿,
-# 习凿齿, 裴松之/裴子野, 干宝, 孙盛, 袁宏, 沈约, 萧子显, 魏徵, 欧阳修, etc.
-# 臣光曰 is 司马光's own commentary; "史臣曰"/"论曰" are the official-history
-# editor formulae. The opening is always "<2-4 char name>曰" followed by 「/︰/：.
-_COMMENTARY_OPENERS = (
-    "臣光曰", "太史公曰", "史臣曰", "论曰", "赞曰",
+# Historian-commentary openings quoted by 司马光 throughout 通鉴. The opener
+# is "<historian-name>(论|赞|评|序)?曰" followed by 「/︰/： ; plus a few fixed
+# formulae (臣光曰 for 司马光 himself, 史臣曰/论曰/赞曰 for official-history
+# editor voice). Names enumerated below cover the historians whose 论/赞/评 are
+# quoted by 通鉴: 太史公(司马迁), 班固/班彪, 荀悦, 陈寿, 华峤, 干宝, 孙盛,
+# 袁宏, 习凿齿, 范晔, 裴松之/裴子野, 沈约, 萧子显, 魏徵, 李延寿, 崔鸿, 柳芳,
+# 陈岳, 欧阳修; plus 孔子/孟子/荀子/老子/庄子 whose 曰 are frequently quoted
+# inside commentary blocks as standalone paragraphs.
+_HISTORIAN_NAMES = (
+    "太史公", "班固", "班彪", "荀悦", "陈寿", "华峤", "干宝", "孙盛",
+    "袁宏", "习凿齿", "范晔", "裴松之", "裴子野", "沈约", "萧子显", "魏徵",
+    "李延寿", "崔鸿", "柳芳", "陈岳", "欧阳修",
+    "孔子", "孟子", "荀子", "老子", "庄子",
 )
+_COMMENTARY_OPENERS = ("臣光曰", "史臣曰", "论曰", "赞曰")
 _COMMENTARY_RE = re.compile(
-    r"^("
+    r"^(?:"
     + r"|".join(_COMMENTARY_OPENERS)
-    + r"|[\u4e00-\u9fff]{2,4}曰[：︰「『])"
+    + r"|(?:" + r"|".join(_HISTORIAN_NAMES) + r")(?:论|赞|评|序|论之)?曰"
+    + r")[：︰「『]"
 )
 
 

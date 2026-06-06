@@ -22,10 +22,26 @@ DST = ROOT / "cache" / "simplified"
 # t2s = Traditional → Simplified (uses HK/TW variants by default; t2s is generic CN target).
 cc = OpenCC("t2s")
 
+# Characters OpenCC merges that lose meaningful distinction in 通鉴 context.
+# We round-trip them through Private Use Area codepoints so OpenCC sees an
+# unknown char (no conversion) and we restore the traditional form after.
+#
+#   乾 (qián, dry/heaven/era-name) — OpenCC maps to 干 (do/shield), wrecking
+#     names like 李承乾 and era names 乾元/乾封/乾化/乾符/乾寧/乾德 etc. Even
+#     modern simplified text keeps 乾 in 乾隆/乾坤 by convention.
+_PRESERVE_CHARS = "乾"
+_PRESERVE_MAP = {ch: chr(0xE000 + i) for i, ch in enumerate(_PRESERVE_CHARS)}
+_PRESERVE_TR = str.maketrans(_PRESERVE_MAP)
+_RESTORE_TR = str.maketrans({v: k for k, v in _PRESERVE_MAP.items()})
+
+
+def convert_text(s: str) -> str:
+    return cc.convert(s.translate(_PRESERVE_TR)).translate(_RESTORE_TR)
+
 
 def convert_obj(obj):
     if isinstance(obj, str):
-        return cc.convert(obj)
+        return convert_text(obj)
     if isinstance(obj, list):
         return [convert_obj(x) for x in obj]
     if isinstance(obj, dict):
