@@ -91,15 +91,8 @@ export default function LookupPanel({ query, maxYear, currentJuan, onJump }: Pro
   return (
     <div className="lookup-results">
       <p className="lookup-summary small muted">
-        <span>“</span><span className="q">{query}</span><span>”</span>
-        <span>共找到</span><span className="n">{hits.length}</span><span>处</span>
-        {futureCount > 0 && (
-          <>
-            <span>（此后另有</span>
-            <span className="n">{futureCount}</span>
-            <span>处已隐藏）</span>
-          </>
-        )}
+        “<span className="q">{query}</span>” 共找到<span className="n">{hits.length}</span>处
+        {futureCount > 0 && <>（此后另有<span className="n">{futureCount}</span>处已隐藏）</>}
       </p>
       <div className="lookup-groups">
         {groupHits(hits).map(jg => (
