@@ -11,15 +11,14 @@ function fmtYear(y: number): string {
   return y < 0 ? `前${-y}` : String(y);
 }
 
-function formatMeta(j: JuanMeta): { years: string; span: string; emperors: string } {
+function formatMeta(j: JuanMeta): { years: string; emperors: string } {
   let years = '';
-  let span = '';
   if (j.ce_start != null && j.ce_end != null) {
-    years = j.ce_start === j.ce_end
-      ? `${fmtYear(j.ce_start)}年`
-      : `${fmtYear(j.ce_start)}-${fmtYear(j.ce_end)}年`;
+    const range = j.ce_start === j.ce_end
+      ? `${fmtYear(j.ce_start)}`
+      : `${fmtYear(j.ce_start)}-${fmtYear(j.ce_end)}`;
     const n = j.ce_end - j.ce_start + 1;
-    span = n > 1 ? `共${n}年` : '';
+    years = n > 1 ? `${range}年 · ${n}年` : `${range}年`;
   }
   const chunks = j.title.split(/[\s\u3000]+/);
   const list: string[] = [];
@@ -30,7 +29,7 @@ function formatMeta(j: JuanMeta): { years: string; span: string; emperors: strin
   let emperors = '';
   if (list.length === 1) emperors = list[0];
   else if (list.length >= 2) emperors = `${list[0]}-${list[list.length - 1]}`;
-  return { years, span, emperors };
+  return { years, emperors };
 }
 
 export default function Sidebar({ manifest, currentJuan, onSelect }: Props) {
@@ -69,7 +68,7 @@ export default function Sidebar({ manifest, currentJuan, onSelect }: Props) {
               {open && (
                 <ul className="juan-list">
                   {group.juans.map(j => {
-                    const { years, span, emperors } = formatMeta(j);
+                    const { years, emperors } = formatMeta(j);
                     return (
                       <li key={j.juan_no}>
                         <button
@@ -77,13 +76,10 @@ export default function Sidebar({ manifest, currentJuan, onSelect }: Props) {
                           onClick={() => onSelect(j.juan_no)}
                           title={j.title}
                         >
-                          <span className="juan-line juan-line-top">
-                            <span className="juan-no">卷{String(j.juan_no).padStart(3, '0')}</span>
-                            <span className="juan-years">{years}</span>
-                          </span>
-                          <span className="juan-line juan-line-bot">
+                          <span className="juan-no">卷{String(j.juan_no).padStart(3, '0')}</span>
+                          <span className="juan-body">
                             <span className="juan-emperors">{emperors}</span>
-                            {span && <span className="juan-span">{span}</span>}
+                            <span className="juan-years">{years}</span>
                           </span>
                         </button>
                       </li>
