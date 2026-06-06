@@ -74,7 +74,8 @@ export interface LookupEntry {
   p: number;       // paragraph id within juan
   y: number | null; // CE year (negative for BCE)
   k: string;       // kind/type (event, commentary, year, emperor, ...)
-  t: string;       // searchable text
+  t: string;       // searchable text (main + " " + 胡三省音注 if present)
+  m?: number;      // index within `t` where 胡三省音注 begins (omitted if no notes)
 }
 
 let _lookupCache: Promise<LookupEntry[]> | null = null;
@@ -95,6 +96,7 @@ export interface LookupHit {
   snippet: string;   // text with the matched query in context
   matchStart: number; // index of match within snippet
   matchLen: number;
+  inHu: boolean;     // true when the match falls inside 胡三省音注
 }
 
 const SNIPPET_PAD = 30;
@@ -132,6 +134,7 @@ export function searchCorpus(
         snippet: entry.t.slice(start, end),
         matchStart: idx - start,
         matchLen: q.length,
+        inHu: entry.m !== undefined && idx >= entry.m,
       });
       if (hits.length >= limit) return hits;
       from = idx + q.length;
