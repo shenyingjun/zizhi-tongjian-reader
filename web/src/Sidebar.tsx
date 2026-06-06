@@ -21,7 +21,7 @@ function formatMeta(j: JuanMeta): { years: string; span: string; emperors: strin
     const n = j.ce_end - j.ce_start + 1;
     span = n > 1 ? `${n}年` : '';
   }
-  const chunks = j.year_range.split(/[\s\u3000]+/);
+  const chunks = j.title.split(/[\s\u3000]+/);
   const list: string[] = [];
   for (const c of chunks) {
     const m = /^([^年载\s\u3000]{1,8}?(?:帝|王|后|公))/.exec(c);
