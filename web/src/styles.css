@@ -31,42 +31,47 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 
 /* Subtle scrollbars — visible enough to use, but not visually dominant.
    Becomes a bit more prominent on hover. */
-.sidebar, .reader-pane, .person-pane, .year-toc ul {
+.sidebar, .reader-pane, .person-pane, .year-toc ul, .lookup-body {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
-.sidebar:hover, .reader-pane:hover, .person-pane:hover, .year-toc ul:hover {
+.sidebar:hover, .reader-pane:hover, .person-pane:hover, .year-toc ul:hover, .lookup-body:hover {
   scrollbar-color: rgba(139, 122, 100, 0.35) transparent;
 }
 .sidebar::-webkit-scrollbar,
 .reader-pane::-webkit-scrollbar,
 .person-pane::-webkit-scrollbar,
-.year-toc ul::-webkit-scrollbar {
+.year-toc ul::-webkit-scrollbar,
+.lookup-body::-webkit-scrollbar {
   width: 6px; height: 6px;
 }
 .sidebar::-webkit-scrollbar-track,
 .reader-pane::-webkit-scrollbar-track,
 .person-pane::-webkit-scrollbar-track,
-.year-toc ul::-webkit-scrollbar-track {
+.year-toc ul::-webkit-scrollbar-track,
+.lookup-body::-webkit-scrollbar-track {
   background: transparent;
 }
 .sidebar::-webkit-scrollbar-thumb,
 .reader-pane::-webkit-scrollbar-thumb,
 .person-pane::-webkit-scrollbar-thumb,
-.year-toc ul::-webkit-scrollbar-thumb {
+.year-toc ul::-webkit-scrollbar-thumb,
+.lookup-body::-webkit-scrollbar-thumb {
   background: transparent; border-radius: 3px;
   transition: background 0.2s ease;
 }
 .sidebar:hover::-webkit-scrollbar-thumb,
 .reader-pane:hover::-webkit-scrollbar-thumb,
 .person-pane:hover::-webkit-scrollbar-thumb,
-.year-toc ul:hover::-webkit-scrollbar-thumb {
+.year-toc ul:hover::-webkit-scrollbar-thumb,
+.lookup-body:hover::-webkit-scrollbar-thumb {
   background: rgba(139, 122, 100, 0.35);
 }
 .sidebar::-webkit-scrollbar-thumb:hover,
 .reader-pane::-webkit-scrollbar-thumb:hover,
 .person-pane::-webkit-scrollbar-thumb:hover,
-.year-toc ul::-webkit-scrollbar-thumb:hover {
+.year-toc ul::-webkit-scrollbar-thumb:hover,
+.lookup-body::-webkit-scrollbar-thumb:hover {
   background: rgba(139, 122, 100, 0.6);
 }
 /* Sidebar lives on a dark bg, so use a light translucent thumb. */
