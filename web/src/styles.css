@@ -212,6 +212,15 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 }
 .kind-commentary .lookup-snippet { color: var(--hu); font-style: italic; }
 
+/* Matches inside 胡三省音注 — mirror the inline-note styling so users can
+   tell at a glance the hit came from a note rather than the main text. */
+.lookup-hit.in-hu .lookup-snippet {
+  color: var(--hu); font-size: 0.82rem;
+}
+.lookup-hit.in-hu .lookup-snippet::before {
+  content: '胡注 · '; font-size: 0.75rem; opacity: 0.75; margin-right: 0.15em;
+}
+
 .loading, .error {
   padding: 2rem; color: var(--muted); text-align: center;
 }

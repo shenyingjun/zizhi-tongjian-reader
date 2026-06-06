@@ -73,17 +73,24 @@ def main() -> int:
         data = json.loads(src.read_text(encoding="utf-8"))
         juan_no = data["juan_no"]
         for para in data["paragraphs"]:
-            text = para.get("main", "")
+            main_text = para.get("main", "")
             notes_text = "".join(n.get("text", "") for n in para.get("notes", []))
             if notes_text:
-                text = text + " " + notes_text
-            lookup.append({
+                text = main_text + " " + notes_text
+            else:
+                text = main_text
+            entry = {
                 "j": juan_no,
                 "p": para["id"],
                 "y": para.get("ce_year"),
                 "k": para.get("type", para.get("kind", "")),
                 "t": text,
-            })
+            }
+            # `m` marks where 胡三省音注 begins within `t` (after the
+            # separator space). Omitted when there are no notes.
+            if notes_text:
+                entry["m"] = len(main_text) + 1
+            lookup.append(entry)
     (WEB_PUBLIC / "lookup.json").write_text(
         json.dumps(lookup, ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",

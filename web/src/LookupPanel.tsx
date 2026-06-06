@@ -109,7 +109,7 @@ export default function LookupPanel({ query, maxYear, currentJuan, onJump }: Pro
                 <div className="lookup-year-header">{formatCE(yg.y)}</div>
                 <ol className="lookup-list">
                   {yg.hits.map((h, i) => (
-                    <li key={i} className={`lookup-hit kind-${h.k}`}>
+                    <li key={i} className={`lookup-hit kind-${h.k}${h.inHu ? ' in-hu' : ''}`}>
                       <button
                         type="button"
                         className="lookup-jump"
