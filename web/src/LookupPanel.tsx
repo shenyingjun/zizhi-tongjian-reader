@@ -58,7 +58,7 @@ export default function LookupPanel({ query, maxYear, currentJuan, onJump }: Pro
     loadLookup()
       .then(corpus => {
         if (cancelled) return;
-        const filtered = searchCorpus(query, corpus, { maxYear, limit: 500 });
+        const filtered = searchCorpus(query, corpus, { maxYear, limit: 500, currentJuan });
         const all = maxYear === null ? filtered : searchCorpus(query, corpus, { limit: 5000 });
         setHits(filtered);
         setFutureCount(all.length - filtered.length);
@@ -66,7 +66,7 @@ export default function LookupPanel({ query, maxYear, currentJuan, onJump }: Pro
       .catch(e => !cancelled && setError(String(e)))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [query, maxYear]);
+  }, [query, maxYear, currentJuan]);
 
   if (!query) {
     return (
