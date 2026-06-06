@@ -272,20 +272,57 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   content: '· 本卷'; margin-left: 0.4em; font-weight: 400; font-size: 0.78rem; color: var(--accent);
 }
 .lookup-juan-count { color: var(--muted); font-size: 0.78rem; margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* Inline prev/next nav inside the current 卷's group header. Lives between
+   the 卷 label and the right-aligned 处 count. */
+.hit-nav {
+  display: inline-flex; align-items: center; gap: 0.1rem;
+  margin-left: 0.5rem;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: rgba(255, 255, 255, 0.4);
+}
+.hit-nav button {
+  background: none; border: 0; padding: 0 0.3rem;
+  cursor: pointer; color: var(--accent); font: inherit; line-height: 1.4;
+  font-size: 0.78rem; border-radius: 3px;
+}
+.hit-nav button:hover { background: #ead7a8; }
+.hit-nav-count {
+  font-variant-numeric: tabular-nums; padding: 0 0.15rem;
+  font-size: 0.72rem; color: var(--muted); min-width: 2.4em; text-align: center;
+}
 .lookup-year-group { margin-top: 0.2rem; }
 .lookup-year-header {
   font-size: 0.78rem; color: var(--muted); padding: 0.1rem 0.3rem;
   font-variant-numeric: tabular-nums;
 }
 .lookup-list { list-style: none; padding: 0; margin: 0; }
-.lookup-hit { border-bottom: 1px dotted var(--border); }
-.lookup-hit:last-child { border-bottom: 0; }
+/* Cards: each paragraph is one card with a subtle background + gap
+   between cards (no border), so card boundaries are unambiguous. */
+.lookup-hit { margin-bottom: 0.3rem; }
+.lookup-hit:last-child { margin-bottom: 0; }
 .lookup-jump {
   display: block; width: 100%; text-align: left;
-  background: none; border: 0; padding: 0.35rem 0.3rem;
+  background: rgba(122, 59, 46, 0.06);
+  border: 1px solid transparent; border-radius: 4px;
+  padding: 0.35rem 0.5rem;
   cursor: pointer; font: inherit; color: var(--fg);
+  transition: background 0.12s, border-color 0.12s;
 }
-.lookup-jump:hover { background: #ead7a8; }
+.lookup-jump:hover { background: #ead7a8; border-color: var(--border); }
+
+/* Inside the current 卷's group, the group itself has a warm accent
+   backdrop, so the default card wash collides with it. Lift cards
+   with a brighter paper tone + subtle shadow so they read clearly. */
+.lookup-juan-group.is-current .lookup-jump {
+  background: #fdf6e3;
+  border-color: rgba(122, 59, 46, 0.22);
+  box-shadow: 0 1px 2px rgba(43, 33, 24, 0.06);
+}
+.lookup-juan-group.is-current .lookup-jump:hover {
+  background: #f4dca0;
+  border-color: var(--accent);
+}
 .lookup-snippet {
   display: block; font-size: 0.88rem; line-height: 1.55;
   color: var(--fg);
@@ -297,12 +334,31 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .kind-commentary .lookup-snippet { color: var(--hu); font-style: italic; }
 
 /* Matches inside 胡三省音注 — mirror the inline-note styling so users can
-   tell at a glance the hit came from a note rather than the main text. */
-.lookup-hit.in-hu .lookup-snippet {
+   tell at a glance the hit came from a note rather than the main text.
+   Applied per-snippet so a paragraph can mix 正文 and 胡注 matches. */
+.lookup-snippet.in-hu {
   color: var(--hu); font-size: 0.82rem;
 }
-.lookup-hit.in-hu .lookup-snippet::before {
+.lookup-snippet.in-hu::before {
   content: '胡注 · '; font-size: 0.75rem; opacity: 0.75; margin-right: 0.15em;
+}
+/* Stacked snippets within one paragraph — a shared left rail visually
+   binds them together so it's clear they're all the same paragraph,
+   distinct from the card boundary that separates paragraphs. */
+.lookup-snippets-multi {
+  border-left: 2px solid rgba(122, 59, 46, 0.3);
+  padding-left: 0.55rem;
+  margin: 0.1rem 0;
+}
+.lookup-snippets-multi .lookup-snippet + .lookup-snippet {
+  margin-top: 0.3rem;
+}
+.lookup-multi-badge {
+  display: inline-block; margin-top: 0.3rem;
+  font-size: 0.7rem; color: var(--muted);
+  background: rgba(122, 59, 46, 0.12);
+  border-radius: 8px; padding: 0 0.5em;
+  font-variant-numeric: tabular-nums;
 }
 
 .loading, .error {

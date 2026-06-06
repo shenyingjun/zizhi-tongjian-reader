@@ -428,6 +428,7 @@ export default function App() {
               query={lookupQuery}
               maxJuan={filterByJuan ? juanNo : null}
               currentJuan={juanNo}
+              highlightPid={highlightPid}
               onJump={jumpToHit}
             />
           </div>

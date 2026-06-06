@@ -6,6 +6,7 @@ interface Props {
   query: string;
   maxJuan: number | null;
   currentJuan: number;
+  highlightPid: number | null;
   onJump: (juanNo: number, paragraphId: number) => void;
 }
 
@@ -22,6 +23,7 @@ interface JuanGroup {
   j: number;
   hits: LookupHit[];
   years: YearGroup[];
+  pids: number[]; // distinct paragraph ids in reading order
 }
 
 function groupHits(hits: LookupHit[]): JuanGroup[] {
@@ -29,18 +31,19 @@ function groupHits(hits: LookupHit[]): JuanGroup[] {
   for (const h of hits) {
     let jg = byJuan.get(h.j);
     if (!jg) {
-      jg = { j: h.j, hits: [], years: [] };
+      jg = { j: h.j, hits: [], years: [], pids: [] };
       byJuan.set(h.j, jg);
     }
     jg.hits.push(h);
     const last = jg.years[jg.years.length - 1];
     if (last && last.y === h.y) last.hits.push(h);
     else jg.years.push({ y: h.y, hits: [h] });
+    if (jg.pids[jg.pids.length - 1] !== h.p) jg.pids.push(h.p);
   }
   return Array.from(byJuan.values());
 }
 
-export default function LookupPanel({ query, maxJuan, currentJuan, onJump }: Props) {
+export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid, onJump }: Props) {
   const [hits, setHits] = useState<LookupHit[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,47 +98,119 @@ export default function LookupPanel({ query, maxJuan, currentJuan, onJump }: Pro
       </div>
     );
   }
+  const groups = groupHits(hits);
+  const paraCount = groups.reduce((s, g) => s + g.pids.length, 0);
   return (
     <div className="lookup-results">
       <p className="lookup-summary small muted">
-        “<b>{query}</b>” 共找到<b>{hits.length}</b>处
+        “<b>{query}</b>” 共<b>{paraCount}</b>段
+        {paraCount !== hits.length && <>（{hits.length}处匹配）</>}
         {futureCount > 0 && <>（此后另有<b>{futureCount}</b>处已隐藏）</>}
       </p>
       <div className="lookup-groups">
-        {groupHits(hits).map(jg => (
+        {groups.map(jg => {
+          const isCurrent = jg.j === currentJuan;
+          const navPids = jg.pids;
+          const navIndex = isCurrent && highlightPid !== null
+            ? navPids.indexOf(highlightPid) : -1;
+          const navJump = (delta: number) => {
+            const total = navPids.length;
+            if (total === 0) return;
+            const next = navIndex < 0
+              ? (delta > 0 ? 0 : total - 1)
+              : (navIndex + delta + total) % total;
+            onJump(jg.j, navPids[next]);
+          };
+          return (
           <section
             key={jg.j}
-            className={`lookup-juan-group${jg.j === currentJuan ? ' is-current' : ''}`}
+            className={`lookup-juan-group${isCurrent ? ' is-current' : ''}`}
           >
             <header className="lookup-juan-header">
               <span className="lookup-juan-label">卷{jg.j}</span>
-              <span className="lookup-juan-count">{jg.hits.length}处</span>
+              {isCurrent && navPids.length > 0 && (
+                <span className="hit-nav" role="group" aria-label="本卷检索结果导航">
+                  <button
+                    type="button"
+                    onClick={() => navJump(-1)}
+                    title="上一处（本卷）"
+                    aria-label="上一处"
+                  >↑</button>
+                  <span className="hit-nav-count">
+                    {navIndex < 0 ? '–' : navIndex + 1}/{navPids.length}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => navJump(1)}
+                    title="下一处（本卷）"
+                    aria-label="下一处"
+                  >↓</button>
+                </span>
+              )}
+              <span
+                className="lookup-juan-count"
+                title={jg.hits.length === jg.pids.length
+                  ? undefined
+                  : `共 ${jg.hits.length} 处匹配，分布在 ${jg.pids.length} 段`}
+              >{jg.pids.length}段</span>
             </header>
             {jg.years.map((yg, yi) => (
               <div key={yi} className="lookup-year-group">
                 <div className="lookup-year-header">{formatCE(yg.y)}</div>
                 <ol className="lookup-list">
-                  {yg.hits.map((h, i) => (
-                    <li key={i} className={`lookup-hit kind-${h.k}${h.inHu ? ' in-hu' : ''}`}>
-                      <button
-                        type="button"
-                        className="lookup-jump"
-                        onClick={() => onJump(h.j, h.p)}
-                        title={`跳转：卷${h.j} 段${h.p}`}
-                      >
-                        <span className="lookup-snippet">
-                          …{h.snippet.slice(0, h.matchStart)}
-                          <mark>{h.snippet.slice(h.matchStart, h.matchStart + h.matchLen)}</mark>
-                          {h.snippet.slice(h.matchStart + h.matchLen)}…
-                        </span>
-                      </button>
-                    </li>
-                  ))}
+                  {(() => {
+                    // Group consecutive same-paragraph hits so one paragraph
+                    // = one clickable entry, with stacked snippets inside.
+                    const paras: { pid: number; hits: LookupHit[] }[] = [];
+                    for (const h of yg.hits) {
+                      const last = paras[paras.length - 1];
+                      if (last && last.pid === h.p) last.hits.push(h);
+                      else paras.push({ pid: h.p, hits: [h] });
+                    }
+                    return paras.map((para, i) => {
+                      const first = para.hits[0];
+                      const multi = para.hits.length > 1;
+                      return (
+                        <li key={i} className={`lookup-hit kind-${first.k}`}>
+                          <button
+                            type="button"
+                            className="lookup-jump"
+                            onClick={() => onJump(jg.j, para.pid)}
+                            title={multi
+                              ? `跳转：卷${jg.j} 段${para.pid}（${para.hits.length} 处匹配）`
+                              : `跳转：卷${jg.j} 段${para.pid}`}
+                          >
+                            {multi ? (
+                              <div className="lookup-snippets-multi">
+                                {para.hits.map((h, k) => (
+                                  <span key={k} className={`lookup-snippet${h.inHu ? ' in-hu' : ''}`}>
+                                    …{h.snippet.slice(0, h.matchStart)}
+                                    <mark>{h.snippet.slice(h.matchStart, h.matchStart + h.matchLen)}</mark>
+                                    {h.snippet.slice(h.matchStart + h.matchLen)}…
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className={`lookup-snippet${first.inHu ? ' in-hu' : ''}`}>
+                                …{first.snippet.slice(0, first.matchStart)}
+                                <mark>{first.snippet.slice(first.matchStart, first.matchStart + first.matchLen)}</mark>
+                                {first.snippet.slice(first.matchStart + first.matchLen)}…
+                              </span>
+                            )}
+                            {multi && (
+                              <span className="lookup-multi-badge">{para.hits.length}处</span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    });
+                  })()}
                 </ol>
               </div>
             ))}
           </section>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
