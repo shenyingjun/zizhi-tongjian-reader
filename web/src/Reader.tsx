@@ -28,10 +28,12 @@ function splitParagraph(p: Paragraph): Segment[] {
 
 function ParagraphView({ p, showHu }: { p: Paragraph; showHu: boolean }) {
   const segments = useMemo(() => splitParagraph(p), [p]);
-  const [openNotes, setOpenNotes] = useState<Set<number>>(new Set());
+  // Per-marker override of the global default. If a marker isn't in the set,
+  // it follows `showHu`; if it is, its state is inverted.
+  const [overridden, setOverridden] = useState<Set<number>>(new Set());
 
   const toggleNote = (i: number) =>
-    setOpenNotes(prev => {
+    setOverridden(prev => {
       const next = new Set(prev);
       if (next.has(i)) next.delete(i);
       else next.add(i);
@@ -45,15 +47,15 @@ function ParagraphView({ p, showHu }: { p: Paragraph; showHu: boolean }) {
     <p className={cls} data-pid={p.id} data-type={p.type}>
       {segments.map((seg, i) => {
         if (seg.kind === 'text') return <span key={i}>{seg.text}</span>;
-        if (!showHu) return null;
         const idx = seg.noteIdx!;
-        const open = openNotes.has(idx);
+        // Default = showHu; per-marker toggle inverts that default.
+        const open = overridden.has(idx) ? !showHu : showHu;
         return (
           <span key={i} className="hu-note-wrap">
             <button
               className={'hu-marker' + (open ? ' open' : '')}
               onClick={() => toggleNote(idx)}
-              title={open ? '收起音注' : '展开胡三省音注'}
+              title={open ? '收起此条音注' : '展开此条胡三省音注'}
             >
               {open ? '［收］' : '［注］'}
             </button>
