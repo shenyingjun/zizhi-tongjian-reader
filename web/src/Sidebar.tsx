@@ -16,10 +16,10 @@ function formatMeta(j: JuanMeta): { years: string; span: string; emperors: strin
   let span = '';
   if (j.ce_start != null && j.ce_end != null) {
     years = j.ce_start === j.ce_end
-      ? fmtYear(j.ce_start)
-      : `${fmtYear(j.ce_start)}–${fmtYear(j.ce_end)}`;
+      ? `${fmtYear(j.ce_start)}年`
+      : `${fmtYear(j.ce_start)}-${fmtYear(j.ce_end)}年`;
     const n = j.ce_end - j.ce_start + 1;
-    span = n > 1 ? `${n}年` : '';
+    span = n > 1 ? `共${n}年` : '';
   }
   const chunks = j.title.split(/[\s\u3000]+/);
   const list: string[] = [];
@@ -29,7 +29,7 @@ function formatMeta(j: JuanMeta): { years: string; span: string; emperors: strin
   }
   let emperors = '';
   if (list.length === 1) emperors = list[0];
-  else if (list.length >= 2) emperors = `${list[0]}–${list[list.length - 1]}`;
+  else if (list.length >= 2) emperors = `${list[0]}-${list[list.length - 1]}`;
   return { years, span, emperors };
 }
 
@@ -78,9 +78,13 @@ export default function Sidebar({ manifest, currentJuan, onSelect }: Props) {
                           title={j.title}
                         >
                           <span className="juan-no">卷{String(j.juan_no).padStart(3, '0')}</span>
-                          <span className="juan-years">{years}</span>
-                          {span && <span className="juan-span">{span}</span>}
-                          <span className="juan-emperors">{emperors}</span>
+                          <span className="juan-meta">
+                            <span className="juan-line juan-line-top">
+                              <span className="juan-emperors">{emperors}</span>
+                              {span && <span className="juan-span">{span}</span>}
+                            </span>
+                            <span className="juan-line juan-years">{years}</span>
+                          </span>
                         </button>
                       </li>
                     );

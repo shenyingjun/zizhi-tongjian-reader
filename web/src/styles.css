@@ -43,7 +43,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .juan-list { padding-left: 0; padding-bottom: 0.3rem; }
 .juan-link {
   width: 100%; text-align: left; background: none; border: 0; color: #d6c9a8;
-  padding: 0.2rem 0.4rem; cursor: pointer; font: inherit;
+  padding: 0.25rem 0.4rem; cursor: pointer; font: inherit;
   display: flex; gap: 0.4rem; border-radius: 3px;
   align-items: baseline;
 }
@@ -54,24 +54,31 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   flex: 0 0 auto; white-space: nowrap;
 }
 .juan-link.active .juan-no { color: var(--fg-inv); }
-.juan-years {
-  font-size: 0.78em; color: #8a7a64;
-  flex: 0 0 auto; font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+.juan-meta {
+  display: flex; flex-direction: column; gap: 0.05rem;
+  flex: 1 1 auto; min-width: 0;
 }
-.juan-span {
-  font-size: 0.72em; color: #756347;
-  flex: 0 0 auto; white-space: nowrap;
+.juan-line {
+  display: flex; gap: 0.4rem; align-items: baseline;
+  min-width: 0;
 }
 .juan-emperors {
-  font-size: 0.78em; color: #8a7a64;
+  font-size: 0.82em; color: #c0b08a;
   flex: 1 1 auto; min-width: 0;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  text-align: right;
 }
-.juan-link.active .juan-years,
+.juan-span {
+  font-size: 0.72em; color: #8a7a64;
+  flex: 0 0 auto; white-space: nowrap;
+}
+.juan-years {
+  font-size: 0.74em; color: #8a7a64;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.juan-link.active .juan-emperors,
 .juan-link.active .juan-span,
-.juan-link.active .juan-emperors { color: #f4d8b8; }
+.juan-link.active .juan-years { color: #f4d8b8; }
 
 .reader-pane { overflow-y: auto; background: var(--bg); }
 .reader-header {
