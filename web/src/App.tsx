@@ -8,6 +8,34 @@ import LookupPanel from './LookupPanel';
 import './styles.css';
 
 const LAST_JUAN_KEY = 'zztj.lastJuan';
+const READ_JUANS_KEY = 'zztj.readJuans';
+const SCROLL_BY_JUAN_KEY = 'zztj.scrollByJuan';
+// Mark a juan as "read" once the reader has been scrolled to within this
+// fraction of the bottom.
+const READ_THRESHOLD = 0.9;
+
+function loadReadJuans(): Set<number> {
+  try {
+    const raw = localStorage.getItem(READ_JUANS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return new Set();
+    return new Set(arr.filter(n => typeof n === 'number'));
+  } catch {
+    return new Set();
+  }
+}
+
+function loadScrollMap(): Record<number, number> {
+  try {
+    const raw = localStorage.getItem(SCROLL_BY_JUAN_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch {
+    return {};
+  }
+}
 
 interface RouteState {
   juanNo: number;
@@ -53,6 +81,12 @@ export default function App() {
   const [activeParagraphId, setActiveParagraphId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const readerPaneRef = useRef<HTMLElement | null>(null);
+  const [readJuans, setReadJuans] = useState<Set<number>>(() => loadReadJuans());
+  const scrollMapRef = useRef<Record<number, number>>(loadScrollMap());
+  // Whether the juan currently being loaded should restore its saved scroll
+  // position (true on initial load and after sidebar navigation; false when
+  // jumping to a specific paragraph from a lookup hit).
+  const restoreScrollRef = useRef<boolean>(initialRoute.p === null);
 
   const [lookupQuery, setLookupQuery] = useState<string>(initialRoute.q);
   const [filterByYear, setFilterByYear] = useState<boolean>(true);
@@ -116,7 +150,16 @@ export default function App() {
             if (pane && el) pane.scrollTo({ top: el.offsetTop - 70, behavior: 'auto' });
           });
         } else if (readerPaneRef.current) {
-          readerPaneRef.current.scrollTop = 0;
+          const pane = readerPaneRef.current;
+          const saved = restoreScrollRef.current ? scrollMapRef.current[juanNo] : undefined;
+          restoreScrollRef.current = true;
+          if (saved && saved > 0) {
+            requestAnimationFrame(() => {
+              pane.scrollTop = saved;
+            });
+          } else {
+            pane.scrollTop = 0;
+          }
         }
       })
       .catch(e => setError(String(e)));
@@ -126,11 +169,14 @@ export default function App() {
     localStorage.setItem('zztj.showHu', showHu ? '1' : '0');
   }, [showHu]);
 
-  // Track which paragraph is most prominent in viewport.
+  // Track which paragraph is most prominent in viewport. Also persist scroll
+  // position per juan and mark a juan as "read" once the reader has scrolled
+  // to the bottom area.
   useEffect(() => {
     if (!juan) return;
     const pane = readerPaneRef.current;
     if (!pane) return;
+    let saveTimer: number | null = null;
     const onScroll = () => {
       const paraEls = pane.querySelectorAll<HTMLElement>('[data-pid]');
       const top = pane.scrollTop + 80;
@@ -141,11 +187,37 @@ export default function App() {
         else break;
       }
       setActiveParagraphId(activePid);
+
+      // Persist scroll position (debounced).
+      if (saveTimer !== null) window.clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(() => {
+        scrollMapRef.current[juanNo] = pane.scrollTop;
+        try {
+          localStorage.setItem(SCROLL_BY_JUAN_KEY, JSON.stringify(scrollMapRef.current));
+        } catch { /* quota */ }
+      }, 250);
+
+      // Mark as read once scrolled near the bottom.
+      const maxScroll = pane.scrollHeight - pane.clientHeight;
+      if (maxScroll > 0 && pane.scrollTop / maxScroll >= READ_THRESHOLD) {
+        setReadJuans(prev => {
+          if (prev.has(juanNo)) return prev;
+          const next = new Set(prev);
+          next.add(juanNo);
+          try {
+            localStorage.setItem(READ_JUANS_KEY, JSON.stringify([...next]));
+          } catch { /* quota */ }
+          return next;
+        });
+      }
     };
     onScroll();
     pane.addEventListener('scroll', onScroll, { passive: true });
-    return () => pane.removeEventListener('scroll', onScroll);
-  }, [juan]);
+    return () => {
+      if (saveTimer !== null) window.clearTimeout(saveTimer);
+      pane.removeEventListener('scroll', onScroll);
+    };
+  }, [juan, juanNo]);
 
   // Capture text selection within the reader pane to feed the lookup panel.
   useEffect(() => {
@@ -215,6 +287,7 @@ export default function App() {
       <Sidebar
         manifest={manifest}
         currentJuan={juanNo}
+        readJuans={readJuans}
         onSelect={n => { setHighlightPid(null); setJuanNo(n); }}
       />
       <main className="reader-pane" ref={readerPaneRef as React.RefObject<HTMLElement>}>

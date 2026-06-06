@@ -49,6 +49,16 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 }
 .juan-link:hover { background: #3a2c1f; color: var(--fg-inv); }
 .juan-link.active { background: var(--accent); color: var(--fg-inv); }
+
+/* Juans the reader has finished get a soft 朱砂 (vermillion) gradient
+   bleeding in from the left edge, fading out around the 卷号 gutter. */
+.juan-link.read {
+  background: linear-gradient(to right,
+    color-mix(in srgb, #a55a48 55%, transparent),
+    transparent 40%);
+}
+.juan-link.read.active { background: var(--accent); }
+
 .juan-no {
   flex: 0 0 auto; font-weight: 700; font-size: 1.02em;
   color: #f4d8b8; font-variant-numeric: tabular-nums;
