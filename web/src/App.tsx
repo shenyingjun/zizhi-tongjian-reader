@@ -92,7 +92,7 @@ export default function App() {
   const restoreScrollRef = useRef<boolean>(initialRoute.p === null);
 
   const [lookupQuery, setLookupQuery] = useState<string>(initialRoute.q);
-  const [filterByYear, setFilterByYear] = useState<boolean>(true);
+  const [filterByJuan, setFilterByJuan] = useState<boolean>(true);
   // Paragraph that should be visually highlighted as the lookup target.
   const [highlightPid, setHighlightPid] = useState<number | null>(initialRoute.p);
   // Paragraph to scroll to once the target juan finishes loading.
@@ -339,14 +339,7 @@ export default function App() {
   // Spoiler floor: use the LAST year of the current 卷 so scrolling within
   // a 卷 doesn't constantly re-run the filter. Within-卷 hits are always
   // shown anyway (see searchCorpus currentJuan bypass).
-  const effectiveYear = (() => {
-    if (!juan) return null;
-    let last: number | null = null;
-    for (const y of juan.years) {
-      if (y.ce_year !== null) last = y.ce_year;
-    }
-    return last;
-  })();
+  // (Spoiler filter is now juan-based, so no need to compute a year cutoff.)
 
   return (
     <div className={`layout${showSidebar ? '' : ' sidebar-collapsed'}`}>
@@ -424,20 +417,18 @@ export default function App() {
             <label className="toggle small">
               <input
                 type="checkbox"
-                checked={filterByYear}
-                onChange={e => setFilterByYear(e.target.checked)}
+                checked={filterByJuan}
+                onChange={e => setFilterByJuan(e.target.checked)}
               />
-              <span>仅显示当前年份之前
-                {effectiveYear !== null && (
-                  <span className="muted">（≤ {effectiveYear < 0 ? `前${-effectiveYear}` : effectiveYear}）</span>
-                )}
+              <span>仅显示当前卷之前
+                <span className="muted">（≤ 卷{juanNo}）</span>
               </span>
             </label>
           </div>
           <div className="lookup-body">
             <LookupPanel
               query={lookupQuery}
-              maxYear={filterByYear ? effectiveYear : null}
+              maxJuan={filterByJuan ? juanNo : null}
               currentJuan={juanNo}
               onJump={jumpToHit}
             />

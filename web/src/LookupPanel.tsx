@@ -4,7 +4,7 @@ import { loadLookup, searchCorpus } from './corpus';
 
 interface Props {
   query: string;
-  maxYear: number | null;
+  maxJuan: number | null;
   currentJuan: number;
   onJump: (juanNo: number, paragraphId: number) => void;
 }
@@ -40,7 +40,7 @@ function groupHits(hits: LookupHit[]): JuanGroup[] {
   return Array.from(byJuan.values());
 }
 
-export default function LookupPanel({ query, maxYear, currentJuan, onJump }: Props) {
+export default function LookupPanel({ query, maxJuan, currentJuan, onJump }: Props) {
   const [hits, setHits] = useState<LookupHit[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,8 +62,8 @@ export default function LookupPanel({ query, maxYear, currentJuan, onJump }: Pro
     loadLookup()
       .then(corpus => {
         if (cancelled) return;
-        const filtered = searchCorpus(query, corpus, { maxYear, limit: 500, currentJuan });
-        const all = maxYear === null ? filtered : searchCorpus(query, corpus, { limit: 5000 });
+        const filtered = searchCorpus(query, corpus, { maxJuan, limit: 500 });
+        const all = maxJuan === null ? filtered : searchCorpus(query, corpus, { limit: 5000 });
         setHits(filtered);
         setFutureCount(all.length - filtered.length);
       })
@@ -73,7 +73,7 @@ export default function LookupPanel({ query, maxYear, currentJuan, onJump }: Pro
     // hits intentionally omitted from deps: it's only read to decide whether
     // to show the loading skeleton on first fetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, maxYear, currentJuan]);
+  }, [query, maxJuan, currentJuan]);
 
   if (!query) {
     return (

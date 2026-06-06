@@ -104,22 +104,15 @@ const SNIPPET_PAD = 30;
 export function searchCorpus(
   query: string,
   corpus: LookupEntry[],
-  opts: { maxYear?: number | null; limit?: number; currentJuan?: number | null } = {},
+  opts: { maxJuan?: number | null; limit?: number } = {},
 ): LookupHit[] {
   const q = query.trim();
   if (!q) return [];
-  const { maxYear = null, limit = 200, currentJuan = null } = opts;
+  const { maxJuan = null, limit = 200 } = opts;
   const hits: LookupHit[] = [];
   for (const entry of corpus) {
-    // Always include hits in the 卷 the user is currently reading -- they
-    // can already see those paragraphs, so the spoiler filter shouldn't
-    // hide them.
-    if (
-      maxYear !== null
-      && entry.y !== null
-      && entry.y > maxYear
-      && entry.j !== currentJuan
-    ) continue;
+    // Spoiler filter: hide hits from 卷 the user hasn't reached yet.
+    if (maxJuan !== null && entry.j > maxJuan) continue;
     let from = 0;
     while (true) {
       const idx = entry.t.indexOf(q, from);
