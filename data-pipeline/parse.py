@@ -56,6 +56,16 @@ def _clean_text(s: str) -> str:
     return re.sub(r"\s+", "", s)
 
 
+# Any CJK Unified Ideograph in the BMP or common extensions; used to drop
+# Wikisource template residue (e.g. the "Publicdomain...false" license boilerplate)
+# that leaks in as a pure-ASCII paragraph.
+_CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+
+
+def _has_cjk(s: str) -> bool:
+    return bool(_CJK_RE.search(s))
+
+
 def _node_text_without_notes(node: Tag) -> str:
     """Concatenate text of a paragraph excluding 胡注 <small> nodes."""
     parts: list[str] = []
@@ -174,6 +184,11 @@ def parse_juan(html_path: Path, entry: dict) -> dict:
             continue
         main = _node_text_without_notes(el)
         if not main:
+            continue
+        # Drop Wikisource license template residue ("PublicdomainPublicdomainfalsefalse"
+        # and similar). Tongjian body text is entirely CJK + punctuation, so any
+        # paragraph with no CJK chars is by definition not body content.
+        if not _has_cjk(main):
             continue
         notes = _extract_notes(el)
         paragraphs.append({
