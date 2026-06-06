@@ -198,18 +198,17 @@ export default function App() {
   );
   if (!manifest) return <div className="loading">载入目录中……</div>;
 
-  // The active year is what gates the person history (no spoilers).
-  const activeYear = (() => {
-    if (!juan || activeParagraphId === null) return null;
+  // Spoiler floor: use the LAST year of the current 卷 so scrolling within
+  // a 卷 doesn't constantly re-run the filter. Within-卷 hits are always
+  // shown anyway (see searchCorpus currentJuan bypass).
+  const effectiveYear = (() => {
+    if (!juan) return null;
     let last: number | null = null;
     for (const y of juan.years) {
-      if (y.paragraph_id <= activeParagraphId && y.ce_year !== null) last = y.ce_year;
+      if (y.ce_year !== null) last = y.ce_year;
     }
     return last;
   })();
-
-  // If no active year yet (haven't scrolled), use the 卷's start year as a sensible floor.
-  const effectiveYear = activeYear ?? juan?.years.find(y => y.ce_year !== null)?.ce_year ?? null;
 
   return (
     <div className="layout">
