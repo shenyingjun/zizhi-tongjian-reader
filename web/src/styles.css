@@ -43,37 +43,30 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .juan-list { padding-left: 0.6rem; padding-bottom: 0.3rem; }
 .juan-link {
   width: 100%; text-align: left; background: none; border: 0; color: #d6c9a8;
-  padding: 0.3rem 0.4rem; cursor: pointer; font: inherit;
-  display: flex; flex-direction: column; gap: 0.1rem; border-radius: 3px;
+  padding: 0.4rem 0.5rem; cursor: pointer; font: inherit;
+  display: flex; flex-direction: row; align-items: center; gap: 0.6rem;
+  border-radius: 3px;
 }
 .juan-link:hover { background: #3a2c1f; color: var(--fg-inv); }
 .juan-link.active { background: var(--accent); color: var(--fg-inv); }
-.juan-line {
-  display: flex; gap: 0.5rem; align-items: baseline;
-  min-width: 0;
-}
 .juan-no {
-  color: #b8a888; font-variant-numeric: tabular-nums;
-  flex: 0 0 auto; white-space: nowrap; font-weight: 600;
+  flex: 0 0 auto; font-weight: 700; font-size: 1.02em;
+  color: #f4d8b8; font-variant-numeric: tabular-nums;
+  width: 3.4em; letter-spacing: 0.02em; white-space: nowrap;
 }
-.juan-link.active .juan-no { color: var(--fg-inv); }
-.juan-years {
-  font-size: 0.88em; color: #b8a888;
-  font-variant-numeric: tabular-nums;
-  flex: 1 1 auto; min-width: 0; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis;
+.juan-link.active .juan-no { color: #fff; }
+.juan-body {
+  display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; gap: 0.05rem;
 }
 .juan-emperors {
-  font-size: 0.85em; color: #c0b08a;
-  flex: 1 1 auto; min-width: 0;
-  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-size: 0.92em; color: #e0d0a8;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.juan-span {
+.juan-years {
   font-size: 0.78em; color: #8a7a64;
-  flex: 0 0 auto; white-space: nowrap;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .juan-link.active .juan-emperors,
-.juan-link.active .juan-span,
 .juan-link.active .juan-years { color: #f4d8b8; }
 
 .reader-pane { overflow-y: auto; background: var(--bg); }
