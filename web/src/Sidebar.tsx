@@ -77,13 +77,13 @@ export default function Sidebar({ manifest, currentJuan, onSelect }: Props) {
                           onClick={() => onSelect(j.juan_no)}
                           title={j.title}
                         >
-                          <span className="juan-no">卷{String(j.juan_no).padStart(3, '0')}</span>
-                          <span className="juan-meta">
-                            <span className="juan-line juan-years">{years}</span>
-                            <span className="juan-line juan-line-bot">
-                              <span className="juan-emperors">{emperors}</span>
-                              {span && <span className="juan-span">{span}</span>}
-                            </span>
+                          <span className="juan-line juan-line-top">
+                            <span className="juan-no">卷{String(j.juan_no).padStart(3, '0')}</span>
+                            <span className="juan-years">{years}</span>
+                          </span>
+                          <span className="juan-line juan-line-bot">
+                            <span className="juan-emperors">{emperors}</span>
+                            {span && <span className="juan-span">{span}</span>}
                           </span>
                         </button>
                       </li>

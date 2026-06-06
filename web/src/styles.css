@@ -43,38 +43,34 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .juan-list { padding-left: 0.6rem; padding-bottom: 0.3rem; }
 .juan-link {
   width: 100%; text-align: left; background: none; border: 0; color: #d6c9a8;
-  padding: 0.25rem 0.4rem; cursor: pointer; font: inherit;
-  display: flex; gap: 0.5rem; border-radius: 3px;
-  align-items: center;
+  padding: 0.3rem 0.4rem; cursor: pointer; font: inherit;
+  display: flex; flex-direction: column; gap: 0.1rem; border-radius: 3px;
 }
 .juan-link:hover { background: #3a2c1f; color: var(--fg-inv); }
 .juan-link.active { background: var(--accent); color: var(--fg-inv); }
-.juan-no {
-  color: #b8a888; font-variant-numeric: tabular-nums;
-  flex: 0 0 auto; white-space: nowrap;
-}
-.juan-link.active .juan-no { color: var(--fg-inv); }
-.juan-meta {
-  display: flex; flex-direction: column; gap: 0.05rem;
-  flex: 1 1 auto; min-width: 0;
-}
 .juan-line {
-  display: flex; gap: 0.4rem; align-items: baseline;
+  display: flex; gap: 0.5rem; align-items: baseline;
   min-width: 0;
 }
+.juan-no {
+  color: #b8a888; font-variant-numeric: tabular-nums;
+  flex: 0 0 auto; white-space: nowrap; font-weight: 600;
+}
+.juan-link.active .juan-no { color: var(--fg-inv); }
+.juan-years {
+  font-size: 0.88em; color: #b8a888;
+  font-variant-numeric: tabular-nums;
+  flex: 1 1 auto; min-width: 0; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
 .juan-emperors {
-  font-size: 0.82em; color: #c0b08a;
+  font-size: 0.85em; color: #c0b08a;
   flex: 1 1 auto; min-width: 0;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
 .juan-span {
-  font-size: 0.74em; color: #8a7a64;
+  font-size: 0.78em; color: #8a7a64;
   flex: 0 0 auto; white-space: nowrap;
-}
-.juan-years {
-  font-size: 0.85em; color: #b8a888;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 .juan-link.active .juan-emperors,
 .juan-link.active .juan-span,
