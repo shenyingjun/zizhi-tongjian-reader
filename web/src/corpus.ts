@@ -136,9 +136,11 @@ export function searchCorpus(
         matchLen: q.length,
         inHu: entry.m !== undefined && idx >= entry.m,
       });
-      if (hits.length >= limit) return hits;
       from = idx + q.length;
     }
   }
-  return hits;
+  // Sort by 卷 descending (latest first), but keep paragraphs within a
+  // 卷 in their natural reading order.
+  hits.sort((a, b) => (b.j - a.j) || (a.p - b.p));
+  return hits.length > limit ? hits.slice(0, limit) : hits;
 }
