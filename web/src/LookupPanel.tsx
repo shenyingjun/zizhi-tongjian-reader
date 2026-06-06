@@ -132,19 +132,33 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
                 <span className="hit-nav" role="group" aria-label="本卷检索结果导航">
                   <button
                     type="button"
+                    className="hit-nav-btn"
                     onClick={() => navJump(-1)}
                     title="上一处（本卷）"
                     aria-label="上一处"
-                  >↑</button>
+                  >
+                    <svg viewBox="0 0 12 12" aria-hidden="true">
+                      <path d="M3 7.5 L6 4.5 L9 7.5" fill="none"
+                        stroke="currentColor" strokeWidth="1.6"
+                        strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
                   <span className="hit-nav-count">
-                    {navIndex < 0 ? '–' : navIndex + 1}/{navPids.length}
+                    {navIndex < 0 ? '–' : navIndex + 1}<span className="hit-nav-sep">/</span>{navPids.length}
                   </span>
                   <button
                     type="button"
+                    className="hit-nav-btn"
                     onClick={() => navJump(1)}
                     title="下一处（本卷）"
                     aria-label="下一处"
-                  >↓</button>
+                  >
+                    <svg viewBox="0 0 12 12" aria-hidden="true">
+                      <path d="M3 4.5 L6 7.5 L9 4.5" fill="none"
+                        stroke="currentColor" strokeWidth="1.6"
+                        strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
                 </span>
               )}
               <span

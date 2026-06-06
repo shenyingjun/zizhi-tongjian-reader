@@ -274,23 +274,37 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .lookup-juan-count { color: var(--muted); font-size: 0.78rem; margin-left: auto; font-variant-numeric: tabular-nums; }
 
 /* Inline prev/next nav inside the current 卷's group header. Lives between
-   the 卷 label and the right-aligned 处 count. */
+   the 卷 label and the right-aligned 段 count. */
 .hit-nav {
-  display: inline-flex; align-items: center; gap: 0.1rem;
+  display: inline-flex; align-items: center; gap: 0.05rem;
   margin-left: 0.5rem;
-  border: 1px solid var(--border); border-radius: 4px;
-  background: rgba(255, 255, 255, 0.4);
+  padding: 1px;
+  border: 1px solid rgba(122, 59, 46, 0.25);
+  border-radius: 999px;
+  background: rgba(253, 246, 227, 0.7);
 }
-.hit-nav button {
-  background: none; border: 0; padding: 0 0.3rem;
-  cursor: pointer; color: var(--accent); font: inherit; line-height: 1.4;
-  font-size: 0.78rem; border-radius: 3px;
+.hit-nav-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px;
+  background: transparent; border: 0; padding: 0; cursor: pointer;
+  color: var(--accent); border-radius: 999px;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
 }
-.hit-nav button:hover { background: #ead7a8; }
+.hit-nav-btn svg { width: 12px; height: 12px; display: block; }
+.hit-nav-btn:hover {
+  background: var(--accent); color: var(--fg-inv);
+}
+.hit-nav-btn:active { transform: scale(0.92); }
+.hit-nav-btn:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
 .hit-nav-count {
-  font-variant-numeric: tabular-nums; padding: 0 0.15rem;
-  font-size: 0.72rem; color: var(--muted); min-width: 2.4em; text-align: center;
+  font-variant-numeric: tabular-nums; padding: 0 0.35rem;
+  font-size: 0.75rem; color: var(--accent); font-weight: 600;
+  min-width: 2.6em; text-align: center; line-height: 1;
+  letter-spacing: 0.02em;
 }
+.hit-nav-sep { color: var(--muted); margin: 0 0.05em; font-weight: 400; }
 .lookup-year-group { margin-top: 0.2rem; }
 .lookup-year-header {
   font-size: 0.78rem; color: var(--muted); padding: 0.1rem 0.3rem;
