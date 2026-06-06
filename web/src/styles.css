@@ -45,12 +45,20 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   width: 100%; text-align: left; background: none; border: 0; color: #d6c9a8;
   padding: 0.2rem 0.4rem; cursor: pointer; font: inherit;
   display: flex; gap: 0.5rem; border-radius: 3px;
+  align-items: baseline;
 }
 .juan-link:hover { background: #3a2c1f; color: var(--fg-inv); }
 .juan-link.active { background: var(--accent); color: var(--fg-inv); }
-.juan-no { color: #b8a888; font-variant-numeric: tabular-nums; }
+.juan-no {
+  color: #b8a888; font-variant-numeric: tabular-nums;
+  flex: 0 0 auto; white-space: nowrap;
+}
 .juan-link.active .juan-no { color: var(--fg-inv); }
-.juan-range { font-size: 0.78em; color: #8a7a64; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.juan-range {
+  font-size: 0.78em; color: #8a7a64;
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
 
 .reader-pane { overflow-y: auto; background: var(--bg); }
 .reader-header {
