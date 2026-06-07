@@ -15,6 +15,7 @@
 html, body, #root { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 
+.layout > * { min-width: 0; }
 .layout {
   display: grid;
   grid-template-columns: 240px 1fr 320px;
@@ -168,12 +169,15 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   background: var(--bg);
 }
 .reader-scroller {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 .reader-header {
   flex: 0 0 auto;
@@ -555,19 +559,25 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
     padding: 0.55rem 0.7rem;
     gap: 0.5rem;
     flex-wrap: nowrap;
+    overflow: hidden;
   }
   .reader-title {
     font-size: 0.95rem;
+    min-width: 0;
+    flex: 1 1 auto;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .reader-header .toggle { flex: 0 0 auto; }
+  .reader-header .sidebar-toggle,
+  .reader-header .lookup-toggle { flex: 0 0 auto; }
   .toggle { font-size: 0.78rem; gap: 0.3rem; }
-  .reader-body { padding: 1rem 0.9rem 3.5rem; }
+  .reader-body { padding: 1rem 0.9rem 3.5rem; max-width: 100%; }
   .paragraph { scroll-margin-top: 60px; }
 }
 
-@media (max-width: 480px) {
-  /* On very small screens, hide the long checkbox label — keep only the box. */
+@media (max-width: 700px) {
+  /* Hide the long checkbox label to make room for the search button. */
   .reader-header .toggle span { display: none; }
 }
