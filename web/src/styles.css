@@ -30,30 +30,34 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 }
 
 /* Subtle scrollbars — visible enough to use, but not visually dominant.
-   Becomes a bit more prominent on hover. */
-.sidebar, .reader-pane, .person-pane, .year-toc ul, .lookup-body {
+   The reader scroller is always visible (continuous long-form reading);
+   side panels stay hidden and fade in on hover. */
+.sidebar, .person-pane, .year-toc ul, .lookup-body {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
-.sidebar:hover, .reader-pane:hover, .person-pane:hover, .year-toc ul:hover, .lookup-body:hover {
+.sidebar:hover, .person-pane:hover, .year-toc ul:hover, .lookup-body:hover {
   scrollbar-color: rgba(139, 122, 100, 0.35) transparent;
 }
+.reader-scroller {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 122, 100, 0.45) transparent;
+}
 .sidebar::-webkit-scrollbar,
-.reader-pane::-webkit-scrollbar,
+.reader-scroller::-webkit-scrollbar,
 .person-pane::-webkit-scrollbar,
 .year-toc ul::-webkit-scrollbar,
 .lookup-body::-webkit-scrollbar {
-  width: 6px; height: 6px;
+  width: 8px; height: 8px;
 }
 .sidebar::-webkit-scrollbar-track,
-.reader-pane::-webkit-scrollbar-track,
+.reader-scroller::-webkit-scrollbar-track,
 .person-pane::-webkit-scrollbar-track,
 .year-toc ul::-webkit-scrollbar-track,
 .lookup-body::-webkit-scrollbar-track {
   background: transparent;
 }
 .sidebar::-webkit-scrollbar-thumb,
-.reader-pane::-webkit-scrollbar-thumb,
 .person-pane::-webkit-scrollbar-thumb,
 .year-toc ul::-webkit-scrollbar-thumb,
 .lookup-body::-webkit-scrollbar-thumb {
@@ -61,18 +65,20 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   transition: background 0.2s ease;
 }
 .sidebar:hover::-webkit-scrollbar-thumb,
-.reader-pane:hover::-webkit-scrollbar-thumb,
 .person-pane:hover::-webkit-scrollbar-thumb,
 .year-toc ul:hover::-webkit-scrollbar-thumb,
 .lookup-body:hover::-webkit-scrollbar-thumb {
   background: rgba(139, 122, 100, 0.35);
 }
+.reader-scroller::-webkit-scrollbar-thumb {
+  background: rgba(139, 122, 100, 0.45); border-radius: 3px;
+}
 .sidebar::-webkit-scrollbar-thumb:hover,
-.reader-pane::-webkit-scrollbar-thumb:hover,
+.reader-scroller::-webkit-scrollbar-thumb:hover,
 .person-pane::-webkit-scrollbar-thumb:hover,
 .year-toc ul::-webkit-scrollbar-thumb:hover,
 .lookup-body::-webkit-scrollbar-thumb:hover {
-  background: rgba(139, 122, 100, 0.6);
+  background: rgba(139, 122, 100, 0.7);
 }
 /* Sidebar lives on a dark bg, so use a light translucent thumb. */
 .sidebar:hover { scrollbar-color: rgba(244, 236, 216, 0.25) transparent; }
@@ -146,9 +152,20 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .juan-link.active .juan-emperors,
 .juan-link.active .juan-years { color: #f4d8b8; }
 
-.reader-pane { overflow-y: auto; background: var(--bg); }
+.reader-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+}
+.reader-scroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
 .reader-header {
-  position: sticky; top: 0; background: var(--bg);
+  flex: 0 0 auto;
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
   padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 1rem;
   z-index: 5;
@@ -167,6 +184,20 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
      scrollTop restoration stay roughly correct. */
   content-visibility: auto;
   contain-intrinsic-size: auto 120px;
+}
+/* The Wikisource public-domain disclaimer is appended as the last paragraph
+   of every juan. De-emphasize it (smaller, muted, italic, set off by a rule)
+   so it doesn't read like part of the main text. */
+.paragraph-disclaimer {
+  margin-top: 2.5em;
+  padding-top: 0.8em;
+  border-top: 1px dashed var(--border);
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+  text-indent: 0;
+  text-align: center;
+  opacity: 0.7;
 }
 .paragraph-emperor {
   text-indent: 0;

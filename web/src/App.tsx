@@ -83,7 +83,7 @@ export default function App() {
   });
   const [activeParagraphId, setActiveParagraphId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const readerPaneRef = useRef<HTMLElement | null>(null);
+  const readerPaneRef = useRef<HTMLDivElement | null>(null);
   const [readJuans, setReadJuans] = useState<Set<number>>(() => loadReadJuans());
   const scrollMapRef = useRef<Record<number, number>>(loadScrollMap());
   // Whether the juan currently being loaded should restore its saved scroll
@@ -269,7 +269,7 @@ export default function App() {
   const scrollParagraphIntoView = (pid: number) => {
     const pane = readerPaneRef.current;
     if (!pane) return;
-    const HEADER_OFFSET = 70;
+    const HEADER_OFFSET = 12;
     const DURATION = 350;
 
     // Re-measure the target's desired scrollTop based on current layout.
@@ -349,7 +349,7 @@ export default function App() {
         readJuans={readJuans}
         onSelect={n => { setHighlightPid(null); setJuanNo(n); }}
       />
-      <main className="reader-pane" ref={readerPaneRef as React.RefObject<HTMLElement>}>
+      <main className="reader-pane">
         <header className="reader-header">
           <button
             type="button"
@@ -377,14 +377,16 @@ export default function App() {
             <span>显示胡三省音注</span>
           </label>
         </header>
-        {juan
-          ? <Reader
-              juan={juan}
-              showHu={showHu}
-              highlightQuery={lookupQuery}
-              highlightPid={highlightPid}
-            />
-          : <div className="loading">载入卷 {juanNo} 中……</div>}
+        <div className="reader-scroller" ref={readerPaneRef}>
+          {juan
+            ? <Reader
+                juan={juan}
+                showHu={showHu}
+                highlightQuery={lookupQuery}
+                highlightPid={highlightPid}
+              />
+            : <div className="loading">载入卷 {juanNo} 中……</div>}
+        </div>
       </main>
       <aside className="person-pane">
         {juan && (

@@ -99,8 +99,8 @@ function highlight(text: string, q: string): React.ReactNode {
 }
 
 function ParagraphView({
-  p, showHu, highlightQuery, isTarget,
-}: { p: Paragraph; showHu: boolean; highlightQuery: string; isTarget: boolean }) {
+  p, showHu, highlightQuery, isTarget, isDisclaimer,
+}: { p: Paragraph; showHu: boolean; highlightQuery: string; isTarget: boolean; isDisclaimer: boolean }) {
   const segments = useMemo(() => splitParagraph(p), [p]);
   const mainMatches = useMemo(() => findMatches(p.main, highlightQuery), [p.main, highlightQuery]);
   const [overridden, setOverridden] = useState<Set<number>>(new Set());
@@ -114,7 +114,9 @@ function ParagraphView({
     });
 
   const cls =
-    'paragraph paragraph-' + (p.type || 'event') + (isTarget ? ' is-target' : '');
+    'paragraph paragraph-' + (p.type || 'event') +
+    (isTarget ? ' is-target' : '') +
+    (isDisclaimer ? ' paragraph-disclaimer' : '');
 
   return (
     <p className={cls} data-pid={p.id} data-type={p.type}>
@@ -148,13 +150,14 @@ function ParagraphView({
 export default function Reader({ juan, showHu, highlightQuery, highlightPid }: Props) {
   return (
     <article className="reader-body">
-      {juan.paragraphs.map(p => (
+      {juan.paragraphs.map((p, i) => (
         <ParagraphView
           key={p.id}
           p={p}
           showHu={showHu}
           highlightQuery={highlightQuery}
           isTarget={highlightPid === p.id}
+          isDisclaimer={i === juan.paragraphs.length - 1}
         />
       ))}
     </article>
