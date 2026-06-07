@@ -79,8 +79,16 @@ export default function App() {
     return localStorage.getItem('zztj.showHu') !== '0';
   });
   const [showSidebar, setShowSidebar] = useState<boolean>(() => {
-    return localStorage.getItem('zztj.showSidebar') !== '0';
+    const saved = localStorage.getItem('zztj.showSidebar');
+    if (saved !== null) return saved !== '0';
+    // First visit: collapsed on mobile by default, open on desktop.
+    if (typeof window !== 'undefined'
+        && window.matchMedia('(max-width: 900px)').matches) {
+      return false;
+    }
+    return true;
   });
+  const [showLookup, setShowLookup] = useState<boolean>(false);
   const [activeParagraphId, setActiveParagraphId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const readerPaneRef = useRef<HTMLDivElement | null>(null);
@@ -317,6 +325,9 @@ export default function App() {
 
   const jumpToParagraph = (pid: number) => scrollParagraphIntoView(pid);
 
+  const isMobileWidth = () =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches;
+
   // Jump from a lookup hit: may be same juan or another juan.
   const jumpToHit = (targetJuan: number, paragraphId: number) => {
     setHighlightPid(paragraphId);
@@ -326,6 +337,7 @@ export default function App() {
       pendingScrollRef.current = paragraphId;
       setJuanNo(targetJuan);
     }
+    if (isMobileWidth()) setShowLookup(false);
   };
 
   if (error) return (
@@ -342,12 +354,16 @@ export default function App() {
   // (Spoiler filter is now juan-based, so no need to compute a year cutoff.)
 
   return (
-    <div className={`layout${showSidebar ? '' : ' sidebar-collapsed'}`}>
+    <div className={`layout${showSidebar ? '' : ' sidebar-collapsed'}${showLookup ? ' lookup-open' : ''}`}>
       <Sidebar
         manifest={manifest}
         currentJuan={juanNo}
         readJuans={readJuans}
-        onSelect={n => { setHighlightPid(null); setJuanNo(n); }}
+        onSelect={n => {
+          setHighlightPid(null);
+          setJuanNo(n);
+          if (isMobileWidth()) setShowSidebar(false);
+        }}
       />
       <main className="reader-pane">
         <header className="reader-header">
@@ -376,6 +392,20 @@ export default function App() {
             />
             <span>显示胡三省音注</span>
           </label>
+          <button
+            type="button"
+            className="lookup-toggle"
+            onClick={() => setShowLookup(s => !s)}
+            title={showLookup ? '隐藏检索' : '出处检索'}
+            aria-label={showLookup ? '隐藏检索' : '出处检索'}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+                 aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.5" y2="16.5" />
+            </svg>
+          </button>
         </header>
         <div className="reader-scroller" ref={readerPaneRef}>
           {juan
@@ -436,6 +466,11 @@ export default function App() {
           </div>
         </div>
       </aside>
+      <div
+        className="drawer-backdrop"
+        onClick={() => { setShowSidebar(false); setShowLookup(false); }}
+        aria-hidden="true"
+      />
     </div>
   );
 }
