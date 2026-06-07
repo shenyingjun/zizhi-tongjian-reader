@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { LookupHit, Paragraph } from './corpus';
 import { loadJuan, loadLookup, searchCorpus } from './corpus';
@@ -15,6 +15,28 @@ interface Props {
 function formatCE(y: number | null): string {
   if (y === null) return '?';
   return y < 0 ? `前${-y}年` : `${y}年`;
+}
+
+// Each LookupHit may bundle multiple nearby matches into one snippet,
+// so "处" (occurrences) is the sum of match ranges, not hits.length.
+function countMatches(hits: LookupHit[]): number {
+  let n = 0;
+  for (const h of hits) n += h.matches.length;
+  return n;
+}
+
+// Render a snippet that may contain multiple highlight ranges. The ranges
+// are sorted and non-overlapping by construction in searchCorpus.
+function renderSnippet(h: LookupHit): ReactNode[] {
+  const out: ReactNode[] = [];
+  let cur = 0;
+  h.matches.forEach((m, i) => {
+    if (m.start > cur) out.push(h.snippet.slice(cur, m.start));
+    out.push(<mark key={i}>{h.snippet.slice(m.start, m.start + m.len)}</mark>);
+    cur = m.start + m.len;
+  });
+  if (cur < h.snippet.length) out.push(h.snippet.slice(cur));
+  return out;
 }
 
 interface YearGroup {
@@ -315,11 +337,12 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
   }
   const groups = groupHits(hits);
   const paraCount = groups.reduce((s, g) => s + g.pids.length, 0);
+  const matchCount = countMatches(hits);
   return (
     <div className="lookup-results">
       <p className="lookup-summary small muted">
         “<b>{query}</b>” 共<b>{paraCount}</b>段
-        {paraCount !== hits.length && <>（{hits.length}处匹配）</>}
+        {paraCount !== matchCount && <>（{matchCount}处匹配）</>}
         {futureCount > 0 && <>（此后另有<b>{futureCount}</b>处已隐藏）</>}
       </p>
       <div className="lookup-groups">
@@ -378,9 +401,9 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
               )}
               <span
                 className="lookup-juan-count"
-                title={jg.hits.length === jg.pids.length
+                title={countMatches(jg.hits) === jg.pids.length
                   ? undefined
-                  : `共 ${jg.hits.length} 处匹配，分布在 ${jg.pids.length} 段`}
+                  : `共 ${countMatches(jg.hits)} 处匹配，分布在 ${jg.pids.length} 段`}
               >{jg.pids.length}段</span>
             </header>
             {jg.years.map((yg, yi) => (
@@ -398,7 +421,8 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
                     }
                     return paras.map((para, i) => {
                       const first = para.hits[0];
-                      const multi = para.hits.length > 1;
+                      const matchCountPara = countMatches(para.hits);
+                      const multi = matchCountPara > 1;
                       const isActive = isCurrent && highlightPid === para.pid;
                       const key = `${jg.j}:${para.pid}`;
                       const handleEnter = (e: React.MouseEvent<HTMLLIElement> | React.FocusEvent<HTMLLIElement>) => {
@@ -409,6 +433,11 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
                         if (!hoverCapable) return;
                         schedulePeekClose();
                       };
+                      // One <li> per paragraph. Each LookupHit inside may
+                      // already bundle several nearby matches sharing one
+                      // snippet (collapsed in searchCorpus to avoid showing
+                      // overlapping context twice); render each as its own
+                      // line and mark every match range inside it.
                       return (
                         <li
                           key={i}
@@ -431,28 +460,24 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
                               else openSheet(key, first);
                             }}
                             title={multi
-                              ? `跳转：卷${jg.j} 段${para.pid}（${para.hits.length} 处匹配）`
+                              ? `跳转：卷${jg.j} 段${para.pid}（${matchCountPara} 处匹配）`
                               : `跳转：卷${jg.j} 段${para.pid}`}
                           >
-                            {multi ? (
+                            {para.hits.length > 1 ? (
                               <div className="lookup-snippets-multi">
                                 {para.hits.map((h, k) => (
                                   <span key={k} className={`lookup-snippet${h.inHu ? ' in-hu' : ''}`}>
-                                    …{h.snippet.slice(0, h.matchStart)}
-                                    <mark>{h.snippet.slice(h.matchStart, h.matchStart + h.matchLen)}</mark>
-                                    {h.snippet.slice(h.matchStart + h.matchLen)}…
+                                    {h.atStart ? '' : '…'}{renderSnippet(h)}{h.atEnd ? '' : '…'}
                                   </span>
                                 ))}
                               </div>
                             ) : (
                               <span className={`lookup-snippet${first.inHu ? ' in-hu' : ''}`}>
-                                …{first.snippet.slice(0, first.matchStart)}
-                                <mark>{first.snippet.slice(first.matchStart, first.matchStart + first.matchLen)}</mark>
-                                {first.snippet.slice(first.matchStart + first.matchLen)}…
+                                {first.atStart ? '' : '…'}{renderSnippet(first)}{first.atEnd ? '' : '…'}
                               </span>
                             )}
                             {multi && (
-                              <span className="lookup-multi-badge">{para.hits.length}处</span>
+                              <span className="lookup-multi-badge">{matchCountPara}处</span>
                             )}
                           </button>
                         </li>

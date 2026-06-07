@@ -90,6 +90,23 @@ export default function App() {
     return true;
   });
   const [showLookup, setShowLookup] = useState<boolean>(false);
+  // Font size scale for the reader body — persisted so iOS / mobile users
+  // who can't comfortably pinch-zoom (and would lose layout if they did)
+  // have a stable way to bump up text size. Desktop benefits too.
+  const [fontScale, setFontScale] = useState<number>(() => {
+    const raw = localStorage.getItem('zztj.fontScale');
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n >= 0.8 && n <= 1.8 ? n : 1;
+  });
+  useEffect(() => {
+    localStorage.setItem('zztj.fontScale', String(fontScale));
+  }, [fontScale]);
+  const bumpFont = (delta: number) => {
+    setFontScale(s => {
+      const next = Math.round((s + delta) * 20) / 20; // 0.05 step
+      return Math.min(1.8, Math.max(0.8, next));
+    });
+  };
   const [activeParagraphId, setActiveParagraphId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const readerPaneRef = useRef<HTMLDivElement | null>(null);
@@ -402,7 +419,7 @@ export default function App() {
           if (isMobileWidth()) setShowSidebar(false);
         }}
       />
-      <main className="reader-pane">
+      <main className="reader-pane" style={{ ['--reader-font-scale' as any]: fontScale }}>
         <header className="reader-header">
           <button
             type="button"
@@ -419,7 +436,18 @@ export default function App() {
             </svg>
           </button>
           <div className="reader-title">
-            {juan?.title || `卷${String(juanNo).padStart(3, '0')}`}
+            {(() => {
+              if (!juan) return `卷${String(juanNo).padStart(3, '0')}`;
+              // Glue the 卷号 + 纪名 prefix together with a non-breaking
+              // space so it never wraps mid-unit, while leaving normal
+              // spaces and 　 (U+3000) between later sections as natural
+              // wrap points. This keeps the long title from breaking at
+              // arbitrary spots without forcing a rigid multi-line layout
+              // (which would overlap the header controls at narrow widths).
+              const m = /^(\S+)\s+(\S+)(\s[\s\S]*)?$/.exec(juan.title);
+              if (!m) return juan.title;
+              return `${m[1]}\u00A0${m[2]}${m[3] ?? ''}`;
+            })()}
           </div>
           <label className="toggle">
             <input
@@ -427,8 +455,34 @@ export default function App() {
               checked={showHu}
               onChange={e => setShowHu(e.target.checked)}
             />
-            <span>显示胡三省音注</span>
+            <span>胡三省音注</span>
           </label>
+          <span className="font-size-controls" role="group" aria-label="正文字号">
+            <button
+              type="button"
+              className="font-size-btn"
+              onClick={() => bumpFont(-0.1)}
+              disabled={fontScale <= 0.8 + 1e-6}
+              title="缩小字号"
+              aria-label="缩小字号"
+            >A−</button>
+            <button
+              type="button"
+              className="font-size-btn font-size-reset"
+              onClick={() => setFontScale(1)}
+              disabled={Math.abs(fontScale - 1) < 1e-6}
+              title={`重置字号（当前 ${Math.round(fontScale * 100)}%）`}
+              aria-label="重置字号"
+            >{Math.round(fontScale * 100)}%</button>
+            <button
+              type="button"
+              className="font-size-btn"
+              onClick={() => bumpFont(0.1)}
+              disabled={fontScale >= 1.8 - 1e-6}
+              title="放大字号"
+              aria-label="放大字号"
+            >A+</button>
+          </span>
           <button
             type="button"
             className="lookup-toggle"

@@ -82,8 +82,8 @@ export interface LookupEntry {
   p: number;       // paragraph id within juan
   y: number | null; // CE year (negative for BCE)
   k: string;       // kind/type (event, commentary, year, emperor, ...)
-  t: string;       // searchable text (main + " " + 胡三省音注 if present)
-  m?: number;      // index within `t` where 胡三省音注 begins (omitted if no notes)
+  t: string;       // searchable text (main + " " + each 胡注 joined by spaces)
+  m?: number[];    // start index of each 胡注 within `t`; omitted if none
 }
 
 let _lookupCache: Promise<LookupEntry[]> | null = null;
@@ -101,13 +101,31 @@ export interface LookupHit {
   p: number;
   y: number | null;
   k: string;
-  snippet: string;   // text with the matched query in context
-  matchStart: number; // index of match within snippet
-  matchLen: number;
+  snippet: string;   // text with one or more matches in shared context
+  // Match positions within `snippet`, sorted by start. Multiple entries
+  // mean nearby occurrences were merged into a single combined snippet to
+  // avoid showing the same context twice.
+  matches: { start: number; len: number }[];
   inHu: boolean;     // true when the match falls inside 胡三省音注
+  atStart: boolean;  // snippet begins at the region start (omit leading …)
+  atEnd: boolean;    // snippet ends at the region end (omit trailing …)
 }
 
 const SNIPPET_PAD = 30;
+// When a punctuation mark sits a bit past SNIPPET_PAD, extend the snippet
+// out to it (up to SNIPPET_MAX) instead of cutting mid-phrase. Snapping
+// only ever grows the excerpt — it never trims context below SNIPPET_PAD.
+const SNIPPET_MAX = 60;
+// Chinese punctuation we'll prefer as snippet cut points so excerpts start
+// and end on natural clause boundaries instead of mid-phrase.
+const PUNCT = '，。！？；：、「」『』“”‘’（）《》〈〉…—,.!?;:';
+// Sentence-ending punctuation — when the snippet boundary lands on one of
+// these, the cut already reads like a complete clause so we suppress the
+// trailing "…" ellipsis.
+const SENT_END = '。！？.!?';
+
+function isPunct(c: string): boolean { return PUNCT.indexOf(c) >= 0; }
+function isSentEnd(c: string): boolean { return SENT_END.indexOf(c) >= 0; }
 
 export function searchCorpus(
   query: string,
@@ -121,24 +139,104 @@ export function searchCorpus(
   for (const entry of corpus) {
     // Spoiler filter: hide hits from 卷 the user hasn't reached yet.
     if (maxJuan !== null && entry.j > maxJuan) continue;
+    // Collect all raw match indices, then merge ones whose context
+    // windows would overlap so the user sees a single combined snippet
+    // with multiple highlights instead of near-duplicate excerpts.
+    const idxs: number[] = [];
     let from = 0;
     while (true) {
       const idx = entry.t.indexOf(q, from);
       if (idx < 0) break;
-      const start = Math.max(0, idx - SNIPPET_PAD);
-      const end = Math.min(entry.t.length, idx + q.length + SNIPPET_PAD);
+      idxs.push(idx);
+      from = idx + q.length;
+    }
+    if (idxs.length === 0) continue;
+    const noteStarts = entry.m;
+    // Build region boundaries: each region is [start, end) within `t`. A
+    // single-space separator sits between consecutive regions. Regions
+    // are: main text, then one per 胡注 slot. Matches in different regions
+    // are never merged so excerpts don't cross paragraph/note boundaries.
+    const regions: [number, number][] = [];
+    if (!noteStarts || noteStarts.length === 0) {
+      regions.push([0, entry.t.length]);
+    } else {
+      regions.push([0, noteStarts[0] - 1]);
+      for (let r = 0; r < noteStarts.length; r++) {
+        const end = r + 1 < noteStarts.length ? noteStarts[r + 1] - 1 : entry.t.length;
+        regions.push([noteStarts[r], end]);
+      }
+    }
+    const regionOf = (i: number): number => {
+      for (let r = 0; r < regions.length; r++) {
+        if (i >= regions[r][0] && i < regions[r][1]) return r;
+      }
+      return 0;
+    };
+    const huStart = noteStarts && noteStarts.length > 0 ? noteStarts[0] : -1;
+    const inHuFor = (i: number) => huStart >= 0 && i >= huStart;
+    let group: number[] = [idxs[0]];
+    const flush = () => {
+      const first = group[0];
+      const last = group[group.length - 1];
+      const [lo, hi] = regions[regionOf(first)];
+      const matchEnd = last + q.length;
+      // Soft window: at least SNIPPET_PAD chars on each side, clamped to
+      // the region.
+      let start = Math.max(lo, first - SNIPPET_PAD);
+      let end = Math.min(hi, matchEnd + SNIPPET_PAD);
+      // Extend outward (never inward) up to SNIPPET_MAX looking for a
+      // punctuation cut, so excerpts read as complete clauses without
+      // sacrificing context.
+      const extLo = Math.max(lo, first - SNIPPET_MAX);
+      for (let i = start - 1; i >= extLo; i--) {
+        if (isPunct(entry.t[i])) { start = i + 1; break; }
+      }
+      const extHi = Math.min(hi, matchEnd + SNIPPET_MAX);
+      let cutAtSentEnd = false;
+      for (let i = end; i < extHi; i++) {
+        if (isPunct(entry.t[i])) {
+          end = i + 1;
+          cutAtSentEnd = isSentEnd(entry.t[i]);
+          break;
+        }
+      }
+      // If the trimmed `end` already happens to sit right after a sentence
+      // ender (because the region itself ends there), treat that as a clean
+      // cut too so we can drop the trailing "…".
+      if (!cutAtSentEnd && end > 0 && isSentEnd(entry.t[end - 1])) {
+        cutAtSentEnd = true;
+      }
+      // Skip any leading whitespace that crept in (e.g., when start landed
+      // right after a region separator) — it would render as a stray gap.
+      while (start < first && entry.t[start] === ' ') start++;
       hits.push({
         j: entry.j,
         p: entry.p,
         y: entry.y,
         k: entry.k,
         snippet: entry.t.slice(start, end),
-        matchStart: idx - start,
-        matchLen: q.length,
-        inHu: entry.m !== undefined && idx >= entry.m,
+        matches: group.map(i => ({ start: i - start, len: q.length })),
+        inHu: inHuFor(first),
+        atStart: start === lo,
+        atEnd: end === hi || cutAtSentEnd,
       });
-      from = idx + q.length;
+    };
+    for (let i = 1; i < idxs.length; i++) {
+      const prev = group[group.length - 1];
+      // Merge when the gap between two matches is small enough that their
+      // ±SNIPPET_PAD windows would overlap, AND both live in the same
+      // region. Crossing a main/胡注 or note-to-note boundary always breaks
+      // the group so distinct excerpts stay distinct.
+      const close = idxs[i] - (prev + q.length) <= 2 * SNIPPET_MAX;
+      const sameRegion = regionOf(idxs[i]) === regionOf(group[0]);
+      if (close && sameRegion) {
+        group.push(idxs[i]);
+      } else {
+        flush();
+        group = [idxs[i]];
+      }
     }
+    flush();
   }
   // Sort by 卷 descending (latest first), but keep paragraphs within a
   // 卷 in their natural reading order.

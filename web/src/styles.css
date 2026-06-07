@@ -1,13 +1,20 @@
 :root {
   --bg: #f4ecd8;
   --bg-panel: #ece2c8;
+  --bg-input: #fdf6e3;
   --bg-sidebar: #2b2118;
   --fg: #2b2118;
   --fg-inv: #f4ecd8;
   --accent: #7a3b2e;
+  --accent-pressed: #5a2a20;
+  --accent-tint: rgba(122, 59, 46, 0.08);
   --hu: #996666;
   --muted: #8a7a64;
+  --muted-on-dark: #b8a888;
   --border: #c8b994;
+  --hover-bg: #ddd0b0;
+  --radius-sm: 3px;
+  --radius-md: 4px;
   font-family: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif;
 }
 
@@ -101,7 +108,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   line-height: 0;
   transition: color 0.15s ease, background 0.15s ease;
 }
-.sidebar-toggle:hover { color: var(--accent); background: rgba(122, 59, 46, 0.08); }
+.sidebar-toggle:hover { color: var(--accent); background: var(--accent-tint); }
 .sidebar-toggle svg { display: block; width: 18px; height: 18px; }
 
 .lookup-toggle {
@@ -111,7 +118,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   align-items: center; justify-content: center; line-height: 0;
   transition: color 0.15s ease, background 0.15s ease;
 }
-.lookup-toggle:hover { color: var(--accent); background: rgba(122, 59, 46, 0.08); }
+.lookup-toggle:hover { color: var(--accent); background: var(--accent-tint); }
 .lookup-toggle svg { display: block; width: 18px; height: 18px; }
 
 .drawer-backdrop { display: none; }
@@ -124,7 +131,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   font-size: 0.92rem;
 }
 .brand { font-size: 1.05rem; font-weight: 600; letter-spacing: 0.05em; padding: 0 0.5rem; }
-.brand-sub { color: #b8a888; font-size: 0.78rem; padding: 0 0.5rem 0.75rem; border-bottom: 1px solid #4a3a28; margin-bottom: 0.5rem; }
+.brand-sub { color: var(--muted-on-dark); font-size: 0.78rem; padding: 0 0.5rem 0.75rem; border-bottom: 1px solid #4a3a28; margin-bottom: 0.5rem; }
 .dynasty-list, .juan-list { list-style: none; padding: 0; margin: 0; }
 .dynasty-toggle {
   width: 100%; text-align: left; background: none; border: 0; color: var(--fg-inv);
@@ -132,14 +139,14 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   font: inherit;
 }
 .dynasty-toggle:hover { background: #3a2c1f; }
-.caret { width: 1em; color: #b8a888; }
-.count { margin-left: auto; color: #8a7a64; font-size: 0.8em; }
+.caret { width: 1em; color: var(--muted-on-dark); }
+.count { margin-left: auto; color: var(--muted-on-dark); font-size: 0.8em; }
 .juan-list { padding-left: 0.6rem; padding-bottom: 0.3rem; }
 .juan-link {
   width: 100%; text-align: left; background: none; border: 0; color: #d6c9a8;
   padding: 0.4rem 0.5rem; cursor: pointer; font: inherit;
   display: flex; flex-direction: row; align-items: center; gap: 0.6rem;
-  border-radius: 3px;
+  border-radius: var(--radius-md);
 }
 .juan-link:hover { background: #3a2c1f; color: var(--fg-inv); }
 .juan-link.active { background: var(--accent); color: var(--fg-inv); }
@@ -167,7 +174,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .juan-years {
-  font-size: 0.78em; color: #8a7a64;
+  font-size: 0.78em; color: var(--muted-on-dark);
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .juan-link.active .juan-emperors,
@@ -179,6 +186,12 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   min-height: 0;
   min-width: 0;
   background: var(--bg);
+  /* Enable container queries so .reader-header chrome can collapse based
+     on the reader pane's own width rather than the viewport. The reader
+     pane shrinks/grows as the sidebar and lookup panel toggle, so
+     viewport-width breakpoints can't catch every squeeze. */
+  container-type: inline-size;
+  container-name: readerpane;
 }
 .reader-scroller {
   flex: 1 1 auto;
@@ -201,9 +214,85 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   padding-right: calc(1.5rem + env(safe-area-inset-right, 0px));
   z-index: 5;
 }
-.reader-title { font-weight: 600; flex: 1; }
+.reader-title {
+  font-weight: 600; flex: 1;
+  min-width: 0;
+  /* The title carries non-breaking spaces inside each logical section
+     (e.g. 卷001\u00A0周纪一) so it only wraps at major-section spaces.
+     `word-break: keep-all` stops the browser from breaking mid-CJK token
+     when there's no breaking opportunity in a chunk — without it the line
+     wraps between arbitrary Chinese characters. */
+  line-height: 1.45;
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
 .toggle { display: flex; gap: 0.4rem; align-items: center; font-size: 0.88rem; color: var(--muted); cursor: pointer; }
+/* Custom checkbox so both toggles (reader header 胡三省音注, lookup
+   仅显示当前卷之前) share a consistent look matching the warm/sepia palette
+   instead of the OS-default control, which renders differently per platform
+   and often looks visually misaligned next to other controls. */
+.toggle input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  margin: 0; padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-panel);
+  cursor: pointer;
+  display: inline-block;
+  flex: 0 0 auto;
+  position: relative;
+  vertical-align: middle;
+}
+.toggle input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.toggle input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 3px; top: 0;
+  width: 5px; height: 9px;
+  border: solid var(--fg-inv);
+  border-width: 0 1.6px 1.6px 0;
+  transform: rotate(45deg);
+}
+.toggle input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* Reader font-size controls (A− / % / A+). The chosen scale is applied via
+   the --reader-font-scale CSS variable on .reader-pane so .reader-body and
+   the popover/sheet inherit it too. */
+.font-size-controls {
+  display: inline-flex; align-items: center; gap: 0;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.font-size-btn {
+  font: inherit; font-size: 0.82rem;
+  background: transparent; color: var(--fg);
+  border: 0; padding: 0.25rem 0.55rem;
+  cursor: pointer; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.1rem;
+}
+.font-size-btn + .font-size-btn { border-left: 1px solid var(--border); }
+.font-size-btn:hover:not(:disabled) { background: var(--hover-bg); }
+.font-size-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.font-size-btn:disabled { color: var(--muted); cursor: default; }
+.font-size-reset { color: var(--muted); font-size: 0.74rem; min-width: 2.8rem; }
 .reader-body { max-width: 720px; margin: 0 auto; padding: 1.5rem 2rem 5rem; }
+/* Apply the user-selected font scale to all reader text. Paragraphs inherit
+   font-size from .reader-body, so a single declaration covers main text,
+   embedded 胡注 (which uses em-based sizing), and special paragraph types. */
+.reader-body { font-size: calc(1rem * var(--reader-font-scale, 1)); }
 .paragraph {
   margin: 0.6em 0;
   /* Headroom for scroll-into-view so we land below the sticky reader header. */
@@ -246,7 +335,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   color: #5b3d1a;
 }
 .paragraph-commentary {
-  background: #ede2c8;
+  background: var(--bg-panel);
   border-left: 3px solid var(--accent);
   padding: 0.5em 0.8em;
   margin: 1em 0;
@@ -262,9 +351,9 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .year-link {
   width: 100%; text-align: left; background: none; border: 0; padding: 0.1rem 0.3rem;
   cursor: pointer; font: inherit; color: var(--fg); display: flex; gap: 0.5rem;
-  border-radius: 3px; font-size: 0.85rem; line-height: 1.4;
+  border-radius: var(--radius-md); font-size: 0.85rem; line-height: 1.4;
 }
-.year-link:hover { background: #ddd0b0; }
+.year-link:hover { background: var(--hover-bg); }
 .year-link.active { background: var(--accent); color: var(--fg-inv); }
 .year-ce { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 3.5em; }
 .year-link.active .year-ce { color: #f4d8b8; }
@@ -305,8 +394,8 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .lookup-controls { position: relative; margin-bottom: 0.4rem; }
 .lookup-input {
   width: 100%; padding: 0.4rem 1.8rem 0.4rem 0.5rem;
-  border: 1px solid var(--border); border-radius: 4px;
-  background: #fdf6e3; font: inherit; font-size: 0.9rem; color: var(--fg);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--bg-input); font: inherit; font-size: 0.9rem; color: var(--fg);
 }
 .lookup-input:focus { outline: none; border-color: var(--accent); }
 .lookup-clear {
@@ -396,18 +485,18 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .lookup-jump {
   display: block; width: 100%; text-align: left;
   background: rgba(122, 59, 46, 0.06);
-  border: 1px solid transparent; border-radius: 4px;
+  border: 1px solid transparent; border-radius: var(--radius-md);
   padding: 0.35rem 0.5rem;
   cursor: pointer; font: inherit; color: var(--fg);
   transition: background 0.12s, border-color 0.12s;
 }
-.lookup-jump:hover { background: #ead7a8; border-color: var(--border); }
+.lookup-jump:hover { background: var(--hover-bg); border-color: var(--border); }
 
 /* Inside the current 卷's group, the group itself has a warm accent
    backdrop, so the default card wash collides with it. Lift cards
    with a brighter paper tone + subtle shadow so they read clearly. */
 .lookup-juan-group.is-current .lookup-jump {
-  background: #fdf6e3;
+  background: var(--bg-input);
   border-color: rgba(122, 59, 46, 0.22);
   box-shadow: 0 1px 2px rgba(43, 33, 24, 0.06);
 }
@@ -476,7 +565,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
    can move into it to scroll the paragraph; mouseenter/leave on the popover
    itself keeps it alive while the cursor is inside. */
 .lookup-popover {
-  background: #fdf6e3;
+  background: var(--bg-input);
   color: var(--fg);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -538,7 +627,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .lookup-sheet {
   position: fixed; left: 0; right: 0; bottom: 0;
   z-index: 201;
-  background: #fdf6e3;
+  background: var(--bg-input);
   border-top: 1px solid var(--border);
   border-radius: 14px 14px 0 0;
   box-shadow: 0 -10px 28px rgba(43, 33, 24, 0.3);
@@ -595,7 +684,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   flex: 0 0 auto;
   padding: 0.55rem 0.85rem 0.7rem;
   border-top: 1px solid rgba(122, 59, 46, 0.18);
-  background: #fdf6e3;
+  background: var(--bg-input);
 }
 .lookup-sheet-jump {
   display: block; width: 100%;
@@ -605,7 +694,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   font: inherit; font-size: 0.95rem; font-weight: 600;
   cursor: pointer;
 }
-.lookup-sheet-jump:active { background: #5a2a20; }
+.lookup-sheet-jump:active { background: var(--accent-pressed); }
 
 /* Belt-and-braces: the JS already gates by hoverCapable, but hide the sheet
    chrome on hover-capable devices in case both ever coexist. */
@@ -799,6 +888,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    padding-top: 0;
   }
   .reader-header .toggle { flex: 0 0 auto; }
   .reader-header .sidebar-toggle,
@@ -811,4 +901,30 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 @media (max-width: 700px) {
   /* Hide the long checkbox label to make room for the search button. */
   .reader-header .toggle span { display: none; }
+  /* The current-scale readout is informational only; the +/- buttons are
+     still tappable. Keep it out of the way on narrow screens. */
+  .font-size-reset { display: none; }
+  .font-size-btn { padding: 0.25rem 0.45rem; min-width: 1.9rem; }
+}
+
+/* Container-query collapse for the reader-header chrome — fires whenever
+   the reader pane itself is narrow (e.g. desktop layout with both side
+   panels open), not just when the viewport is small. Progressively shed
+   the optional bits so the title always has room. */
+@container readerpane (max-width: 720px) {
+  /* The current-scale readout is informational; the +/- still work. */
+  .font-size-reset { display: none; }
+  .font-size-btn { padding: 0.25rem 0.45rem; min-width: 1.9rem; }
+}
+@container readerpane (max-width: 600px) {
+  /* Drop the checkbox label; the brown box still communicates the toggle
+     and the title attribute names it for assistive tech. */
+  .reader-header .toggle span { display: none; }
+  .reader-header { gap: 0.55rem; padding-left: 0.9rem; padding-right: 0.9rem; }
+}
+@container readerpane (max-width: 480px) {
+  /* Last resort: drop the font-size group entirely so the title and the
+     two essential icon buttons (catalog, search) keep room. The reader
+     still respects the chosen scale; users can adjust on a wider layout. */
+  .font-size-controls { display: none; }
 }

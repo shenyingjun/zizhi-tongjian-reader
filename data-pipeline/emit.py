@@ -80,11 +80,14 @@ def main() -> int:
         juan_no = data["juan_no"]
         for para in data["paragraphs"]:
             main_text = para.get("main", "")
-            notes_text = "".join(n.get("text", "") for n in para.get("notes", []))
-            if notes_text:
-                text = main_text + " " + notes_text
-            else:
-                text = main_text
+            notes = [n.get("text", "") for n in para.get("notes", [])]
+            notes = [n for n in notes if n]
+            # Join main + each note with a single-space separator. Each region
+            # (main, note1, note2, ...) is independently searchable; record
+            # the start index of every note so the UI can clamp snippets and
+            # avoid merging matches that live in different 胡注 slots.
+            parts = [main_text] + notes if notes else [main_text]
+            text = " ".join(parts)
             entry = {
                 "j": juan_no,
                 "p": para["id"],
@@ -92,10 +95,15 @@ def main() -> int:
                 "k": para.get("type", para.get("kind", "")),
                 "t": text,
             }
-            # `m` marks where 胡三省音注 begins within `t` (after the
-            # separator space). Omitted when there are no notes.
-            if notes_text:
-                entry["m"] = len(main_text) + 1
+            if notes:
+                # m[i] = start index of the i-th note within `t`. m[0] is the
+                # start of the first 胡注 (i.e., the old scalar `m` value).
+                starts: list[int] = []
+                offset = len(main_text) + 1  # past the first separator
+                for n in notes:
+                    starts.append(offset)
+                    offset += len(n) + 1     # +1 for the next separator
+                entry["m"] = starts
             lookup.append(entry)
     (WEB_PUBLIC / "lookup.json").write_text(
         json.dumps(lookup, ensure_ascii=False, separators=(",", ":")),
