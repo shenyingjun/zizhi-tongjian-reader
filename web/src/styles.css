@@ -923,8 +923,8 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   .reader-header { gap: 0.55rem; padding-left: 0.9rem; padding-right: 0.9rem; }
 }
 @container readerpane (max-width: 480px) {
-  /* Last resort: drop the font-size group entirely so the title and the
-     two essential icon buttons (catalog, search) keep room. The reader
-     still respects the chosen scale; users can adjust on a wider layout. */
-  .font-size-controls { display: none; }
+  /* Keep font-size controls visible on mobile — they're essential there.
+     Tighten them further instead of hiding. */
+  .font-size-btn { padding: 0.2rem 0.35rem; min-width: 1.6rem; font-size: 0.85rem; }
+  .reader-header { gap: 0.4rem; padding-left: 0.7rem; padding-right: 0.7rem; }
 }
