@@ -192,6 +192,13 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 1rem;
+  /* Respect the iOS status bar / notch when running standalone
+     (apple-mobile-web-app-status-bar-style: black-translucent paints content
+     under the status bar; without this padding the header buttons sit under
+     the notch and become unclickable). */
+  padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  padding-left: calc(1.5rem + env(safe-area-inset-left, 0px));
+  padding-right: calc(1.5rem + env(safe-area-inset-right, 0px));
   z-index: 5;
 }
 .reader-title { font-weight: 600; flex: 1; }
@@ -631,7 +638,13 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 }
 .selection-action-text {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 45vw;
+  /* Hard cap so a long selection can't push the button off-screen or
+     squeeze the button label onto two lines. The selection is already
+     capped at 20 chars upstream, but at the chosen font size 20 CJK
+     glyphs is still wider than a phone screen. */
+  max-width: 38vw;
+  min-width: 0;
+  flex: 0 1 auto;
   opacity: 0.92;
   font-weight: 500;
 }
@@ -643,6 +656,10 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   padding: 0.4rem 0.95rem;
   font: inherit; font-weight: 600;
   cursor: pointer;
+  /* The button label must stay on one line regardless of how wide the
+     adjacent selected-text label gets. */
+  white-space: nowrap;
+  flex: 0 0 auto;
   -webkit-tap-highlight-color: transparent;
 }
 .selection-action-btn:active { background: rgba(244, 236, 216, 0.34); }
@@ -708,6 +725,10 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
     transform: translateX(0);
     transition: transform 0.22s ease;
     box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35);
+    /* Clear the iOS notch / status bar in standalone mode. */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
   }
   .layout.sidebar-collapsed .sidebar {
     transform: translateX(-100%);
@@ -726,6 +747,9 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
     transition: transform 0.22s ease;
     border-left: 1px solid var(--border);
     box-shadow: -4px 0 24px rgba(0, 0, 0, 0.25);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
   }
   .layout.lookup-open .person-pane {
     transform: translateX(0);
@@ -757,9 +781,13 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
     margin-top: 0; padding-top: 0; border-top: 0;
   }
 
-  /* Tighten reader chrome on small screens. */
+  /* Tighten reader chrome on small screens. Keep the safe-area top padding
+     so the header clears the iOS notch in standalone mode. */
   .reader-header {
     padding: 0.55rem 0.7rem;
+    padding-top: calc(0.55rem + env(safe-area-inset-top, 0px));
+    padding-left: calc(0.7rem + env(safe-area-inset-left, 0px));
+    padding-right: calc(0.7rem + env(safe-area-inset-right, 0px));
     gap: 0.5rem;
     flex-wrap: nowrap;
     overflow: hidden;
