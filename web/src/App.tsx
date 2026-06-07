@@ -1,4 +1,5 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { Manifest, Juan } from './corpus';
 import { loadManifest, loadJuan } from './corpus';
 import Sidebar from './Sidebar';
@@ -243,28 +244,64 @@ export default function App() {
     };
   }, [juan, juanNo]);
 
-  // Capture text selection within the reader pane to feed the lookup panel.
+  // Capture text selection within the reader pane to drive the lookup.
+  // - selectionchange (vs. mouseup) reliably fires for both pointer and touch
+  //   gestures, so this works on mobile where mouseup is unreliable after
+  //   the OS text-selection long-press.
+  // - On hover-capable devices the selection auto-fills the always-visible
+  //   search input (existing behavior). On touch the lookup drawer is hidden
+  //   by default, so we defer setting the query until the user explicitly
+  //   taps the floating "搜出处" pill — making "I'm just copying" still work.
+  const hoverCapable = useMemo(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false;
+    try { return window.matchMedia('(hover: hover)').matches; } catch { return false; }
+  }, []);
+  const [pendingSelection, setPendingSelection] = useState<string | null>(null);
+
   useEffect(() => {
     const pane = readerPaneRef.current;
     if (!pane) return;
-    const onMouseDown = () => setHighlightPid(null);
-    const onMouseUp = () => {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) return;
-      const txt = sel.toString().trim();
-      if (!txt || txt.length > 20) return;
-      // Only react if the selection is inside the reader pane.
-      const anchor = sel.anchorNode;
-      if (!anchor || !pane.contains(anchor instanceof Element ? anchor : anchor.parentElement)) return;
-      setLookupQuery(txt);
+    const onPointerDown = () => setHighlightPid(null);
+    pane.addEventListener('pointerdown', onPointerDown);
+
+    let timer: number | null = null;
+    const onSelectionChange = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      // Debounce: iOS fires many selectionchange events while dragging the
+      // selection handles. Wait for it to settle before acting.
+      timer = window.setTimeout(() => {
+        timer = null;
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed) {
+          setPendingSelection(null);
+          return;
+        }
+        const txt = sel.toString().trim();
+        if (!txt || txt.length > 20) {
+          setPendingSelection(null);
+          return;
+        }
+        const anchor = sel.anchorNode;
+        const anchorEl = anchor instanceof Element ? anchor : anchor?.parentElement ?? null;
+        if (!anchorEl || !pane.contains(anchorEl)) {
+          setPendingSelection(null);
+          return;
+        }
+        if (hoverCapable) {
+          setLookupQuery(txt);
+          setPendingSelection(null);
+        } else {
+          setPendingSelection(txt);
+        }
+      }, 350);
     };
-    pane.addEventListener('mousedown', onMouseDown);
-    pane.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('selectionchange', onSelectionChange);
     return () => {
-      pane.removeEventListener('mousedown', onMouseDown);
-      pane.removeEventListener('mouseup', onMouseUp);
+      pane.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('selectionchange', onSelectionChange);
+      if (timer !== null) window.clearTimeout(timer);
     };
-  }, [juan]);
+  }, [juan, hoverCapable]);
 
   // Scroll the given paragraph into view. Reliable even with
   // .paragraph { content-visibility: auto }, which makes offsetTop and
@@ -471,6 +508,36 @@ export default function App() {
         onClick={() => { setShowSidebar(false); setShowLookup(false); }}
         aria-hidden="true"
       />
+      {pendingSelection && createPortal(
+        <div className="selection-action-bar" role="toolbar" aria-label="选词检索">
+          <span className="selection-action-text" title={pendingSelection}>
+            「{pendingSelection.length > 8 ? pendingSelection.slice(0, 7) + '…' : pendingSelection}」
+          </span>
+          <button
+            type="button"
+            className="selection-action-btn"
+            onClick={() => {
+              const q = pendingSelection;
+              setLookupQuery(q);
+              setShowLookup(true);
+              setPendingSelection(null);
+              // Drop the OS selection so its menu and our pill both go away;
+              // otherwise selectionchange will re-fire when the user taps
+              // elsewhere and the pill might briefly flash back.
+              try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
+            }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                 aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.5" y2="16.5" />
+            </svg>
+            搜出处
+          </button>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

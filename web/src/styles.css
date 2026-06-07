@@ -606,6 +606,54 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   .lookup-sheet-backdrop, .lookup-sheet { display: none; }
 }
 
+/* Floating action pill that appears at the bottom of the viewport whenever
+   the user has a text selection inside the reader on a touch device.
+   Sidesteps the OS selection menu (which sits above the selection) by
+   anchoring within thumb reach at the bottom — one tap opens the lookup
+   drawer with the selected term. */
+.selection-action-bar {
+  position: fixed;
+  left: 50%; transform: translateX(-50%);
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 300;
+  display: inline-flex; align-items: center; gap: 0.55rem;
+  background: var(--accent); color: var(--fg-inv);
+  padding: 0.35rem 0.4rem 0.35rem 0.9rem;
+  border-radius: 999px;
+  box-shadow: 0 10px 26px rgba(43, 33, 24, 0.4);
+  font-size: 0.88rem;
+  max-width: calc(100vw - 32px);
+  animation: selection-action-pop 0.18s ease-out;
+}
+@keyframes selection-action-pop {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.selection-action-text {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 45vw;
+  opacity: 0.92;
+  font-weight: 500;
+}
+.selection-action-btn {
+  display: inline-flex; align-items: center; gap: 0.32rem;
+  background: rgba(244, 236, 216, 0.2);
+  color: var(--fg-inv);
+  border: 0; border-radius: 999px;
+  padding: 0.4rem 0.95rem;
+  font: inherit; font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.selection-action-btn:active { background: rgba(244, 236, 216, 0.34); }
+.selection-action-btn svg { width: 14px; height: 14px; }
+
+/* The pill is JS-gated on touch only, but redundancy is cheap: hover-capable
+   devices already have the always-visible search input and shouldn't see it. */
+@media (hover: hover) {
+  .selection-action-bar { display: none; }
+}
+
 .loading, .error {
   padding: 2rem; color: var(--muted); text-align: center;
 }
