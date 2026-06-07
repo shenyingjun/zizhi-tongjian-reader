@@ -40,7 +40,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .sidebar:hover, .person-pane:hover, .year-toc ul:hover, .lookup-body:hover {
   scrollbar-color: rgba(139, 122, 100, 0.35) transparent;
 }
-.reader-scroller, .lookup-popover-body {
+.reader-scroller, .lookup-popover-body, .lookup-sheet-body {
   scrollbar-width: thin;
   scrollbar-color: rgba(139, 122, 100, 0.45) transparent;
 }
@@ -49,7 +49,8 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .person-pane::-webkit-scrollbar,
 .year-toc ul::-webkit-scrollbar,
 .lookup-body::-webkit-scrollbar,
-.lookup-popover-body::-webkit-scrollbar {
+.lookup-popover-body::-webkit-scrollbar,
+.lookup-sheet-body::-webkit-scrollbar {
   width: 8px; height: 8px;
 }
 .sidebar::-webkit-scrollbar-track,
@@ -57,7 +58,8 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .person-pane::-webkit-scrollbar-track,
 .year-toc ul::-webkit-scrollbar-track,
 .lookup-body::-webkit-scrollbar-track,
-.lookup-popover-body::-webkit-scrollbar-track {
+.lookup-popover-body::-webkit-scrollbar-track,
+.lookup-sheet-body::-webkit-scrollbar-track {
   background: transparent;
 }
 .sidebar::-webkit-scrollbar-thumb,
@@ -74,7 +76,8 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   background: rgba(139, 122, 100, 0.35);
 }
 .reader-scroller::-webkit-scrollbar-thumb,
-.lookup-popover-body::-webkit-scrollbar-thumb {
+.lookup-popover-body::-webkit-scrollbar-thumb,
+.lookup-sheet-body::-webkit-scrollbar-thumb {
   background: rgba(139, 122, 100, 0.45); border-radius: 3px;
 }
 .sidebar::-webkit-scrollbar-thumb:hover,
@@ -82,7 +85,8 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .person-pane::-webkit-scrollbar-thumb:hover,
 .year-toc ul::-webkit-scrollbar-thumb:hover,
 .lookup-body::-webkit-scrollbar-thumb:hover,
-.lookup-popover-body::-webkit-scrollbar-thumb:hover {
+.lookup-popover-body::-webkit-scrollbar-thumb:hover,
+.lookup-sheet-body::-webkit-scrollbar-thumb:hover {
   background: rgba(139, 122, 100, 0.7);
 }
 /* Sidebar lives on a dark bg, so use a light translucent thumb. */
@@ -513,6 +517,93 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 /* On touch / no-hover devices the popover never fires; hide just in case. */
 @media (hover: none) {
   .lookup-popover { display: none; }
+}
+
+/* Bottom sheet — the touch-device counterpart to the hover popover. Tap a
+   result card to open; same content (full paragraph with inline 胡注) plus
+   an explicit 跳转 button so navigation stays a single action away. */
+.lookup-sheet-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+  z-index: 200;
+  animation: lookup-sheet-fade 0.18s ease-out;
+}
+.lookup-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  z-index: 201;
+  background: #fdf6e3;
+  border-top: 1px solid var(--border);
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -10px 28px rgba(43, 33, 24, 0.3);
+  display: flex; flex-direction: column;
+  max-height: 75vh;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  animation: lookup-sheet-slide 0.22s ease-out;
+}
+@keyframes lookup-sheet-fade {
+  from { opacity: 0; } to { opacity: 1; }
+}
+@keyframes lookup-sheet-slide {
+  from { transform: translateY(100%); } to { transform: translateY(0); }
+}
+.lookup-sheet-head {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.6rem 0.85rem 0.55rem;
+  border-bottom: 1px dashed rgba(122, 59, 46, 0.2);
+}
+.lookup-sheet-title {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 0.78rem; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lookup-sheet-close {
+  flex: 0 0 auto;
+  background: transparent; border: 0; cursor: pointer;
+  width: 32px; height: 32px; border-radius: 16px;
+  color: var(--muted); font-size: 1.3rem; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: inherit;
+}
+.lookup-sheet-close:active { background: rgba(122, 59, 46, 0.12); color: var(--accent); }
+.lookup-sheet-body {
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto;
+  padding: 0.7rem 0.9rem 0.5rem;
+  -webkit-overflow-scrolling: touch;
+}
+.lookup-sheet-body .lookup-full {
+  margin: 0; padding: 0;
+  background: none; border: 0; border-radius: 0;
+  font-size: 0.95rem; line-height: 2;
+  color: var(--fg);
+}
+.lookup-sheet-body .lookup-full mark {
+  background: #f4d089; color: var(--fg);
+  padding: 0 0.1em; border-radius: 2px; font-weight: 600;
+}
+.lookup-sheet-foot {
+  flex: 0 0 auto;
+  padding: 0.55rem 0.85rem 0.7rem;
+  border-top: 1px solid rgba(122, 59, 46, 0.18);
+  background: #fdf6e3;
+}
+.lookup-sheet-jump {
+  display: block; width: 100%;
+  background: var(--accent); color: var(--fg-inv);
+  border: 0; border-radius: 6px;
+  padding: 0.7rem 1rem;
+  font: inherit; font-size: 0.95rem; font-weight: 600;
+  cursor: pointer;
+}
+.lookup-sheet-jump:active { background: #5a2a20; }
+
+/* Belt-and-braces: the JS already gates by hoverCapable, but hide the sheet
+   chrome on hover-capable devices in case both ever coexist. */
+@media (hover: hover) {
+  .lookup-sheet-backdrop, .lookup-sheet { display: none; }
 }
 
 .loading, .error {

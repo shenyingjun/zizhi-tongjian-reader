@@ -132,7 +132,7 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
   useEffect(() => () => { clearEnterTimer(); clearLeaveTimer(); }, []);
 
   // Drop any open peek when the query changes — its content would be stale.
-  useEffect(() => { setPopover(null); }, [query]);
+  useEffect(() => { setPopover(null); setSheet(null); }, [query]);
 
   // The popover is anchored to a snapshot rect; any layout shift moves the
   // anchor out from under it. Resize is always dismiss-worthy. For scroll,
@@ -199,6 +199,49 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
     // can scroll and read.
     clearLeaveTimer();
   };
+
+  // Mobile / touch peek: a bottom sheet variant of the popover. Same content,
+  // different shell (modal sheet instead of hover popover) because there's
+  // no hover gesture and the floating popover doesn't suit narrow screens.
+  // Tap a card → sheet opens; sheet has an explicit 跳转 button.
+  interface SheetState { key: string; hit: LookupHit; para: Paragraph | null; error: string | null }
+  const [sheet, setSheet] = useState<SheetState | null>(null);
+  const openSheet = (key: string, hit: LookupHit) => {
+    setSheet({ key, hit, para: null, error: null });
+  };
+  const closeSheet = () => setSheet(null);
+
+  // Reuse the same lazy-load pattern as the popover.
+  useEffect(() => {
+    if (!sheet || sheet.para || sheet.error) return;
+    const myKey = sheet.key;
+    let cancelled = false;
+    loadJuan(sheet.hit.j)
+      .then(j => {
+        if (cancelled) return;
+        const para = j.paragraphs.find(p => p.id === sheet.hit.p) || null;
+        setSheet(prev => (prev && prev.key === myKey ? { ...prev, para } : prev));
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setSheet(prev => (prev && prev.key === myKey ? { ...prev, error: String(err) } : prev));
+      });
+    return () => { cancelled = true; };
+  }, [sheet]);
+
+  // While the sheet is open: Esc closes it, and lock background scroll so
+  // the page underneath doesn't drift as the user scrolls the paragraph.
+  useEffect(() => {
+    if (!sheet) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeSheet(); };
+    window.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [sheet]);
 
   // Bring the highlighted card into view (instant scroll) whenever the
   // active paragraph changes. Compensates for the sticky group header.
@@ -379,7 +422,14 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
                           <button
                             type="button"
                             className="lookup-jump"
-                            onClick={() => onJump(jg.j, para.pid)}
+                            onClick={() => {
+                              // On hover-capable devices the popover is the
+                              // peek surface; tap goes straight to navigation.
+                              // On touch, the same tap opens a bottom sheet
+                              // so users can verify context before committing.
+                              if (hoverCapable) onJump(jg.j, para.pid);
+                              else openSheet(key, first);
+                            }}
                             title={multi
                               ? `跳转：卷${jg.j} 段${para.pid}（${para.hits.length} 处匹配）`
                               : `跳转：卷${jg.j} 段${para.pid}`}
@@ -438,6 +488,46 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
             )}
           </div>
         </div>,
+        document.body,
+      )}
+      {sheet && createPortal(
+        <>
+          <div className="lookup-sheet-backdrop" onClick={closeSheet} />
+          <div className="lookup-sheet" role="dialog" aria-modal="true" aria-label="搜索结果全文预览">
+            <header className="lookup-sheet-head">
+              <span className="lookup-sheet-title">
+                卷{sheet.hit.j} · 段{sheet.hit.p}
+                {sheet.hit.y !== null && <> · {formatCE(sheet.hit.y)}</>}
+              </span>
+              <button
+                type="button"
+                className="lookup-sheet-close"
+                onClick={closeSheet}
+                aria-label="关闭"
+              >×</button>
+            </header>
+            <div className="lookup-sheet-body">
+              {sheet.error ? (
+                <div className="error small">加载失败：{sheet.error}</div>
+              ) : sheet.para ? (
+                <FullParagraphInterleaved p={sheet.para} q={query} />
+              ) : (
+                <div className="muted small">加载中……</div>
+              )}
+            </div>
+            <footer className="lookup-sheet-foot">
+              <button
+                type="button"
+                className="lookup-sheet-jump"
+                onClick={() => {
+                  const { j, p } = sheet.hit;
+                  closeSheet();
+                  onJump(j, p);
+                }}
+              >跳转到此段 →</button>
+            </footer>
+          </div>
+        </>,
         document.body,
       )}
     </div>
