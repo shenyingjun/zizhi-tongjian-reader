@@ -83,12 +83,7 @@ let _lookupCache: Promise<LookupEntry[]> | null = null;
 export function loadLookup(): Promise<LookupEntry[]> {
   if (!_lookupCache) {
     _lookupCache = fetch(`${BASE}text/lookup.json`)
-      .then(r => { if (!r.ok) throw new Error(`lookup ${r.status}`); return r.json(); })
-      .catch(err => {
-        // Don't cache failures — let the next call retry.
-        _lookupCache = null;
-        throw err;
-      });
+      .then(r => { if (!r.ok) throw new Error(`lookup ${r.status}`); return r.json(); });
   }
   return _lookupCache;
 }
