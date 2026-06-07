@@ -48,6 +48,7 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [futureCount, setFutureCount] = useState(0);
+  const [retryNonce, setRetryNonce] = useState(0);
   const activeHitRef = useRef<HTMLLIElement | null>(null);
 
   // Bring the highlighted card into view (instant scroll) whenever the
@@ -98,7 +99,7 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
     // hits intentionally omitted from deps: it's only read to decide whether
     // to show the loading skeleton on first fetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, maxJuan, currentJuan]);
+  }, [query, maxJuan, currentJuan, retryNonce]);
 
   if (!query) {
     return (
@@ -109,7 +110,17 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
     );
   }
   if (loading) return <div className="loading small">搜索 “{query}” 中……</div>;
-  if (error) return <div className="error small">搜索失败：{error}</div>;
+  if (error) return (
+    <div className="error small">
+      搜索失败：{error}
+      {' '}
+      <button
+        type="button"
+        className="lookup-retry"
+        onClick={() => setRetryNonce(n => n + 1)}
+      >重试</button>
+    </div>
+  );
   if (!hits || hits.length === 0) {
     return (
       <div className="lookup-empty small">
