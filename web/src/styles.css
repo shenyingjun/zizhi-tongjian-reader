@@ -40,7 +40,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .sidebar:hover, .person-pane:hover, .year-toc ul:hover, .lookup-body:hover {
   scrollbar-color: rgba(139, 122, 100, 0.35) transparent;
 }
-.reader-scroller {
+.reader-scroller, .lookup-popover-body {
   scrollbar-width: thin;
   scrollbar-color: rgba(139, 122, 100, 0.45) transparent;
 }
@@ -48,14 +48,16 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .reader-scroller::-webkit-scrollbar,
 .person-pane::-webkit-scrollbar,
 .year-toc ul::-webkit-scrollbar,
-.lookup-body::-webkit-scrollbar {
+.lookup-body::-webkit-scrollbar,
+.lookup-popover-body::-webkit-scrollbar {
   width: 8px; height: 8px;
 }
 .sidebar::-webkit-scrollbar-track,
 .reader-scroller::-webkit-scrollbar-track,
 .person-pane::-webkit-scrollbar-track,
 .year-toc ul::-webkit-scrollbar-track,
-.lookup-body::-webkit-scrollbar-track {
+.lookup-body::-webkit-scrollbar-track,
+.lookup-popover-body::-webkit-scrollbar-track {
   background: transparent;
 }
 .sidebar::-webkit-scrollbar-thumb,
@@ -71,14 +73,16 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .lookup-body:hover::-webkit-scrollbar-thumb {
   background: rgba(139, 122, 100, 0.35);
 }
-.reader-scroller::-webkit-scrollbar-thumb {
+.reader-scroller::-webkit-scrollbar-thumb,
+.lookup-popover-body::-webkit-scrollbar-thumb {
   background: rgba(139, 122, 100, 0.45); border-radius: 3px;
 }
 .sidebar::-webkit-scrollbar-thumb:hover,
 .reader-scroller::-webkit-scrollbar-thumb:hover,
 .person-pane::-webkit-scrollbar-thumb:hover,
 .year-toc ul::-webkit-scrollbar-thumb:hover,
-.lookup-body::-webkit-scrollbar-thumb:hover {
+.lookup-body::-webkit-scrollbar-thumb:hover,
+.lookup-popover-body::-webkit-scrollbar-thumb:hover {
   background: rgba(139, 122, 100, 0.7);
 }
 /* Sidebar lives on a dark bg, so use a light translucent thumb. */
@@ -455,6 +459,60 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   background: rgba(122, 59, 46, 0.12);
   border-radius: 8px; padding: 0 0.5em;
   font-variant-numeric: tabular-nums;
+}
+
+/* Hover popover: floating peek anchored to a card. Interactive — the user
+   can move into it to scroll the paragraph; mouseenter/leave on the popover
+   itself keeps it alive while the cursor is inside. */
+.lookup-popover {
+  background: #fdf6e3;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(43, 33, 24, 0.22);
+  padding: 0.55rem 0.7rem 0.6rem;
+  z-index: 100;
+  display: flex; flex-direction: column;
+  /* `maxHeight` is set inline from popoverStyle so the popover always fits
+     in the viewport; the body below scrolls when the paragraph is taller. */
+}
+.lookup-popover-head {
+  flex: 0 0 auto;
+  font-size: 0.72rem; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px dashed rgba(122, 59, 46, 0.18);
+}
+.lookup-popover-body {
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto;
+  /* Subtle inner padding so the scrollbar doesn't crowd the text. */
+  padding-right: 0.2rem;
+}
+.lookup-popover .lookup-full {
+  margin: 0; padding: 0;
+  background: none; border: 0; border-radius: 0;
+  font-size: 0.92rem; line-height: 1.95;
+  color: var(--fg);
+}
+.lookup-popover .lookup-full mark {
+  background: #f4d089; color: var(--fg);
+  padding: 0 0.1em; border-radius: 2px; font-weight: 600;
+}
+/* 胡注 rendered inline inside the popover — keep the reader's muted/italic
+   feel so users recognise the same convention, but compact since multiple
+   notes may be interleaved within a single paragraph. */
+.lookup-full-hu-inline {
+  color: var(--hu);
+  font-style: italic;
+  font-size: 0.84em;
+}
+
+/* On touch / no-hover devices the popover never fires; hide just in case. */
+@media (hover: none) {
+  .lookup-popover { display: none; }
 }
 
 .loading, .error {

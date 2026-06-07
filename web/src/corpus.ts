@@ -60,11 +60,19 @@ export async function loadManifest(): Promise<Manifest> {
   return r.json();
 }
 
-export async function loadJuan(no: number): Promise<Juan> {
-  const padded = String(no).padStart(3, '0');
-  const r = await fetch(`${BASE}text/juan_${padded}.json`);
-  if (!r.ok) throw new Error(`juan ${no} ${r.status}`);
-  return r.json();
+const _juanCache = new Map<number, Promise<Juan>>();
+
+export function loadJuan(no: number): Promise<Juan> {
+  let cached = _juanCache.get(no);
+  if (!cached) {
+    const padded = String(no).padStart(3, '0');
+    cached = fetch(`${BASE}text/juan_${padded}.json`).then(r => {
+      if (!r.ok) throw new Error(`juan ${no} ${r.status}`);
+      return r.json();
+    });
+    _juanCache.set(no, cached);
+  }
+  return cached;
 }
 
 // Flat lookup corpus for selection-based search.

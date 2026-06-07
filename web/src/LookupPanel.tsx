@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import type { LookupHit } from './corpus';
-import { loadLookup, searchCorpus } from './corpus';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import type { LookupHit, Paragraph } from './corpus';
+import { loadJuan, loadLookup, searchCorpus } from './corpus';
+import { splitParagraph, findMatches, highlight, highlightWithRanges } from './highlight';
 
 interface Props {
   query: string;
@@ -12,7 +14,7 @@ interface Props {
 
 function formatCE(y: number | null): string {
   if (y === null) return '?';
-  return y < 0 ? `前${-y}` : String(y);
+  return y < 0 ? `前${-y}年` : `${y}年`;
 }
 
 interface YearGroup {
@@ -43,12 +45,160 @@ function groupHits(hits: LookupHit[]): JuanGroup[] {
   return Array.from(byJuan.values());
 }
 
+/**
+ * Render a paragraph in its natural reading order — main text with 胡注
+ * inline at their original positions. Used by the hover popover so users
+ * see the same flow they'd encounter in the reader, including multiple
+ * interleaved notes. Matches of `q` are highlighted in both main and notes;
+ * matches that span a note insertion point stay highlighted across the split.
+ */
+function FullParagraphInterleaved({ p, q }: { p: Paragraph; q: string }) {
+  const segments = useMemo(() => splitParagraph(p), [p]);
+  const mainMatches = useMemo(() => findMatches(p.main, q), [p.main, q]);
+  return (
+    <div className="lookup-full">
+      {segments.map((seg, i) => {
+        if (seg.kind === 'text') {
+          return (
+            <span key={i}>
+              {highlightWithRanges(seg.text, seg.mainStart!, mainMatches)}
+            </span>
+          );
+        }
+        return (
+          <span key={i} className="lookup-full-hu-inline">
+            （{highlight(seg.text, q)}）
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+interface PopoverState {
+  key: string;
+  rect: DOMRect;
+  hit: LookupHit;
+  para: Paragraph | null;     // null while the juan is loading
+  error: string | null;
+}
+
+/** Position the popover beside the anchor card. Prefers the left side (the
+ *  lookup panel sits on the right of the layout) and clamps to the viewport. */
+function popoverStyle(rect: DOMRect): React.CSSProperties {
+  const W = 400;
+  const GAP = 6;
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1024;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 768;
+  let left = rect.left - GAP - W;
+  if (left < 8) left = rect.right + GAP;
+  if (left + W > vw - 8) left = Math.max(8, vw - 8 - W);
+  const maxH = Math.floor(vh * 0.6);
+  let top = rect.top;
+  if (top + maxH > vh - 8) top = Math.max(8, vh - 8 - maxH);
+  return { position: 'fixed', left, top, width: W, maxHeight: maxH };
+}
+
 export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid, onJump }: Props) {
   const [hits, setHits] = useState<LookupHit[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [futureCount, setFutureCount] = useState(0);
   const activeHitRef = useRef<HTMLLIElement | null>(null);
+
+  // Hover-only full-paragraph peek. Popover is interactive so users can move
+  // the cursor into it to scroll long paragraphs without it disappearing.
+  const [popover, setPopover] = useState<PopoverState | null>(null);
+  const enterTimerRef = useRef<number | null>(null);
+  const leaveTimerRef = useRef<number | null>(null);
+
+  const hoverCapable = useMemo(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false;
+    try { return window.matchMedia('(hover: hover)').matches; } catch { return false; }
+  }, []);
+
+  const clearEnterTimer = () => {
+    if (enterTimerRef.current !== null) {
+      window.clearTimeout(enterTimerRef.current);
+      enterTimerRef.current = null;
+    }
+  };
+  const clearLeaveTimer = () => {
+    if (leaveTimerRef.current !== null) {
+      window.clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
+  };
+  useEffect(() => () => { clearEnterTimer(); clearLeaveTimer(); }, []);
+
+  // Drop any open peek when the query changes — its content would be stale.
+  useEffect(() => { setPopover(null); }, [query]);
+
+  // The popover is anchored to a snapshot rect; any layout shift moves the
+  // anchor out from under it. Resize is always dismiss-worthy. For scroll,
+  // ignore scrolls that originate inside the popover itself (the user is
+  // scrolling its content) by checking the event target.
+  useEffect(() => {
+    if (!popover) return;
+    const onResize = () => setPopover(null);
+    const onScroll = (e: Event) => {
+      const t = e.target as Node | null;
+      const pop = document.querySelector('.lookup-popover');
+      if (pop && t && pop.contains(t)) return;
+      setPopover(null);
+    };
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [popover]);
+
+  // Lazy-load the juan for the hovered hit, then attach its Paragraph to the
+  // popover. corpus.loadJuan caches per juan, so re-hovers within the same
+  // juan are instant.
+  useEffect(() => {
+    if (!popover || popover.para || popover.error) return;
+    const myKey = popover.key;
+    let cancelled = false;
+    loadJuan(popover.hit.j)
+      .then(j => {
+        if (cancelled) return;
+        const para = j.paragraphs.find(p => p.id === popover.hit.p) || null;
+        setPopover(prev => (prev && prev.key === myKey ? { ...prev, para } : prev));
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setPopover(prev => (prev && prev.key === myKey ? { ...prev, error: String(err) } : prev));
+      });
+    return () => { cancelled = true; };
+  }, [popover]);
+
+  const openPeek = (key: string, target: HTMLElement, hit: LookupHit) => {
+    clearLeaveTimer();
+    clearEnterTimer();
+    enterTimerRef.current = window.setTimeout(() => {
+      // If the popover is already showing this exact card (e.g. cursor moved
+      // popover → card → popover), keep the existing state — re-creating it
+      // would discard the already-loaded paragraph and flash "loading".
+      setPopover(prev => (
+        prev && prev.key === key
+          ? prev
+          : { key, rect: target.getBoundingClientRect(), hit, para: null, error: null }
+      ));
+    }, 350);
+  };
+  const schedulePeekClose = () => {
+    clearEnterTimer();
+    clearLeaveTimer();
+    leaveTimerRef.current = window.setTimeout(() => setPopover(null), 180);
+  };
+  const keepPeekAlive = () => {
+    // Cursor moved into the popover — cancel any pending close so the user
+    // can scroll and read.
+    clearLeaveTimer();
+  };
 
   // Bring the highlighted card into view (instant scroll) whenever the
   // active paragraph changes. Compensates for the sticky group header.
@@ -207,11 +357,24 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
                       const first = para.hits[0];
                       const multi = para.hits.length > 1;
                       const isActive = isCurrent && highlightPid === para.pid;
+                      const key = `${jg.j}:${para.pid}`;
+                      const handleEnter = (e: React.MouseEvent<HTMLLIElement> | React.FocusEvent<HTMLLIElement>) => {
+                        if (!hoverCapable) return;
+                        openPeek(key, e.currentTarget, first);
+                      };
+                      const handleLeave = () => {
+                        if (!hoverCapable) return;
+                        schedulePeekClose();
+                      };
                       return (
                         <li
                           key={i}
                           ref={isActive ? activeHitRef : undefined}
                           className={`lookup-hit kind-${first.k}${isActive ? ' is-active-hit' : ''}`}
+                          onMouseEnter={handleEnter}
+                          onMouseLeave={handleLeave}
+                          onFocus={handleEnter}
+                          onBlur={handleLeave}
                         >
                           <button
                             type="button"
@@ -253,6 +416,30 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
           );
         })}
       </div>
+      {popover && createPortal(
+        <div
+          className="lookup-popover"
+          role="tooltip"
+          style={popoverStyle(popover.rect)}
+          onMouseEnter={keepPeekAlive}
+          onMouseLeave={schedulePeekClose}
+        >
+          <div className="lookup-popover-head">
+            卷{popover.hit.j} · 段{popover.hit.p}
+            {popover.hit.y !== null && <> · {formatCE(popover.hit.y)}</>}
+          </div>
+          <div className="lookup-popover-body">
+            {popover.error ? (
+              <div className="error small">加载失败：{popover.error}</div>
+            ) : popover.para ? (
+              <FullParagraphInterleaved p={popover.para} q={query} />
+            ) : (
+              <div className="muted small">加载中……</div>
+            )}
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
