@@ -266,11 +266,24 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .lookup-juan-group.is-current {
   border-color: var(--accent);
   background: #f1e1c0;
-  box-shadow: 0 0 0 1px var(--accent) inset;
 }
 .lookup-juan-header {
   display: flex; align-items: baseline; gap: 0.5rem;
-  border-bottom: 1px dotted var(--border); padding-bottom: 0.25rem; margin-bottom: 0.3rem;
+  border-bottom: 1px dotted var(--border);
+  padding-bottom: 0.25rem; margin-bottom: 0.3rem;
+}
+/* Pin the current 卷's header so the prev/next nav stays reachable while
+   scrolling through results. Header sits inside the section's padded box
+   (no negative margins / border tricks) — sticky just pins it cleanly. */
+.lookup-juan-group.is-current .lookup-juan-header {
+  position: sticky;
+  top: -0.4rem;
+  z-index: 2;
+  background: #f1e1c0;
+  padding-top: 0.4rem;
+  margin-top: -0.4rem;
+  border-bottom-color: rgba(122, 59, 46, 0.25);
+  border-bottom-style: solid;
 }
 .lookup-juan-label { font-weight: 600; color: var(--accent); font-size: 0.92rem; }
 .lookup-juan-group.is-current .lookup-juan-label::after {
@@ -293,13 +306,11 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   width: 20px; height: 20px;
   background: transparent; border: 0; padding: 0; cursor: pointer;
   color: var(--accent); border-radius: 999px;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
 }
 .hit-nav-btn svg { width: 12px; height: 12px; display: block; }
 .hit-nav-btn:hover {
   background: var(--accent); color: var(--fg-inv);
 }
-.hit-nav-btn:active { transform: scale(0.92); }
 .hit-nav-btn:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 1px;
 }
@@ -341,6 +352,25 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .lookup-juan-group.is-current .lookup-jump:hover {
   background: #f4dca0;
   border-color: var(--accent);
+}
+/* Card matching the paragraph currently focused by the ↑/↓ nav.
+   Static styling only — no animation — so clicks feel snappy. */
+.lookup-hit.is-active-hit .lookup-jump {
+  background: var(--accent) !important;
+  border: 2px solid #4a1f15 !important;
+  color: var(--fg-inv);
+}
+.lookup-hit.is-active-hit .lookup-snippet,
+.lookup-hit.is-active-hit .lookup-snippet.in-hu { color: var(--fg-inv); }
+.lookup-hit.is-active-hit .lookup-snippet.in-hu::before { color: #f4d8b8; }
+.lookup-hit.is-active-hit .lookup-snippet mark {
+  background: #ffe6a0; color: var(--accent);
+}
+.lookup-hit.is-active-hit .lookup-snippets-multi {
+  border-left-color: rgba(244, 236, 216, 0.6);
+}
+.lookup-hit.is-active-hit .lookup-multi-badge {
+  background: rgba(244, 236, 216, 0.25); color: var(--fg-inv);
 }
 .lookup-snippet {
   display: block; font-size: 0.88rem; line-height: 1.55;

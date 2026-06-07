@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { LookupHit } from './corpus';
 import { loadLookup, searchCorpus } from './corpus';
 
@@ -48,6 +48,28 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [futureCount, setFutureCount] = useState(0);
+  const activeHitRef = useRef<HTMLLIElement | null>(null);
+
+  // Bring the highlighted card into view (instant scroll) whenever the
+  // active paragraph changes. Compensates for the sticky group header.
+  useEffect(() => {
+    const el = activeHitRef.current;
+    if (!el) return;
+    let scroller: HTMLElement | null = el.parentElement;
+    while (scroller && !scroller.classList.contains('lookup-body')) {
+      scroller = scroller.parentElement;
+    }
+    if (!scroller) return;
+    const stickyHeader = scroller.querySelector<HTMLElement>(
+      '.lookup-juan-group.is-current .lookup-juan-header',
+    );
+    const headerH = stickyHeader ? stickyHeader.getBoundingClientRect().height : 0;
+    const elRect = el.getBoundingClientRect();
+    const scRect = scroller.getBoundingClientRect();
+    if (elRect.top >= scRect.top + headerH && elRect.bottom <= scRect.bottom) return;
+    const targetTop = scroller.scrollTop + (elRect.top - scRect.top) - headerH - 8;
+    scroller.scrollTop = Math.max(0, targetTop);
+  }, [highlightPid]);
 
   useEffect(() => {
     if (!query) {
@@ -184,8 +206,13 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
                     return paras.map((para, i) => {
                       const first = para.hits[0];
                       const multi = para.hits.length > 1;
+                      const isActive = isCurrent && highlightPid === para.pid;
                       return (
-                        <li key={i} className={`lookup-hit kind-${first.k}`}>
+                        <li
+                          key={i}
+                          ref={isActive ? activeHitRef : undefined}
+                          className={`lookup-hit kind-${first.k}${isActive ? ' is-active-hit' : ''}`}
+                        >
                           <button
                             type="button"
                             className="lookup-jump"
