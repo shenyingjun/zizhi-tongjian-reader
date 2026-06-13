@@ -348,13 +348,45 @@ export default function App() {
       }, delay);
     };
 
-    const onPointerDown = () => {
+    const onPointerDown = (e: PointerEvent) => {
       dragging = true;
       setHighlightPid(null);
       // Cancel any pending flush from a previous selection — the user is
       // starting fresh.
       if (timer !== null) { window.clearTimeout(timer); timer = null; }
+
+      // If the user mousedowns inside an existing selection, browsers enter
+      // text-drag mode (mouse moves become a native drag-and-drop of the
+      // selected text) instead of starting a fresh selection. In a reader,
+      // dragging text out is near-useless and the inability to re-select on
+      // top of an existing selection is a constant annoyance. Clear the
+      // selection here, BEFORE the browser's mousedown handler decides
+      // drag-vs-select, so the next drag starts cleanly.
+      //
+      // Skip when modifiers are held so shift+click extension and OS gestures
+      // (Ctrl/Cmd, Alt) keep working.
+      if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      const x = e.clientX, y = e.clientY;
+      let insideSelection = false;
+      outer: for (let i = 0; i < sel.rangeCount; i++) {
+        const rects = sel.getRangeAt(i).getClientRects();
+        for (let j = 0; j < rects.length; j++) {
+          const r = rects[j];
+          if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+            insideSelection = true;
+            break outer;
+          }
+        }
+      }
+      if (insideSelection) sel.removeAllRanges();
     };
+
+    // Belt-and-suspenders: even if the browser still tries to start a text
+    // drag (e.g. the pointer was just outside our rect tolerance), cancel
+    // it so the user never sees the drag cursor flicker on the reader.
+    const onDragStart = (e: DragEvent) => { e.preventDefault(); };
     const onPointerUp = () => {
       if (!dragging) return;
       dragging = false;
@@ -378,6 +410,7 @@ export default function App() {
     };
 
     pane.addEventListener('pointerdown', onPointerDown);
+    pane.addEventListener('dragstart', onDragStart);
     // Listen on window so we still hear the release if the user drags
     // out of the reader pane before letting go.
     window.addEventListener('pointerup', onPointerUp);
@@ -385,6 +418,7 @@ export default function App() {
     document.addEventListener('selectionchange', onSelectionChange);
     return () => {
       pane.removeEventListener('pointerdown', onPointerDown);
+      pane.removeEventListener('dragstart', onDragStart);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
       document.removeEventListener('selectionchange', onSelectionChange);
