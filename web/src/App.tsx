@@ -117,7 +117,18 @@ export default function App() {
   // jumping to a specific paragraph from a lookup hit).
   const restoreScrollRef = useRef<boolean>(initialRoute.p === null);
 
+  // `lookupQuery` is what's in the search input and drives the lookup panel.
+  // It updates eagerly — including when the user selects text in the reader.
+  //
+  // `committedQuery` is what the reader body highlights. It only changes on
+  // explicit user actions (typing in the input, clicking "搜出处", URL nav).
+  //
+  // The split exists so that text-selection auto-fill does NOT rebuild the
+  // reader's paragraph text nodes. Doing so would (a) collapse the user's
+  // in-flight selection — making it appear to "jump" while dragging —
+  // and (b) destroy the just-finished selection before Ctrl+C can read it.
   const [lookupQuery, setLookupQuery] = useState<string>(initialRoute.q);
+  const [committedQuery, setCommittedQuery] = useState<string>(initialRoute.q);
   const [filterByJuan, setFilterByJuan] = useState<boolean>(true);
   // Paragraph that should be visually highlighted as the lookup target.
   const [highlightPid, setHighlightPid] = useState<number | null>(initialRoute.p);
@@ -130,21 +141,23 @@ export default function App() {
     loadManifest().then(setManifest).catch(e => setError(String(e)));
   }, []);
 
-  // Push URL on juanNo / query / highlight change (unless coming from popstate).
+  // Push URL on juanNo / committed query / highlight change (unless coming from popstate).
+  // We intentionally key off `committedQuery` rather than `lookupQuery` so that
+  // passive selection auto-fills don't spam the browser history.
   useEffect(() => {
     if (skipUrlSyncRef.current) {
       skipUrlSyncRef.current = false;
       // Still seed the initial hash so the first state is bookmarkable.
-      const hash = buildHash(juanNo, lookupQuery, highlightPid);
+      const hash = buildHash(juanNo, committedQuery, highlightPid);
       if (window.location.hash !== hash) {
         window.history.replaceState(null, '', hash);
       }
       return;
     }
-    const hash = buildHash(juanNo, lookupQuery, highlightPid);
+    const hash = buildHash(juanNo, committedQuery, highlightPid);
     if (window.location.hash === hash) return;
     window.history.pushState(null, '', hash);
-  }, [juanNo, lookupQuery, highlightPid]);
+  }, [juanNo, committedQuery, highlightPid]);
 
   // React to browser back/forward.
   useEffect(() => {
@@ -155,6 +168,7 @@ export default function App() {
       if (r.p !== null) pendingScrollRef.current = r.p;
       setHighlightPid(r.p);
       setLookupQuery(r.q);
+      setCommittedQuery(r.q);
       setJuanNo(r.juanNo);
     };
     window.addEventListener('popstate', onPop);
@@ -262,13 +276,27 @@ export default function App() {
   }, [juan, juanNo]);
 
   // Capture text selection within the reader pane to drive the lookup.
-  // - selectionchange (vs. mouseup) reliably fires for both pointer and touch
-  //   gestures, so this works on mobile where mouseup is unreliable after
-  //   the OS text-selection long-press.
-  // - On hover-capable devices the selection auto-fills the always-visible
-  //   search input (existing behavior). On touch the lookup drawer is hidden
-  //   by default, so we defer setting the query until the user explicitly
-  //   taps the floating "搜出处" pill — making "I'm just copying" still work.
+  //
+  // Two important rules keep the user's selection stable:
+  //
+  //   1. We never call `setLookupQuery` while the user is actively dragging
+  //      (between pointerdown and pointerup). A React state update here would
+  //      re-render the LookupPanel and, more critically, could trigger work
+  //      that runs on the same frame as the browser updating the selection —
+  //      contributing to the "jumpy" feel.
+  //
+  //   2. We only ever write to `lookupQuery` (the input value + lookup panel
+  //      query), never to `committedQuery`. That means the reader's paragraph
+  //      DOM — and therefore the user's live Selection range — is never torn
+  //      down by a selection-driven update. This is what makes drag-extend
+  //      and Ctrl+C reliable.
+  //
+  // selectionchange (vs. mouseup) reliably fires for both pointer and touch
+  // gestures, so this works on mobile where mouseup is unreliable after
+  // the OS text-selection long-press. On hover-capable devices the selection
+  // auto-fills the always-visible search input. On touch the lookup drawer
+  // is hidden by default, so we defer until the user explicitly taps the
+  // floating "搜出处" pill — making "I'm just copying" still work.
   const hoverCapable = useMemo(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return false;
     try { return window.matchMedia('(hover: hover)').matches; } catch { return false; }
@@ -278,43 +306,87 @@ export default function App() {
   useEffect(() => {
     const pane = readerPaneRef.current;
     if (!pane) return;
-    const onPointerDown = () => setHighlightPid(null);
-    pane.addEventListener('pointerdown', onPointerDown);
 
+    let dragging = false;
     let timer: number | null = null;
-    const onSelectionChange = () => {
+
+    const flushSelection = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) {
+        setPendingSelection(null);
+        return;
+      }
+      const txt = sel.toString().trim();
+      if (!txt || txt.length > 20) {
+        setPendingSelection(null);
+        return;
+      }
+      const anchor = sel.anchorNode;
+      const anchorEl = anchor instanceof Element ? anchor : anchor?.parentElement ?? null;
+      if (!anchorEl || !pane.contains(anchorEl)) {
+        setPendingSelection(null);
+        return;
+      }
+      if (hoverCapable) {
+        // Fill the input + lookup panel only. Do NOT touch committedQuery —
+        // re-rendering the reader body would collapse this very selection.
+        setLookupQuery(prev => (prev === txt ? prev : txt));
+        setPendingSelection(null);
+      } else {
+        setPendingSelection(prev => (prev === txt ? prev : txt));
+      }
+    };
+
+    const scheduleFlush = (delay: number) => {
       if (timer !== null) window.clearTimeout(timer);
-      // Debounce: iOS fires many selectionchange events while dragging the
-      // selection handles. Wait for it to settle before acting.
       timer = window.setTimeout(() => {
         timer = null;
-        const sel = window.getSelection();
-        if (!sel || sel.isCollapsed) {
-          setPendingSelection(null);
-          return;
-        }
-        const txt = sel.toString().trim();
-        if (!txt || txt.length > 20) {
-          setPendingSelection(null);
-          return;
-        }
-        const anchor = sel.anchorNode;
-        const anchorEl = anchor instanceof Element ? anchor : anchor?.parentElement ?? null;
-        if (!anchorEl || !pane.contains(anchorEl)) {
-          setPendingSelection(null);
-          return;
-        }
-        if (hoverCapable) {
-          setLookupQuery(txt);
-          setPendingSelection(null);
-        } else {
-          setPendingSelection(txt);
-        }
-      }, 350);
+        // If the user started a new drag while we were waiting, bail —
+        // pointerup will reschedule.
+        if (dragging) return;
+        flushSelection();
+      }, delay);
     };
+
+    const onPointerDown = () => {
+      dragging = true;
+      setHighlightPid(null);
+      // Cancel any pending flush from a previous selection — the user is
+      // starting fresh.
+      if (timer !== null) { window.clearTimeout(timer); timer = null; }
+    };
+    const onPointerUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      // Selection's final state may settle one tick after pointerup
+      // (Chrome fires a trailing selectionchange). A short delay catches it
+      // without making the lookup panel feel laggy.
+      scheduleFlush(60);
+    };
+    const onPointerCancel = () => {
+      dragging = false;
+    };
+
+    const onSelectionChange = () => {
+      // While the user is mid-drag, do nothing. Any state update fanning
+      // out to the lookup panel here can cause jank that visibly disturbs
+      // the selection. pointerup will pick up the final range.
+      if (dragging) return;
+      // Touch / keyboard / programmatic selection: debounce briefly to
+      // coalesce iOS's flurry of events while dragging the selection handles.
+      scheduleFlush(200);
+    };
+
+    pane.addEventListener('pointerdown', onPointerDown);
+    // Listen on window so we still hear the release if the user drags
+    // out of the reader pane before letting go.
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
     document.addEventListener('selectionchange', onSelectionChange);
     return () => {
       pane.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
       document.removeEventListener('selectionchange', onSelectionChange);
       if (timer !== null) window.clearTimeout(timer);
     };
@@ -503,7 +575,7 @@ export default function App() {
             ? <Reader
                 juan={juan}
                 showHu={showHu}
-                highlightQuery={lookupQuery}
+                highlightQuery={committedQuery}
                 highlightPid={highlightPid}
               />
             : <div className="loading">载入卷 {juanNo} 中……</div>}
@@ -526,13 +598,19 @@ export default function App() {
                 className="lookup-input"
                 value={lookupQuery}
                 placeholder="选中正文或在此输入"
-                onChange={e => { setHighlightPid(null); setLookupQuery(e.target.value); }}
+                onChange={e => {
+                  setHighlightPid(null);
+                  setLookupQuery(e.target.value);
+                  // Typing in the input is an explicit search action — commit
+                  // so the reader body highlights too.
+                  setCommittedQuery(e.target.value);
+                }}
               />
               {lookupQuery && (
                 <button
                   type="button"
                   className="lookup-clear"
-                  onClick={() => { setHighlightPid(null); setLookupQuery(''); }}
+                  onClick={() => { setHighlightPid(null); setLookupQuery(''); setCommittedQuery(''); }}
                   title="清除"
                 >×</button>
               )}
@@ -573,6 +651,8 @@ export default function App() {
             onClick={() => {
               const q = pendingSelection;
               setLookupQuery(q);
+              // Explicit user action — commit so the reader body highlights.
+              setCommittedQuery(q);
               setShowLookup(true);
               setPendingSelection(null);
               // Drop the OS selection so its menu and our pill both go away;
