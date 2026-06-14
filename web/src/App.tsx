@@ -108,8 +108,21 @@ export default function App() {
     });
   };
   const [activeParagraphId, setActiveParagraphId] = useState<number | null>(null);
+  // Pid of a year the user explicitly clicked in YearToc. When set, the
+  // YearToc highlight uses this directly rather than the scroll-derived
+  // activeParagraphId — so the highlight stays locked on what the user
+  // clicked, immune to any mid-animation overshoot or end-of-pane edge
+  // cases (last year unreachable, year-with-no-body, etc.). Cleared when
+  // the user does a real scroll.
+  const [selectedYearPid, setSelectedYearPid] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const readerPaneRef = useRef<HTMLDivElement | null>(null);
+  // True while a programmatic scroll (year click, lookup jump) is in flight.
+  // During this window the scroll handler must not update activeParagraphId —
+  // measureTarget re-estimates mid-animation as paragraphs paint and can
+  // briefly overshoot, which otherwise causes the YearToc highlight to flash
+  // to the wrong year before settling.
+  const programmaticScrollRef = useRef<boolean>(false);
   const [readJuans, setReadJuans] = useState<Set<number>>(() => loadReadJuans());
   const scrollMapRef = useRef<Record<number, number>>(loadScrollMap());
   // Whether the juan currently being loaded should restore its saved scroll
@@ -186,6 +199,7 @@ export default function App() {
       .then(j => {
         if (cancelled) return;
         setActiveParagraphId(null);
+        setSelectedYearPid(null);
         setJuan(j);
         localStorage.setItem(LAST_JUAN_KEY, String(juanNo));
         if (pendingScrollRef.current === null && readerPaneRef.current) {
@@ -234,15 +248,34 @@ export default function App() {
     if (!pane) return;
     let saveTimer: number | null = null;
     const onScroll = () => {
+      const paneRect = pane.getBoundingClientRect();
+      // ".paragraph" has no positioned ancestor, so el.offsetTop is body-
+      // relative, not pane-relative, and mixing it with pane.scrollTop gave
+      // increasingly wrong answers further down a juan (which made YearToc
+      // highlight year N-1 after jumping to year N). Use rects in the pane's
+      // coordinate space instead.
+      const anchorY = paneRect.top + 80;
       const paraEls = pane.querySelectorAll<HTMLElement>('[data-pid]');
-      const top = pane.scrollTop + 80;
       let activePid: number | null = null;
       for (const el of paraEls) {
-        const offset = el.offsetTop;
-        if (offset <= top) activePid = Number(el.dataset.pid);
+        const top = el.getBoundingClientRect().top;
+        if (top <= anchorY) activePid = Number(el.dataset.pid);
         else break;
       }
-      setActiveParagraphId(activePid);
+      // When the pane is scrolled to its very end the last year's heading may
+      // sit below the anchor line (the pane can't scroll any further), which
+      // would otherwise leave it un-highlightable. Snap to the last paragraph
+      // so the bottom-most year always wins at the bottom of the juan.
+      const atBottom = pane.scrollHeight - (pane.scrollTop + pane.clientHeight) <= 2;
+      if (atBottom && paraEls.length > 0) {
+        activePid = Number(paraEls[paraEls.length - 1].dataset.pid);
+      }
+      // Skip overriding the active paragraph while a programmatic scroll is
+      // animating — the click handler has already set the desired pid and
+      // mid-animation overshoot would only cause a flicker.
+      if (!programmaticScrollRef.current) {
+        setActiveParagraphId(activePid);
+      }
 
       // Persist scroll position (debounced).
       if (saveTimer !== null) window.clearTimeout(saveTimer);
@@ -269,9 +302,25 @@ export default function App() {
     };
     onScroll();
     pane.addEventListener('scroll', onScroll, { passive: true });
+
+    // Clear the YearToc "selected year" lock ONLY on real user-initiated
+    // scroll gestures. We can't use the generic `scroll` event for this —
+    // programmatic scrollTop writes (and their trailing async scroll events
+    // that may sneak through right after our lock clears) would otherwise
+    // drop the lock and let the YearToc highlight flicker to a neighboring
+    // year. Wheel / touchmove / keyboard on the pane are unambiguous user
+    // gestures, so they're safe signals.
+    const dropSelection = () => setSelectedYearPid(null);
+    pane.addEventListener('wheel', dropSelection, { passive: true });
+    pane.addEventListener('touchmove', dropSelection, { passive: true });
+    pane.addEventListener('keydown', dropSelection);
+
     return () => {
       if (saveTimer !== null) window.clearTimeout(saveTimer);
       pane.removeEventListener('scroll', onScroll);
+      pane.removeEventListener('wheel', dropSelection);
+      pane.removeEventListener('touchmove', dropSelection);
+      pane.removeEventListener('keydown', dropSelection);
     };
   }, [juan, juanNo]);
 
@@ -456,6 +505,26 @@ export default function App() {
     let startTime: number | null = null;
     const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
+    programmaticScrollRef.current = true;
+    // Defer unlock past the trailing scroll event and explicitly set the
+    // final activeParagraphId. Setting pane.scrollTop dispatches `scroll`
+    // asynchronously; if we cleared the flag synchronously at the end of
+    // settle, that final event would run the handler and set
+    // activeParagraphId to whatever the anchor heuristic picks (which can
+    // legitimately differ from `pid` — the paragraph just below a short
+    // year heading, or the next year's heading when this year has no body).
+    // Two rAFs reliably outlive the trailing event; the setActiveParagraphId
+    // makes the post-animation state authoritative regardless of which
+    // entry point (year click, lookup hit) initiated the jump.
+    const finish = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          programmaticScrollRef.current = false;
+          setActiveParagraphId(pid);
+        });
+      });
+    };
+
     const animate = (now: number) => {
       if (startTime === null) startTime = now;
       const progress = Math.min(1, (now - startTime) / DURATION);
@@ -463,6 +532,7 @@ export default function App() {
       if (target === null) {
         // Element not in DOM yet; try again next frame.
         if (progress < 1) requestAnimationFrame(animate);
+        else finish();
         return;
       }
       pane.scrollTop = start + (target - start) * easeOutCubic(progress);
@@ -473,9 +543,10 @@ export default function App() {
         let settleAttempts = 0;
         const settle = () => {
           const t = measureTarget();
-          if (t === null) return;
+          if (t === null) { finish(); return; }
           if (Math.abs(t - pane.scrollTop) > 2) pane.scrollTop = t;
           if (settleAttempts++ < 3) requestAnimationFrame(settle);
+          else finish();
         };
         settle();
       }
@@ -620,7 +691,17 @@ export default function App() {
           <YearToc
             years={juan.years}
             activeParagraphId={activeParagraphId}
-            onJump={pid => { setHighlightPid(null); jumpToParagraph(pid); }}
+            selectedYearPid={selectedYearPid}
+            onJump={pid => {
+              setHighlightPid(null);
+              // Lock the YearToc highlight on the clicked year. Decoupled
+              // from activeParagraphId so end-of-pane / no-body edge cases
+              // and any trailing scroll events from the animation can't
+              // shift it. scrollParagraphIntoView's finish() updates
+              // activeParagraphId itself once the scroll settles.
+              setSelectedYearPid(pid);
+              jumpToParagraph(pid);
+            }}
           />
         )}
         <div className="lookup-section">

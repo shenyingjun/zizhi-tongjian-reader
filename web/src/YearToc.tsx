@@ -4,6 +4,11 @@ import type { YearEntry } from './corpus';
 interface Props {
   years: YearEntry[];
   activeParagraphId: number | null;
+  /** When set, takes precedence over scroll-derived active year. Lets a
+   *  year clicked in this TOC stay highlighted even if scroll-tracking would
+   *  otherwise pick a neighboring year (last-year edge case, year with no
+   *  body paragraphs, trailing scroll events from the jump animation). */
+  selectedYearPid?: number | null;
   onJump: (paragraphId: number) => void;
 }
 
@@ -13,9 +18,9 @@ function formatCE(ce: number | null): string {
   return String(ce);
 }
 
-export default function YearToc({ years, activeParagraphId, onJump }: Props) {
+export default function YearToc({ years, activeParagraphId, selectedYearPid, onJump }: Props) {
   // Determine which year is currently active (largest paragraph_id <= active).
-  const activeYear = useMemo(() => {
+  const scrollActiveYear = useMemo(() => {
     if (activeParagraphId === null) return null;
     let last: YearEntry | null = null;
     for (const y of years) {
@@ -24,6 +29,14 @@ export default function YearToc({ years, activeParagraphId, onJump }: Props) {
     }
     return last;
   }, [years, activeParagraphId]);
+  // An explicit click takes precedence over the scroll-derived guess.
+  const activeYear = useMemo(() => {
+    if (selectedYearPid != null) {
+      const match = years.find(y => y.paragraph_id === selectedYearPid);
+      if (match) return match;
+    }
+    return scrollActiveYear;
+  }, [years, selectedYearPid, scrollActiveYear]);
 
   if (!years.length) return null;
 
