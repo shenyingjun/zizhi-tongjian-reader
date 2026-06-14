@@ -90,6 +90,10 @@ export default function App() {
     return true;
   });
   const [showLookup, setShowLookup] = useState<boolean>(false);
+  // Mobile-only right-side drawer dedicated to 本卷纪年. Kept separate from
+  // the search/lookup drawer so search keeps its full vertical space in
+  // landscape (where the screen is already short).
+  const [showYearDrawer, setShowYearDrawer] = useState<boolean>(false);
   // Font size scale for the reader body — persisted so iOS / mobile users
   // who can't comfortably pinch-zoom (and would lose layout if they did)
   // have a stable way to bump up text size. Desktop benefits too.
@@ -323,6 +327,67 @@ export default function App() {
       pane.removeEventListener('keydown', dropSelection);
     };
   }, [juan, juanNo]);
+
+  // Edge-swipe gestures on mobile open the side drawers:
+  //   - left-edge → 卷 navigation sidebar
+  //   - right-edge → 本卷纪年 drawer
+  // Search has its own button and is not gesture-bound (search isn't a
+  // high-frequency action while reading and we don't want every swipe-right
+  // to accidentally pop up the search panel).
+  //
+  // Notes:
+  //   - In Safari (not standalone PWA) iOS reserves edge swipes for browser
+  //     back/forward; the system gesture usually wins. The sidebar still has
+  //     its toolbar button as a fallback; 本卷纪年 is gesture-only by design.
+  //   - The trigger zone is a thin strip (24px) so reader text selection is
+  //     not affected by touches that start inside the body.
+  useEffect(() => {
+    const EDGE = 24;
+    const THRESHOLD_X = 50;
+    const MAX_OFF_AXIS = 35;
+    let startX: number | null = null;
+    let startY = 0;
+    let fromLeft = false;
+    let fromRight = false;
+
+    const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
+
+    const onTouchStart = (e: TouchEvent) => {
+      // Multi-touch (e.g. pinch-zoom) is not a drawer-open intent.
+      if (e.touches.length !== 1 || !isMobile()) { startX = null; return; }
+      const t = e.touches[0];
+      const w = window.innerWidth;
+      fromLeft = t.clientX <= EDGE;
+      fromRight = t.clientX >= w - EDGE;
+      if (!fromLeft && !fromRight) { startX = null; return; }
+      startX = t.clientX;
+      startY = t.clientY;
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (startX === null) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      startX = null;
+      if (Math.abs(dy) > MAX_OFF_AXIS) return;
+      if (fromLeft && dx > THRESHOLD_X) {
+        setShowSidebar(true);
+        setShowLookup(false);
+        setShowYearDrawer(false);
+      } else if (fromRight && dx < -THRESHOLD_X) {
+        setShowYearDrawer(true);
+        setShowSidebar(false);
+        setShowLookup(false);
+      }
+    };
+    document.addEventListener('touchstart', onTouchStart, { passive: true });
+    document.addEventListener('touchend', onTouchEnd, { passive: true });
+    document.addEventListener('touchcancel', () => { startX = null; }, { passive: true });
+    return () => {
+      document.removeEventListener('touchstart', onTouchStart);
+      document.removeEventListener('touchend', onTouchEnd);
+    };
+  }, []);
 
   // Capture text selection within the reader pane to drive the lookup.
   //
@@ -585,7 +650,7 @@ export default function App() {
   // (Spoiler filter is now juan-based, so no need to compute a year cutoff.)
 
   return (
-    <div className={`layout${showSidebar ? '' : ' sidebar-collapsed'}${showLookup ? ' lookup-open' : ''}`}>
+    <div className={`layout${showSidebar ? '' : ' sidebar-collapsed'}${showLookup ? ' lookup-open' : ''}${showYearDrawer ? ' year-drawer-open' : ''}`}>
       <Sidebar
         manifest={manifest}
         currentJuan={juanNo}
@@ -593,7 +658,10 @@ export default function App() {
         onSelect={n => {
           setHighlightPid(null);
           setJuanNo(n);
-          if (isMobileWidth()) setShowSidebar(false);
+          if (isMobileWidth()) {
+            setShowSidebar(false);
+            setShowYearDrawer(false);
+          }
         }}
       />
       <main className="reader-pane" style={{ ['--reader-font-scale' as any]: fontScale }}>
@@ -601,7 +669,11 @@ export default function App() {
           <button
             type="button"
             className="sidebar-toggle"
-            onClick={() => setShowSidebar(s => !s)}
+            onClick={() => setShowSidebar(s => {
+              const next = !s;
+              if (next && isMobileWidth()) { setShowLookup(false); setShowYearDrawer(false); }
+              return next;
+            })}
             title={showSidebar ? '隐藏目录' : '显示目录'}
             aria-label={showSidebar ? '隐藏目录' : '显示目录'}
           >
@@ -663,7 +735,11 @@ export default function App() {
           <button
             type="button"
             className="lookup-toggle"
-            onClick={() => setShowLookup(s => !s)}
+            onClick={() => setShowLookup(s => {
+              const next = !s;
+              if (next && isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+              return next;
+            })}
             title={showLookup ? '隐藏检索' : '出处检索'}
             aria-label={showLookup ? '隐藏检索' : '出处检索'}
           >
@@ -750,9 +826,27 @@ export default function App() {
           </div>
         </div>
       </aside>
+      {/* Mobile-only right-side drawer for 本卷纪年. Opened by swiping left
+          from the right edge of the screen (no header button by design — the
+          gesture is the only opener). Backdrop tap closes it. */}
+      <aside className="year-drawer" aria-hidden={!showYearDrawer}>
+        {juan && (
+          <YearToc
+            years={juan.years}
+            activeParagraphId={activeParagraphId}
+            selectedYearPid={selectedYearPid}
+            onJump={pid => {
+              setHighlightPid(null);
+              setSelectedYearPid(pid);
+              jumpToParagraph(pid);
+              if (isMobileWidth()) setShowYearDrawer(false);
+            }}
+          />
+        )}
+      </aside>
       <div
         className="drawer-backdrop"
-        onClick={() => { setShowSidebar(false); setShowLookup(false); }}
+        onClick={() => { setShowSidebar(false); setShowLookup(false); setShowYearDrawer(false); }}
         aria-hidden="true"
       />
       {pendingSelection && createPortal(
