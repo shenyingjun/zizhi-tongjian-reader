@@ -335,12 +335,23 @@ export default function App() {
   // high-frequency action while reading and we don't want every swipe-right
   // to accidentally pop up the search panel).
   //
+  // When a drawer is already open, a swipe in the closing direction
+  // dismisses it (swipe left for the sidebar, swipe right for the right-
+  // side drawers). Close gestures may start anywhere — they don't require
+  // the edge strip — so the user can grab the drawer itself and shove it.
+  //
   // Notes:
   //   - In Safari (not standalone PWA) iOS reserves edge swipes for browser
   //     back/forward; the system gesture usually wins. The sidebar still has
   //     its toolbar button as a fallback; 本卷纪年 is gesture-only by design.
   //   - The trigger zone is a thin strip (24px) so reader text selection is
   //     not affected by touches that start inside the body.
+  const drawerStateRef = useRef({ sidebar: false, lookup: false, year: false });
+  drawerStateRef.current = {
+    sidebar: showSidebar,
+    lookup: showLookup,
+    year: showYearDrawer,
+  };
   useEffect(() => {
     const EDGE = 24;
     const THRESHOLD_X = 50;
@@ -353,13 +364,19 @@ export default function App() {
     const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
 
     const onTouchStart = (e: TouchEvent) => {
-      // Multi-touch (e.g. pinch-zoom) is not a drawer-open intent.
+      // Multi-touch (e.g. pinch-zoom) is not a drawer gesture.
       if (e.touches.length !== 1 || !isMobile()) { startX = null; return; }
       const t = e.touches[0];
       const w = window.innerWidth;
       fromLeft = t.clientX <= EDGE;
       fromRight = t.clientX >= w - EDGE;
-      if (!fromLeft && !fromRight) { startX = null; return; }
+      const anyOpen = drawerStateRef.current.sidebar
+        || drawerStateRef.current.lookup
+        || drawerStateRef.current.year;
+      // Only track the gesture if it could possibly do something:
+      // either it starts in an edge strip (potential open) or a drawer
+      // is already open (potential close).
+      if (!fromLeft && !fromRight && !anyOpen) { startX = null; return; }
       startX = t.clientX;
       startY = t.clientY;
     };
@@ -370,22 +387,33 @@ export default function App() {
       const dy = t.clientY - startY;
       startX = null;
       if (Math.abs(dy) > MAX_OFF_AXIS) return;
-      if (fromLeft && dx > THRESHOLD_X) {
+      if (Math.abs(dx) < THRESHOLD_X) return;
+
+      const { sidebar, lookup, year } = drawerStateRef.current;
+      // Close gestures win over open gestures so the user can dismiss a
+      // drawer without an accidental re-open on the opposite edge.
+      if (sidebar && dx < 0) { setShowSidebar(false); return; }
+      if (year && dx > 0) { setShowYearDrawer(false); return; }
+      if (lookup && dx > 0) { setShowLookup(false); return; }
+
+      if (fromLeft && dx > 0) {
         setShowSidebar(true);
         setShowLookup(false);
         setShowYearDrawer(false);
-      } else if (fromRight && dx < -THRESHOLD_X) {
+      } else if (fromRight && dx < 0) {
         setShowYearDrawer(true);
         setShowSidebar(false);
         setShowLookup(false);
       }
     };
+    const onTouchCancel = () => { startX = null; };
     document.addEventListener('touchstart', onTouchStart, { passive: true });
     document.addEventListener('touchend', onTouchEnd, { passive: true });
-    document.addEventListener('touchcancel', () => { startX = null; }, { passive: true });
+    document.addEventListener('touchcancel', onTouchCancel, { passive: true });
     return () => {
       document.removeEventListener('touchstart', onTouchStart);
       document.removeEventListener('touchend', onTouchEnd);
+      document.removeEventListener('touchcancel', onTouchCancel);
     };
   }, []);
 
