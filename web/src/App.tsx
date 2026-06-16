@@ -444,6 +444,13 @@ export default function App() {
     try { return window.matchMedia('(hover: hover)').matches; } catch { return false; }
   }, []);
   const [pendingSelection, setPendingSelection] = useState<string | null>(null);
+  // Text of the current reader selection, used to paint yellow highlights on
+  // every other occurrence via the CSS Custom Highlight API. We intentionally
+  // do NOT route this through committedQuery / <mark> wrapping: rebuilding the
+  // reader text nodes would collapse the user's live selection and break
+  // Ctrl+C. Custom highlights are painted over the existing DOM, leaving the
+  // selection (and clipboard) untouched.
+  const [selectionMatch, setSelectionMatch] = useState<string>('');
 
   useEffect(() => {
     const pane = readerPaneRef.current;
@@ -456,19 +463,23 @@ export default function App() {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) {
         setPendingSelection(null);
+        setSelectionMatch('');
         return;
       }
       const txt = sel.toString().trim();
       if (!txt || txt.length > 20) {
         setPendingSelection(null);
+        setSelectionMatch('');
         return;
       }
       const anchor = sel.anchorNode;
       const anchorEl = anchor instanceof Element ? anchor : anchor?.parentElement ?? null;
       if (!anchorEl || !pane.contains(anchorEl)) {
         setPendingSelection(null);
+        setSelectionMatch('');
         return;
       }
+      setSelectionMatch(prev => (prev === txt ? prev : txt));
       if (hoverCapable) {
         // Fill the input + lookup panel only. Do NOT touch committedQuery —
         // re-rendering the reader body would collapse this very selection.
@@ -567,6 +578,45 @@ export default function App() {
       if (timer !== null) window.clearTimeout(timer);
     };
   }, [juan, hoverCapable]);
+
+  // Paint a yellow highlight over every other occurrence of the selected text.
+  // Uses the CSS Custom Highlight API so the existing reader DOM (and thus the
+  // user's live selection + clipboard) is never rebuilt. Falls back to a no-op
+  // on browsers without the API.
+  useEffect(() => {
+    const cssHighlights = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
+    const HighlightCtor = (window as unknown as { Highlight?: new (...ranges: Range[]) => unknown }).Highlight;
+    if (!cssHighlights || !HighlightCtor) return;
+    const HL_NAME = 'selection-match';
+    const pane = readerPaneRef.current;
+    const q = selectionMatch;
+    if (!pane || !q) {
+      cssHighlights.delete(HL_NAME);
+      return;
+    }
+    const ranges: Range[] = [];
+    const walker = document.createTreeWalker(pane, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const text = node.nodeValue ?? '';
+      let from = 0;
+      while (true) {
+        const idx = text.indexOf(q, from);
+        if (idx < 0) break;
+        const r = document.createRange();
+        r.setStart(node, idx);
+        r.setEnd(node, idx + q.length);
+        ranges.push(r);
+        from = idx + q.length;
+      }
+    }
+    if (ranges.length) {
+      cssHighlights.set(HL_NAME, new HighlightCtor(...ranges));
+    } else {
+      cssHighlights.delete(HL_NAME);
+    }
+    return () => { cssHighlights.delete(HL_NAME); };
+  }, [selectionMatch, juan, showHu, committedQuery]);
 
   // Scroll the given paragraph into view. Reliable even with
   // .paragraph { content-visibility: auto }, which makes offsetTop and

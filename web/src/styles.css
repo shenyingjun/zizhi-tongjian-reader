@@ -781,6 +781,12 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   box-shadow: 0 0 0 1px #d9b860;
 }
 
+/* Highlight every other occurrence of the currently selected text. Painted via
+   the CSS Custom Highlight API so the live selection / clipboard is untouched. */
+::highlight(selection-match) {
+  background: #ffe6a0;
+}
+
 /* Pulse the paragraph the user jumped to, then keep a soft tint so it
    stays easy to spot until the next navigation. */
 @keyframes target-pulse {
