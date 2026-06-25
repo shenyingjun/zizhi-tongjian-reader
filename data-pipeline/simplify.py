@@ -29,7 +29,32 @@ cc = OpenCC("t2s")
 #   乾 (qián, dry/heaven/era-name) — OpenCC maps to 干 (do/shield), wrecking
 #     names like 李承乾 and era names 乾元/乾封/乾化/乾符/乾寧/乾德 etc. Even
 #     modern simplified text keeps 乾 in 乾隆/乾坤 by convention.
-_PRESERVE_CHARS = "乾"
+_EXPLICIT_PRESERVE = "乾"
+
+
+def _tofu_preserve_chars() -> str:
+    """Traditional chars (BMP / CJK-Ext-A, widely renderable) that OpenCC maps to
+    an obscure supplementary-plane ideograph (CJK Ext B/C/D/...). Almost no system
+    font carries those glyphs, so the "simplified" form shows up as a tofu box (□).
+    These are overwhelmingly rare proper nouns where the traditional form is the
+    canonical, recognizable shape — so we keep the traditional char instead.
+
+    Scanned dynamically so the set stays correct if the OpenCC dictionary changes.
+    """
+    out: list[str] = []
+    # CJK Ext A, CJK Unified, CJK Compatibility Ideographs.
+    for lo, hi in ((0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xF900, 0xFAFF)):
+        for cp in range(lo, hi + 1):
+            ch = chr(cp)
+            s = cc.convert(ch)
+            if len(s) == 1 and ord(s) > 0xFFFF:
+                out.append(ch)
+    return "".join(out)
+
+
+# 乾 first, then the auto-detected tofu-producing chars. PUA (U+E000–U+F8FF, 6400
+# slots) comfortably holds the ~170 entries.
+_PRESERVE_CHARS = _EXPLICIT_PRESERVE + _tofu_preserve_chars()
 _PRESERVE_MAP = {ch: chr(0xE000 + i) for i, ch in enumerate(_PRESERVE_CHARS)}
 _PRESERVE_TR = str.maketrans(_PRESERVE_MAP)
 _RESTORE_TR = str.maketrans({v: k for k, v in _PRESERVE_MAP.items()})

@@ -69,6 +69,25 @@ EMPEROR_RE = re.compile(
 
 SEASON_RE = re.compile(r"^(春|夏|秋|冬)(正月|[一二三四五六七八九十]+月)?$")
 
+# Numbered-event markers prefixing each 纲目 item: circled numbers ①–⑳
+# (U+2460–2473), ㉑–㉟ (U+3251–325F), ㊱–㊿ (U+32B1–32BF). A paragraph beginning
+# with one of these starts a fresh event and therefore ends any open 臣光曰 /
+# historian commentary block that precedes it.
+_MARKER_RANGES = ((0x2460, 0x2473), (0x3251, 0x325F), (0x32B1, 0x32BF))
+
+
+def starts_with_marker(text: str) -> bool:
+    t = text.strip()
+    if not t:
+        return False
+    cp = ord(t[0])
+    return any(lo <= cp <= hi for lo, hi in _MARKER_RANGES)
+
+
+# Wikisource public-domain license boilerplate that trails every 卷 as the final
+# paragraph. It must never be folded into a commentary block.
+_DISCLAIMER_RE = re.compile(r"^此作品")
+
 # Match the CE start anchor in 卷 title. Tongjian uses two formats:
 #   1) "起戊寅（前403）" or "起癸亥(3)"  — main format
 #   2) "丙申(936)一年"                  — sometimes no 起 prefix (single-year 卷)
@@ -194,8 +213,24 @@ def annotate_juan(data: dict) -> dict:
     prev_era: str | None = None
     first_year_seen = False
 
+    in_commentary = False
     for p in data["paragraphs"]:
         typ = classify(p["main"])
+        # A 臣光曰 / 太史公曰 / 荀悦论曰 … commentary often runs across several
+        # paragraphs (the historian's full argument). Only the opener matches the
+        # commentary regex; classify() tags the continuation paragraphs as "event".
+        # Carry the commentary type forward until the next structural break:
+        # a new numbered event marker, a year/emperor/season heading, or the
+        # trailing license disclaimer.
+        if typ == "commentary":
+            in_commentary = True
+        elif typ in ("year", "emperor", "season"):
+            in_commentary = False
+        elif in_commentary:
+            if starts_with_marker(p["main"]) or _DISCLAIMER_RE.match(p["main"].strip()):
+                in_commentary = False
+            else:
+                typ = "commentary"
         p["type"] = typ
         if typ == "emperor":
             cur_emperor = p["main"].strip()
