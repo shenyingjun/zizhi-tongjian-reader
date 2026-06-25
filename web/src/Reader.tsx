@@ -12,7 +12,6 @@ interface Props {
   guideMode: 'off' | 'brief' | 'full';
   // anchor_pid → reviewed editorial summary for this 卷.
   guideByAnchorPid: Map<number, GuideSummary>;
-  onGuideJump: (pid: number) => void;
   onPersonSearch: (query: string) => void;
 }
 
@@ -70,7 +69,7 @@ function ParagraphView({
 
 export default function Reader({
   juan, showHu, highlightQuery, highlightPid,
-  guideMode, guideByAnchorPid, onGuideJump, onPersonSearch,
+  guideMode, guideByAnchorPid, onPersonSearch,
 }: Props) {
   return (
     <article className="reader-body">
@@ -92,7 +91,6 @@ export default function Reader({
                   key={`guide-${p.id}-${guideMode}`}
                   summary={guide}
                   mode={guideMode === 'full' ? 'full' : 'brief'}
-                  onJump={onGuideJump}
                   onPersonSearch={onPersonSearch}
                 />
               ) : null

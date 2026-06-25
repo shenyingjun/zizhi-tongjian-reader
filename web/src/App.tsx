@@ -960,7 +960,6 @@ export default function App() {
                 highlightPid={highlightPid}
                 guideMode={guideMode}
                 guideByAnchorPid={guideByAnchorPid}
-                onGuideJump={jumpToParagraph}
                 onPersonSearch={searchFor}
               />
             : <div className="loading">载入卷 {juanNo} 中……</div>}

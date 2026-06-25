@@ -6,13 +6,11 @@ interface Props {
   // Global default reading mode. 'off' is handled by the caller (block not
   // rendered at all); here we only ever see 'brief' or 'full'.
   mode: 'brief' | 'full';
-  // Jump the reader body to a paragraph id (reuses scrollParagraphIntoView).
-  onJump: (pid: number) => void;
   // Look a person up via the existing 出处检索.
   onPersonSearch: (query: string) => void;
 }
 
-export default function GuideBlock({ summary, mode, onJump, onPersonSearch }: Props) {
+export default function GuideBlock({ summary, mode, onPersonSearch }: Props) {
   // Per-block expand is LOCAL — independent of the global mode. In 'full'
   // mode every block is already expanded and the toggle is hidden; switching
   // the global mode remounts blocks (keyed by mode upstream) so local state
@@ -25,8 +23,7 @@ export default function GuideBlock({ summary, mode, onJump, onPersonSearch }: Pr
     !!summary.what_happened ||
     !!summary.why_it_matters ||
     !!summary.background ||
-    (summary.key_people?.length ?? 0) > 0 ||
-    !!summary.source_range;
+    (summary.key_people?.length ?? 0) > 0;
 
   return (
     <aside className="guide-block" aria-label="白话导读">
@@ -97,16 +94,6 @@ export default function GuideBlock({ summary, mode, onJump, onPersonSearch }: Pr
           )}
 
           <div className="guide-foot">
-            {summary.source_range && (
-              <button
-                type="button"
-                className="guide-locate"
-                onClick={() => onJump(summary.source_range!.start_pid)}
-                title="跳转到对应的原文段落"
-              >
-                定位正文
-              </button>
-            )}
             <span className="guide-note">
               {summary.editorial_note || '编者整理，非原文'}
             </span>
