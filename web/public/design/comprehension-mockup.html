@@ -1,0 +1,137 @@
+﻿<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>白话导读 comprehension layer mockup</title>
+  <style>
+    :root {
+      --bg: #f4ecd8;
+      --bg-panel: #ece2c8;
+      --bg-input: #fdf6e3;
+      --fg: #2b2118;
+      --fg-inv: #f4ecd8;
+      --accent: #7a3b2e;
+      --accent-pressed: #5a2a20;
+      --accent-tint: rgba(122, 59, 46, 0.08);
+      --hu: #996666;
+      --muted: #756650;
+      --border: #c8b994;
+      --hover-bg: #ddd0b0;
+      --guide-bg: #fbf4df;
+      --guide-border: rgba(122, 59, 46, 0.24);
+      --guide-ink: #3a2a1c;
+      --radius-md: 4px;
+      font-family: 'Noto Serif SC','Source Han Serif SC','Songti SC','SimSun',serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); line-height: 1.95; }
+    .demo { display: grid; grid-template-columns: 1fr 430px; gap: 28px; padding: 28px; max-width: 1280px; margin: 0 auto; }
+    .reader-shell { min-width: 0; border: 1px solid var(--border); background: var(--bg); box-shadow: 0 12px 32px rgba(43,33,24,.12); }
+    .reader-header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--bg); }
+    .title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); cursor: pointer; }
+    input[type="checkbox"] { appearance: none; width: 14px; height: 14px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg-panel); position: relative; }
+    input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+    input[type="checkbox"]:checked::after { content: ''; position: absolute; left: 3px; top: 0; width: 5px; height: 9px; border: solid var(--fg-inv); border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
+    .font-controls { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-panel); font-size: 13px; }
+    .font-controls span { padding: 3px 10px; border-left: 1px solid var(--border); }
+    .font-controls span:first-child { border-left: 0; }
+    .reader-body { max-width: 720px; margin: 0 auto; padding: 28px 32px 60px; font-size: 18px; }
+    .paragraph { margin: .65em 0; }
+    .paragraph-year { font-weight: 600; color: #5b3d1a; margin-top: 1.2em; }
+    .paragraph-commentary { background: var(--bg-panel); padding: .5em .8em; margin: 1em 0; font-size: .96em; border: 1px solid rgba(122,59,46,.18); }
+    .hu-marker { color: var(--hu); font-size: .78em; padding: 0 1px; }
+    .hu-note { color: var(--hu); font-size: .85em; padding: 0 .3em; margin: 0 .15em; }
+    .guide-block { margin: .55rem 0 1rem; padding: .72rem .85rem .8rem; border: 1px solid var(--guide-border); border-radius: 6px; background: var(--guide-bg); color: var(--guide-ink); font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif; line-height: 1.65; box-shadow: 0 1px 0 rgba(43,33,24,.04); }
+    .guide-head { display: flex; align-items: center; gap: 8px; margin-bottom: .35rem; }
+    .guide-chip { display: inline-flex; align-items: center; border: 1px solid rgba(122,59,46,.28); border-radius: 999px; padding: 1px 8px; color: var(--accent); background: rgba(253,246,227,.72); font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .guide-meta { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .guide-one { margin: 0 0 .5rem; font-weight: 650; }
+    .guide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; }
+    .guide-field b { color: var(--accent); margin-right: .25em; }
+    .person-link { color: var(--accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    .guide-foot { margin-top: .45rem; color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; gap: 8px; }
+    .right-panel { border: 1px solid var(--border); background: var(--bg-panel); padding: 18px; align-self: start; position: sticky; top: 28px; }
+    .right-panel h3 { margin: 0 0 10px; color: var(--accent); font-size: 16px; }
+    .year-link { display: flex; gap: 8px; padding: 3px 6px; border-radius: var(--radius-md); font-size: 14px; }
+    .year-link.active { background: var(--accent); color: var(--fg-inv); }
+    .search-box { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+    .search-box input { width: 100%; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-input); padding: 6px 8px; font: inherit; }
+    .mobile-frame { width: 390px; max-width: 100%; margin-top: 28px; border: 1px solid var(--border); border-radius: 22px; overflow: hidden; background: var(--bg); box-shadow: 0 14px 38px rgba(43,33,24,.18); }
+    .mobile-head { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    .icon { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--muted); font: inherit; }
+    .mobile-title { flex: 1; min-width: 0; font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mobile-body { padding: 16px 15px 34px; font-size: 17px; }
+    .mobile-body .guide-grid { grid-template-columns: 1fr; }
+    .mobile-body .guide-block { margin-left: 0; margin-right: 0; padding: .7rem .75rem; }
+    .mobile-body .guide-meta { display: none; }
+    body.hide-guide .guide-block { display: none; }
+    @media (max-width: 980px) { .demo { grid-template-columns: 1fr; } .right-panel { position: static; } }
+  </style>
+</head>
+<body>
+  <main class="demo">
+    <section class="reader-shell" aria-label="桌面阅读视图示意">
+      <header class="reader-header">
+        <button class="icon" aria-label="目录">☰</button>
+        <div class="title">卷001 周纪一　威烈王二十三年（前403）</div>
+        <label class="toggle"><input checked type="checkbox" /> 胡三省音注</label>
+        <label class="toggle"><input id="guideToggle" checked type="checkbox" /> 白话导读</label>
+        <div class="font-controls" aria-label="字号"><span>A−</span><span>100%</span><span>A+</span></div>
+      </header>
+      <article class="reader-body">
+        <p class="paragraph paragraph-year">威烈王二十三年（戊寅、前四○三）</p>
+        <aside class="guide-block" aria-label="白话导读（编者整理，非原文），覆盖本年正文">
+          <div class="guide-head"><span class="guide-chip">白话导读</span><span class="guide-meta">编者整理，非原文 · 覆盖本年正文</span></div>
+          <p class="guide-one">周天子正式承认魏、赵、韩三家为诸侯，晋国分裂成为战国格局的开端。</p>
+          <div class="guide-grid">
+            <div class="guide-field"><b>关键人物</b><a class="person-link">魏斯</a>、赵籍、韩虔</div>
+            <div class="guide-field"><b>为什么重要</b>司马光借此讨论“名分”：政治秩序一旦被名义承认，天下格局就变了。</div>
+          </div>
+          <div class="guide-foot"><span>正文范围：本年标题至下个年号前</span><span>［展开］［定位正文］</span></div>
+        </aside>
+        <p class="paragraph">初命晋大夫魏斯、赵籍、韩虔为诸侯。</p>
+        <p class="paragraph paragraph-commentary">臣光曰：臣闻天子之职莫大于礼，礼莫大于分，分莫大于名。</p>
+        <p class="paragraph">智伯之亡也，才胜德也。<span class="hu-marker">［收］</span><span class="hu-note">才谓聪察强毅之类，德谓正直中和之类。</span></p>
+        <p class="paragraph paragraph-year">安王十六年（前386）</p>
+        <aside class="guide-block" aria-label="白话导读（编者整理，非原文），覆盖本年正文">
+          <div class="guide-head"><span class="guide-chip">白话导读</span><span class="guide-meta">编者整理，非原文 · 覆盖本年正文</span></div>
+          <p class="guide-one">齐国田氏逐步取得合法名分，旧姜齐被新田齐取代。</p>
+          <div class="guide-foot"><span>低噪声 MVP：只显示一句话；更多字段可展开</span><span>［展开］</span></div>
+        </aside>
+        <p class="paragraph">田和迁齐康公于海上，食一城，以奉其先祀。</p>
+      </article>
+    </section>
+
+    <aside class="right-panel" aria-label="右侧面板示意">
+      <h3>本卷纪年</h3>
+      <div class="year-link active"><span>前403</span><span>威烈王二十三年</span></div>
+      <div class="year-link"><span>前402</span><span>威烈王二十四年</span></div>
+      <div class="year-link"><span>前386</span><span>安王十六年</span></div>
+      <div class="search-box">
+        <h3>出处检索</h3>
+        <input value="商鞅" aria-label="出处检索" />
+      </div>
+      <div class="mobile-frame" aria-label="390px mobile示意">
+        <header class="mobile-head"><button class="icon">☰</button><div class="mobile-title">卷001 周纪一</div><button class="icon">A−</button><button class="icon">A+</button><button class="icon" aria-label="导读设置">导</button><button class="icon">搜</button></header>
+        <div class="mobile-body">
+          <p class="paragraph paragraph-year">威烈王二十三年（前403）</p>
+          <aside class="guide-block" aria-label="白话导读（编者整理，非原文），覆盖本年正文">
+            <div class="guide-head"><span class="guide-chip">白话导读</span></div>
+            <p class="guide-one">周天子承认魏、赵、韩为诸侯，晋国分裂的现实获得名义承认。</p>
+            <div class="guide-grid"><div class="guide-field"><b>为什么重要</b>这是《通鉴》开篇讨论“名分”的历史触发点。</div></div>
+            <div class="guide-foot"><span>编者整理，非原文</span><span>［收］</span></div>
+          </aside>
+          <p>初命晋大夫魏斯、赵籍、韩虔为诸侯。</p>
+        </div>
+      </div>
+    </aside>
+  </main>
+  <script>
+    document.getElementById('guideToggle').addEventListener('change', function (e) {
+      document.body.classList.toggle('hide-guide', !e.target.checked);
+    });
+  </script>
+</body>
+</html>

@@ -1,17 +1,24 @@
-import { useMemo, useState } from 'react';
-import type { Juan, Paragraph, HuNote } from './corpus';
+import { useMemo, useState, type ReactNode } from 'react';
+import type { Juan, Paragraph, HuNote, GuideSummary } from './corpus';
 import { splitParagraph, findMatches, highlightWithRanges, highlight } from './highlight';
+import GuideBlock from './GuideBlock';
 
 interface Props {
   juan: Juan;
   showHu: boolean;
   highlightQuery: string;
   highlightPid: number | null;
+  // 'off' hides all guide blocks; 'brief'/'full' render them (full = expanded).
+  guideMode: 'off' | 'brief' | 'full';
+  // anchor_pid → reviewed editorial summary for this 卷.
+  guideByAnchorPid: Map<number, GuideSummary>;
+  onGuideJump: (pid: number) => void;
+  onPersonSearch: (query: string) => void;
 }
 
 function ParagraphView({
-  p, showHu, highlightQuery, isTarget, isDisclaimer,
-}: { p: Paragraph; showHu: boolean; highlightQuery: string; isTarget: boolean; isDisclaimer: boolean }) {
+  p, showHu, highlightQuery, isTarget, isDisclaimer, after,
+}: { p: Paragraph; showHu: boolean; highlightQuery: string; isTarget: boolean; isDisclaimer: boolean; after?: ReactNode }) {
   const segments = useMemo(() => splitParagraph(p), [p]);
   const mainMatches = useMemo(() => findMatches(p.main, highlightQuery), [p.main, highlightQuery]);
   const [overridden, setOverridden] = useState<Set<number>>(new Set());
@@ -30,6 +37,7 @@ function ParagraphView({
     (isDisclaimer ? ' paragraph-disclaimer' : '');
 
   return (
+    <>
     <p className={cls} data-pid={p.id} data-type={p.type}>
       {segments.map((seg, i) => {
         if (seg.kind === 'text') {
@@ -55,22 +63,43 @@ function ParagraphView({
         );
       })}
     </p>
+    {after}
+    </>
   );
 }
 
-export default function Reader({ juan, showHu, highlightQuery, highlightPid }: Props) {
+export default function Reader({
+  juan, showHu, highlightQuery, highlightPid,
+  guideMode, guideByAnchorPid, onGuideJump, onPersonSearch,
+}: Props) {
   return (
     <article className="reader-body">
-      {juan.paragraphs.map((p, i) => (
-        <ParagraphView
-          key={p.id}
-          p={p}
-          showHu={showHu}
-          highlightQuery={highlightQuery}
-          isTarget={highlightPid === p.id}
-          isDisclaimer={i === juan.paragraphs.length - 1}
-        />
-      ))}
+      {juan.paragraphs.map((p, i) => {
+        const guide =
+          guideMode !== 'off' ? guideByAnchorPid.get(p.id) : undefined;
+        return (
+          <ParagraphView
+            key={p.id}
+            p={p}
+            showHu={showHu}
+            highlightQuery={highlightQuery}
+            isTarget={highlightPid === p.id}
+            isDisclaimer={i === juan.paragraphs.length - 1}
+            after={
+              guide ? (
+                <GuideBlock
+                  // Key by mode so switching global mode resets local expands.
+                  key={`guide-${p.id}-${guideMode}`}
+                  summary={guide}
+                  mode={guideMode === 'full' ? 'full' : 'brief'}
+                  onJump={onGuideJump}
+                  onPersonSearch={onPersonSearch}
+                />
+              ) : null
+            }
+          />
+        );
+      })}
     </article>
   );
 }

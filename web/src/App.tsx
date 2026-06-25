@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import type { Manifest, Juan } from './corpus';
-import { loadManifest, loadJuan } from './corpus';
+import type { Manifest, Juan, GuideSummary } from './corpus';
+import { loadManifest, loadJuan, loadJuanGuide } from './corpus';
 import Sidebar from './Sidebar';
 import Reader from './Reader';
 import YearToc from './YearToc';
@@ -112,6 +112,21 @@ export default function App() {
     });
   };
   const [activeParagraphId, setActiveParagraphId] = useState<number | null>(null);
+  // 白话导读 (plain-language comprehension layer) reading mode.
+  //   'off'   — never show guide blocks
+  //   'brief' — one-liner inline, expandable per block (default)
+  //   'full'  — every block expanded
+  const [guideMode, setGuideMode] = useState<'off' | 'brief' | 'full'>(() => {
+    const saved = localStorage.getItem('zztj.guideMode');
+    return saved === 'off' || saved === 'full' ? saved : 'brief';
+  });
+  useEffect(() => {
+    localStorage.setItem('zztj.guideMode', guideMode);
+  }, [guideMode]);
+  // anchor_pid → reviewed summary for the currently loaded 卷. Empty when the
+  // 卷 ships no guide file (graceful absence).
+  const [guideByAnchorPid, setGuideByAnchorPid] =
+    useState<Map<number, GuideSummary>>(new Map());
   // Pid of a year the user explicitly clicked in YearToc. When set, the
   // YearToc highlight uses this directly rather than the scroll-derived
   // activeParagraphId — so the highlight stays locked on what the user
@@ -121,6 +136,8 @@ export default function App() {
   const [selectedYearPid, setSelectedYearPid] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const readerPaneRef = useRef<HTMLDivElement | null>(null);
+  const settingsBtnRef = useRef<HTMLButtonElement | null>(null);
+  const settingsMenuRef = useRef<HTMLDivElement | null>(null);
   // True while a programmatic scroll (year click, lookup jump) is in flight.
   // During this window the scroll handler must not update activeParagraphId —
   // measureTarget re-estimates mid-animation as paragraphs paint and can
@@ -238,6 +255,23 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('zztj.showHu', showHu ? '1' : '0');
   }, [showHu]);
+
+  // Load the per-卷 白话导读 file alongside the 卷 text. Missing files resolve
+  // to null (loadJuanGuide swallows 404/parse errors) → empty map → no blocks.
+  useEffect(() => {
+    let cancelled = false;
+    setGuideByAnchorPid(new Map());
+    loadJuanGuide(juanNo).then(guide => {
+      if (cancelled || !guide) return;
+      const map = new Map<number, GuideSummary>();
+      for (const s of guide.summaries) {
+        if (s.confidence === 'omit') continue;
+        map.set(s.anchor_pid, s);
+      }
+      setGuideByAnchorPid(map);
+    });
+    return () => { cancelled = true; };
+  }, [juanNo]);
 
   useEffect(() => {
     localStorage.setItem('zztj.showSidebar', showSidebar ? '1' : '0');
@@ -697,7 +731,38 @@ export default function App() {
     requestAnimationFrame(animate);
   };
 
+  // Open/position the 设置 popover (native top-layer popover so it escapes the
+  // scroller's overflow). CSS anchor positioning is unreliable in target
+  // browsers, so we position by JS under the button on desktop; on mobile we
+  // clear the inline coords and let CSS render it as a bottom sheet.
+  const toggleSettings = () => {
+    const menu = settingsMenuRef.current;
+    const btn = settingsBtnRef.current;
+    if (!menu || !btn) return;
+    if (menu.matches(':popover-open')) { menu.hidePopover(); return; }
+    menu.showPopover();
+    if (isMobileWidth()) { menu.style.left = ''; menu.style.top = ''; return; }
+    const r = btn.getBoundingClientRect();
+    const mw = menu.offsetWidth || 240;
+    const left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${r.bottom + 6}px`;
+  };
+
   const jumpToParagraph = (pid: number) => scrollParagraphIntoView(pid);
+
+  // Look a person/term up via the existing 出处检索 (used by 白话导读 person
+  // chips). Mirrors the selection-action-bar: fill + commit the query and
+  // reveal the lookup panel.
+  const searchFor = (query: string) => {
+    const q = query.trim();
+    if (!q) return;
+    setHighlightPid(null);
+    setLookupQuery(q);
+    setCommittedQuery(q);
+    setShowLookup(true);
+    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+  };
 
   const isMobileWidth = () =>
     typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches;
@@ -776,40 +841,97 @@ export default function App() {
               return `${m[1]}\u00A0${m[2]}${m[3] ?? ''}`;
             })()}
           </div>
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={showHu}
-              onChange={e => setShowHu(e.target.checked)}
-            />
-            <span>胡三省音注</span>
-          </label>
-          <span className="font-size-controls" role="group" aria-label="正文字号">
-            <button
-              type="button"
-              className="font-size-btn"
-              onClick={() => bumpFont(-0.1)}
-              disabled={fontScale <= 0.8 + 1e-6}
-              title="缩小字号"
-              aria-label="缩小字号"
-            >A−</button>
-            <button
-              type="button"
-              className="font-size-btn font-size-reset"
-              onClick={() => setFontScale(1)}
-              disabled={Math.abs(fontScale - 1) < 1e-6}
-              title={`重置字号（当前 ${Math.round(fontScale * 100)}%）`}
-              aria-label="重置字号"
-            >{Math.round(fontScale * 100)}%</button>
-            <button
-              type="button"
-              className="font-size-btn"
-              onClick={() => bumpFont(0.1)}
-              disabled={fontScale >= 1.8 - 1e-6}
-              title="放大字号"
-              aria-label="放大字号"
-            >A+</button>
-          </span>
+          <button
+            type="button"
+            ref={settingsBtnRef}
+            className="settings-btn"
+            onClick={toggleSettings}
+            aria-haspopup="dialog"
+            title="阅读设置"
+            aria-label="阅读设置"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+                 aria-hidden="true">
+              <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+            </svg>
+            <span className="settings-btn-label">设置</span>
+          </button>
+          <div
+            ref={settingsMenuRef}
+            className="settings-menu"
+            {...({ popover: 'auto' } as any)}
+            role="dialog"
+            aria-label="阅读设置"
+          >
+            <div className="settings-row" role="group" aria-label="白话导读">
+              <span className="settings-label">白话导读</span>
+              <div className="seg">
+                <button
+                  type="button"
+                  className={'seg-btn' + (guideMode === 'off' ? ' is-on' : '')}
+                  aria-pressed={guideMode === 'off'}
+                  onClick={() => setGuideMode('off')}
+                >关</button>
+                <button
+                  type="button"
+                  className={'seg-btn' + (guideMode === 'brief' ? ' is-on' : '')}
+                  aria-pressed={guideMode === 'brief'}
+                  onClick={() => setGuideMode('brief')}
+                >简</button>
+                <button
+                  type="button"
+                  className={'seg-btn' + (guideMode === 'full' ? ' is-on' : '')}
+                  aria-pressed={guideMode === 'full'}
+                  onClick={() => setGuideMode('full')}
+                >全</button>
+              </div>
+            </div>
+            <div className="settings-row" role="group" aria-label="胡三省音注">
+              <span className="settings-label">胡三省音注</span>
+              <div className="seg">
+                <button
+                  type="button"
+                  className={'seg-btn' + (!showHu ? ' is-on' : '')}
+                  aria-pressed={!showHu}
+                  onClick={() => setShowHu(false)}
+                >隐藏</button>
+                <button
+                  type="button"
+                  className={'seg-btn' + (showHu ? ' is-on' : '')}
+                  aria-pressed={showHu}
+                  onClick={() => setShowHu(true)}
+                >显示</button>
+              </div>
+            </div>
+            <div className="settings-row" role="group" aria-label="正文字号">
+              <span className="settings-label">正文字号</span>
+              <div className="seg">
+                <button
+                  type="button"
+                  className="seg-btn"
+                  onClick={() => bumpFont(-0.1)}
+                  disabled={fontScale <= 0.8 + 1e-6}
+                  aria-label="缩小字号"
+                >A−</button>
+                <button
+                  type="button"
+                  className="seg-btn"
+                  onClick={() => setFontScale(1)}
+                  disabled={Math.abs(fontScale - 1) < 1e-6}
+                  aria-label={`重置字号（当前 ${Math.round(fontScale * 100)}%）`}
+                >{Math.round(fontScale * 100)}%</button>
+                <button
+                  type="button"
+                  className="seg-btn"
+                  onClick={() => bumpFont(0.1)}
+                  disabled={fontScale >= 1.8 - 1e-6}
+                  aria-label="放大字号"
+                >A+</button>
+              </div>
+            </div>
+          </div>
           <button
             type="button"
             className="lookup-toggle"
@@ -836,6 +958,10 @@ export default function App() {
                 showHu={showHu}
                 highlightQuery={committedQuery}
                 highlightPid={highlightPid}
+                guideMode={guideMode}
+                guideByAnchorPid={guideByAnchorPid}
+                onGuideJump={jumpToParagraph}
+                onPersonSearch={searchFor}
               />
             : <div className="loading">载入卷 {juanNo} 中……</div>}
         </div>

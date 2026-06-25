@@ -17,6 +17,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "cache" / "simplified"
 WEB_PUBLIC = ROOT.parent / "web" / "public" / "text"
+# Source dir for editorial 白话导读 (plain-language comprehension) files. These
+# are authored & reviewed by hand and live OUTSIDE web/public/text because that
+# directory is wiped (shutil.rmtree) on every emit. We copy them into
+# web/public/text/guide/ at the end of the run so they ship with the corpus.
+GUIDE_SRC = ROOT / "guide"
 
 # Dynasty grouping for the sidebar (kept in Simplified).
 DYNASTY_ORDER = [
@@ -112,7 +117,40 @@ def main() -> int:
     size_mb = (WEB_PUBLIC / "lookup.json").stat().st_size / (1024 * 1024)
     print(f"emitted {len(manifest)} 卷 → {WEB_PUBLIC}")
     print(f"emitted lookup index: {len(lookup):,} paragraphs, {size_mb:.1f} MB")
+
+    emit_guides()
     return 0
+
+
+def emit_guides() -> None:
+    """Validate and copy editorial 白话导读 files into web/public/text/guide/.
+
+    Guide files are optional: a 卷 without one simply renders no guide blocks.
+    Each file is light-validated (shape + anchor/one_liner present) and
+    re-serialized compact, mirroring the juan emit. Authored under
+    data-pipeline/guide/ so they survive the rmtree of WEB_PUBLIC above.
+    """
+    if not GUIDE_SRC.exists():
+        print("no guide/ source dir — skipping 白话导读")
+        return
+    out_dir = WEB_PUBLIC / "guide"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    count = 0
+    summaries = 0
+    for src in sorted(GUIDE_SRC.glob("juan_*.json")):
+        data = json.loads(src.read_text(encoding="utf-8"))
+        if data.get("version") != 1 or not isinstance(data.get("summaries"), list):
+            raise SystemExit(f"guide {src.name}: expected version:1 + summaries[]")
+        for s in data["summaries"]:
+            if not isinstance(s.get("anchor_pid"), int) or not s.get("one_liner"):
+                raise SystemExit(f"guide {src.name}: each summary needs anchor_pid + one_liner")
+        (out_dir / src.name).write_text(
+            json.dumps(data, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        count += 1
+        summaries += len(data["summaries"])
+    print(f"emitted {count} 白话导读 卷 ({summaries} summaries) → {out_dir}")
 
 
 if __name__ == "__main__":

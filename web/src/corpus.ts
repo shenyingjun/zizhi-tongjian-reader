@@ -75,6 +75,67 @@ export function loadJuan(no: number): Promise<Juan> {
   return cached;
 }
 
+// ── 白话导读 (plain-language comprehension layer) ──────────────────────────
+// Editorial, pre-generated content rendered alongside the source text. It is
+// NOT原文 and never generated at runtime — each 卷 may ship a static guide
+// file;卷 without one simply render no guide blocks (graceful absence).
+
+export interface GuidePersonRef {
+  name: string;
+  // Optional search query to look the person up via the existing 出处检索.
+  query?: string;
+  role?: string;
+}
+
+export interface GuideSummary {
+  id: string;
+  juan_no: number;
+  granularity: 'year' | 'paragraph' | 'span';
+  // Render the guide block immediately after this paragraph. For the MVP this
+  // is the `type:'year'` paragraph id (see Juan.years[].paragraph_id).
+  anchor_pid: number;
+  ce_year: number | null;
+  title?: string;
+  one_liner: string;
+  what_happened?: string;
+  key_people?: GuidePersonRef[];
+  why_it_matters?: string;
+  background?: string;
+  source_range?: {
+    start_pid: number;
+    end_pid?: number;
+    label: string;
+  };
+  editorial_note?: string;
+  confidence?: 'reviewed' | 'draft' | 'omit';
+}
+
+export interface JuanGuideFile {
+  juan_no: number;
+  version: 1;
+  summaries: GuideSummary[];
+}
+
+// Cache per 卷 like _juanCache. A missing guide file (404) resolves to null —
+// it is an expected, non-fatal state for any 卷 we haven't authored yet.
+const _guideCache = new Map<number, Promise<JuanGuideFile | null>>();
+
+export function loadJuanGuide(no: number): Promise<JuanGuideFile | null> {
+  let cached = _guideCache.get(no);
+  if (!cached) {
+    const padded = String(no).padStart(3, '0');
+    cached = fetch(`${BASE}text/guide/juan_${padded}.json`)
+      .then(r => {
+        if (r.status === 404) return null;
+        if (!r.ok) throw new Error(`guide ${no} ${r.status}`);
+        return r.json() as Promise<JuanGuideFile>;
+      })
+      .catch(() => null); // network/parse errors are non-blocking — source text still renders
+    _guideCache.set(no, cached);
+  }
+  return cached;
+}
+
 // Flat lookup corpus for selection-based search.
 // One entry per paragraph; `t` contains main text + concatenated 胡注 text.
 export interface LookupEntry {

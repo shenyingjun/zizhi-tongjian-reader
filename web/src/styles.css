@@ -288,6 +288,57 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 }
 .font-size-btn:disabled { color: var(--muted); cursor: default; }
 .font-size-reset { color: var(--muted); font-size: 0.74rem; min-width: 2.8rem; }
+
+/* 设置 popover — single header control consolidating 白话导读 / 胡注 / 字号. */
+.settings-btn {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  background: none; border: 0; border-radius: 4px;
+  color: var(--muted); cursor: pointer; padding: 0.3rem 0.5rem;
+  line-height: 0; flex: 0 0 auto;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.settings-btn:hover { color: var(--accent); background: var(--accent-tint); }
+.settings-btn svg { display: block; width: 18px; height: 18px; }
+.settings-btn-label { font-size: 0.85rem; line-height: 1; }
+
+.settings-menu {
+  position: fixed; inset: auto; margin: 0;
+  width: 252px; max-width: calc(100vw - 16px);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 28px rgba(43, 33, 24, 0.18);
+  padding: 0.6rem;
+}
+.settings-menu:popover-open {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  animation: settings-pop 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes settings-pop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+}
+.settings-label { font-size: 0.85rem; color: var(--fg); flex: 0 0 auto; }
+.seg {
+  display: inline-flex; flex: 0 0 auto;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--bg-panel); overflow: hidden;
+}
+.seg-btn {
+  font: inherit; font-size: 0.8rem; line-height: 1;
+  background: transparent; color: var(--fg);
+  border: 0; padding: 0.3rem 0.6rem; cursor: pointer;
+  font-variant-numeric: tabular-nums; min-width: 2.2rem;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.seg-btn + .seg-btn { border-left: 1px solid var(--border); }
+.seg-btn:hover:not(:disabled):not(.is-on) { background: var(--hover-bg); }
+.seg-btn.is-on { background: var(--accent); color: var(--fg-inv); }
+.seg-btn:disabled { color: var(--muted); cursor: default; }
+.seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .reader-body { max-width: 720px; margin: 0 auto; padding: 1.5rem 2rem 5rem; }
 /* Apply the user-selected font scale to all reader text. Paragraphs inherit
    font-size from .reader-body, so a single declaration covers main text,
@@ -340,6 +391,87 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   padding: 0.5em 0.8em;
   margin: 1em 0;
   font-size: 0.96em;
+}
+
+/* 白话导读 — editorial plain-language comprehension block rendered after a
+   year heading. Sans-serif + lighter tint to read as clearly NOT source text,
+   while staying within the warm palette. Sizing in em so it tracks 字号. */
+.guide-block {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  background: #fbf4df;
+  border: 1px solid #e0cfa0;
+  border-radius: var(--radius-md);
+  margin: 0.7em 0 1.3em;
+  padding: 0.75em 0.95em;
+  color: #3a2a1c;
+  font-size: 0.92em;
+  line-height: 1.75;
+  text-indent: 0;
+}
+.guide-head {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.5em;
+  margin-bottom: 0.35em;
+}
+.guide-tag {
+  font-size: 0.74em; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--fg-inv); background: var(--accent);
+  padding: 0.12em 0.5em; border-radius: 999px; line-height: 1.4;
+}
+.guide-title { font-weight: 600; color: #2b1d10; }
+.guide-prov {
+  margin-left: auto;
+  font-size: 0.72em; color: #8a6a3a;
+  border: 1px solid #d8c08a; border-radius: 999px;
+  padding: 0.05em 0.45em; cursor: help; white-space: nowrap;
+}
+.guide-oneliner { margin: 0; }
+.guide-expand {
+  margin-top: 0.5em;
+  font: inherit; font-size: 0.84em;
+  background: transparent; color: var(--accent);
+  border: 1px solid #e0cfa0; border-radius: var(--radius-md);
+  padding: 0.2em 0.7em; cursor: pointer;
+  transition: background 0.12s ease;
+}
+.guide-expand:hover { background: rgba(122, 59, 46, 0.08); }
+.guide-expand:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.guide-detail { margin-top: 0.6em; display: flex; flex-direction: column; gap: 0.65em; }
+.guide-field { margin: 0; }
+.guide-field p { margin: 0.15em 0 0; }
+.guide-field-label {
+  margin: 0; font-size: 0.78em; font-weight: 700;
+  letter-spacing: 0.04em; color: #7a5a2a; text-transform: none;
+}
+.guide-people { list-style: none; margin: 0.2em 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.3em; }
+.guide-person { display: flex; align-items: baseline; gap: 0.5em; flex-wrap: wrap; }
+.guide-person-name {
+  font: inherit; font-weight: 600;
+  background: transparent; color: var(--accent);
+  border: 0; border-bottom: 1px dashed var(--accent);
+  padding: 0 0.05em; cursor: pointer; border-radius: 0;
+}
+.guide-person-name:hover { color: var(--accent-pressed); }
+.guide-person-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.guide-person-role { font-size: 0.86em; color: #6b5436; }
+.guide-foot {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.6em;
+  margin-top: 0.2em; padding-top: 0.55em;
+  border-top: 1px solid #ead9ac;
+}
+.guide-locate {
+  font: inherit; font-size: 0.82em;
+  background: var(--accent); color: var(--fg-inv);
+  border: 0; border-radius: var(--radius-md);
+  padding: 0.25em 0.75em; cursor: pointer;
+  transition: background 0.12s ease;
+}
+.guide-locate:hover { background: var(--accent-pressed); }
+.guide-locate:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.guide-note { font-size: 0.76em; color: #8a6a3a; margin-left: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .settings-menu:popover-open { animation: none; }
+  .guide-expand, .guide-locate, .guide-person-name, .seg-btn { transition: none; }
 }
 
 .year-toc {
@@ -921,6 +1053,32 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   /* Show the lookup-toggle button only on mobile. */
   .lookup-toggle { display: inline-flex; }
 
+  /* Hide the 设置 text label on mobile to keep the header a tight icon row. */
+  .settings-btn-label { display: none; }
+  .settings-btn { padding: 0.3rem; }
+
+  /* 设置 renders as a bottom sheet on mobile rather than an anchored popover.
+     toggleSettings clears the JS inline left/top on mobile; !important guards
+     against stale inline values if the viewport crosses the breakpoint while
+     the sheet is open. */
+  .settings-menu {
+    left: 0 !important; right: 0; top: auto !important; bottom: 0;
+    width: 100%; max-width: 100%;
+    border-radius: 14px 14px 0 0;
+    border-bottom: 0;
+    padding: 1rem 1.1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+    gap: 0.85rem;
+    box-shadow: 0 -8px 28px rgba(43, 33, 24, 0.22);
+  }
+  .settings-menu:popover-open {
+    animation: settings-sheet 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes settings-sheet {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  .settings-label { font-size: 0.95rem; }
+  .seg-btn { padding: 0.5rem 0.85rem; min-width: 2.7rem; font-size: 0.9rem; }
   /* Year TOC is redundant in the mobile drawer — search is the focus. */
   .person-pane .year-toc { display: none; }
   .person-pane .lookup-section {
@@ -984,4 +1142,10 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
      Tighten them further instead of hiding. */
   .font-size-btn { padding: 0.2rem 0.35rem; min-width: 1.6rem; font-size: 0.85rem; }
   .reader-header { gap: 0.4rem; padding-left: 0.7rem; padding-right: 0.7rem; }
+}
+
+/* Final reduced-motion guard — wins over the mobile bottom-sheet keyframe
+   (which is declared later in source inside the max-width:900px block). */
+@media (prefers-reduced-motion: reduce) {
+  .settings-menu:popover-open { animation: none; }
 }

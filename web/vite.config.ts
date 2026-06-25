@@ -48,8 +48,9 @@ export default defineConfig({
             options: {
               cacheName: 'zztj-text-v1',
               expiration: {
-                // Whole corpus is finite (~300 juan files + lookup + manifest).
-                maxEntries: 400,
+                // Whole corpus is finite (~300 juan files + lookup + manifest),
+                // plus per-卷 白话导读 guide files under text/guide/.
+                maxEntries: 700,
                 // Effectively never expire — text doesn't go stale.
                 maxAgeSeconds: 60 * 60 * 24 * 365,
               },
