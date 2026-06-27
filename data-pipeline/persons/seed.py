@@ -109,8 +109,32 @@ STOP_CHARS = set(
     "官家问甲马财物粟谷货怀心意吟儿州置帛服朝族母病鼎父世灭客主谏牛羊")
 
 # A 3-char auto name with one of these as its MIDDLE char is a polity/title +
-# name glue (魏王操 = 魏王·曹操, 魏主赐, 赵主曜), not a single given name.
+# name glue (魏王操 = 魏王·曹操, 魏主赐, 赵主曜), not a single given name. Such a
+# surface is never seeded as a STANDALONE auto person; the genuine title+given-name
+# aliases among them are instead routed into TITLE_GLUE_ALIASES below.
 MID_TITLE = set("王主帝公侯后太")
+
+# Title-glue ALIASES (魏王操 = 魏王·曹操). A 〔polity〕〔title〕〔given-name〕 form is a
+# real reference to a person under a titular alias, NOT noise — but it cannot be
+# resolved automatically: a referential title (魏主/赵王/秦主) denotes a DIFFERENT
+# ruler every few 卷 across the centuries, and matching the bare given-name char
+# against the people set collides hard with same-char auto people (a dry run bound
+# 魏主命→顾命, 赵公子→孟子, 周公瑾→诸葛瑾). So these are hand-verified.
+#
+# Attaching the surface to the canonical person and extending that person's
+# nearest 卷 window to the alias's own 卷 keeps the bind era-local: 赵主曜 lands on
+# 刘曜's 318–329 window, never on an unrelated 曜. Only entries whose canonical
+# person already exists take effect; the rest are reported by build_persons as a
+# "cast to add" backlog (拓跋嗣=魏主嗣, 慕容俊=燕主俊, 苻登=秦主登, 司马伦=赵王伦 …).
+TITLE_GLUE_ALIASES = {
+    "魏王操": "曹操", "魏公操": "曹操",
+    "赵主曜": "刘曜", "汉主曜": "刘曜",
+    "燕主垂": "慕容垂", "燕王垂": "慕容垂",
+    "赵王虎": "石虎",
+    "赵主勒": "石勒",
+    "汉主渊": "刘渊",
+    "魏王豹": "魏豹",
+}
 
 # Surname chars that are ALSO very common function words / nouns in 文言. A name
 # starting with one of these is too easily a glued phrase (于今, 何谓, 方略,
@@ -546,6 +570,44 @@ def build_seed(hand_people, juans_allowed):
                 "confidence": "high",  # auto-seeded: program-identified, 非原文
             })
 
+    # 2b. Curated title-glue aliases (魏王操 → 曹操). For each alias surface, gather
+    #     the 卷 where it actually occurs (ner_candidates + any 白话导读 duplicate the
+    #     guide seeded under the glue form), pick the canonical person's window
+    #     NEAREST those 卷, extend it to cover them, attach the surface, and drop the
+    #     duplicate so attribution is single. Extending the nearest window keeps the
+    #     bind era-local (no century teleport) even when a ruler has several windows.
+    _gnf = Path(__file__).resolve().parent / "ner_candidates.json"
+    _graw = json.loads(_gnf.read_text(encoding="utf-8")) if _gnf.exists() else {}
+    by_canon: dict[str, list] = collections.defaultdict(list)
+    for p in people:
+        by_canon[p["canonical_name"]].append(p)
+
+    def _juan_dist(wjuans, sjuans):
+        if not wjuans or not sjuans:
+            return 10**6
+        return min(abs(a - b) for a in wjuans for b in sjuans)
+
+    glue_bound, glue_missing, remove_ids = 0, [], set()
+    for surf, canon in TITLE_GLUE_ALIASES.items():
+        targets = by_canon.get(canon)
+        if not targets:
+            glue_missing.append(f"{surf}→{canon}")
+            continue
+        surf_juans = {j for j in _graw.get(surf, {}).get("j", []) if j in allowed}
+        for dup in by_canon.get(surf, []):
+            surf_juans |= {j for j in dup["juans"] if j in allowed}
+            remove_ids.add(dup["id"])
+        target = min(targets, key=lambda t: _juan_dist(t["juans"], surf_juans))
+        if surf_juans:
+            target["juans"] = sorted(set(target["juans"]) | surf_juans)
+        if surf not in target["match"]:
+            target["match"].append(surf)
+        if surf not in target.get("names", []):
+            target.setdefault("names", []).append(surf)
+        glue_bound += 1
+    if remove_ids:
+        people = [p for p in people if p["id"] not in remove_ids]
+
     # 3. Per-卷 collision resolution. A surface owned by >1 person in a 卷 is
     #    ambiguous there and dropped from the rule table for that 卷.
     owners: dict[int, dict[str, set]] = collections.defaultdict(lambda: collections.defaultdict(set))
@@ -565,4 +627,6 @@ def build_seed(hand_people, juans_allowed):
             else:
                 dropped += 1
 
-    return people, dict(rules), {"ambiguous_dropped": dropped}
+    return people, dict(rules), {"ambiguous_dropped": dropped,
+                                 "glue_bound": glue_bound,
+                                 "glue_missing": glue_missing}

@@ -178,6 +178,8 @@ def main():
     print(f"people shipped: {len(people_out)} (reviewed {n_reviewed} / auto {n_auto})"
           f"   total mentions: {total_mentions}   ambiguous surfaces dropped: {SEED_STATS['ambiguous_dropped']}")
     print(f"卷 covered: {len(covered)} / {len(JUANS)}")
+    print(f"title-glue aliases bound: {SEED_STATS['glue_bound']}"
+          f"   missing canonical (cast to add): {SEED_STATS['glue_missing']}")
     hand_ids = {p["id"] for p in PEOPLE_MERGED if p.get("confidence") == "reviewed"}
     unmatched = sorted(hand_ids - seen_ids)
     if unmatched:

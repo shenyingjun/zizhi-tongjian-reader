@@ -62,8 +62,32 @@ def jieba_name_lexicon() -> set[str]:
     return nr
 
 
+def name_gazetteer() -> set[str]:
+    """Known person surfaces to pin into jieba's dictionary as `nr` BEFORE cutting,
+    so the classical-text boundary errors that drop or truncate a known name
+    (左丞李景让 → 左丞李/景/让, losing 李景让) are prevented. Sources are the layers we
+    already trust: the hand cast (cast.py) and the 白话导读 key_people. This is the
+    cheap, dependency-free alternative to a Classical-Chinese transformer (GuwenBERT
+    / SikuBERT): it cannot discover names we don't know, but it makes jieba reliably
+    keep the names we DO know intact, which is the entire truncation bug class."""
+    from cast import PEOPLE
+    g: set[str] = set()
+    for p in PEOPLE:
+        for s in [p.get("canonical_name", ""), *p.get("names", []), *p.get("match", [])]:
+            if s and 2 <= len(s) <= 4:
+                g.add(s)
+    for nm in seed_mod.load_guide_people().keys():
+        if nm and 2 <= len(nm) <= 4:
+            g.add(nm)
+    return {s for s in g if s not in seed_mod.WIKI_NONPERSON}
+
+
 def main():
     nr_lex = jieba_name_lexicon()
+    gaz = name_gazetteer()
+    for nm in gaz:                       # pin known names so jieba won't split them
+        jieba.add_word(nm, freq=10000, tag="nr")
+    print(f"gazetteer seeded: {len(gaz)} known names")
     # surface -> {juan_no -> count}. Keep every length-2/3 nr token; the strong
     # surname / 干支 / stop-char guard runs in seed.ner_surface_ok at load time so
     # it can be tuned without re-running this slow pass.
