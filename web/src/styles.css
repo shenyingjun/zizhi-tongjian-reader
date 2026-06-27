@@ -1231,48 +1231,52 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
     box-shadow: none;
   }
 
-  /* Person/检索 subject becomes a bottom SHEET on mobile (peek / half / full
-     detents), driven by the layout's .dock-peek / .dock-half / .dock-full
-     classes. The 本卷纪年 list is NEVER in this sheet — it keeps its own
-     right-edge .year-drawer. translateY + a grabber give it a native sheet
-     feel; the orthogonal showLookup axis is retired (detent IS the state). */
+  /* Person/检索 subject is a RIGHT slide-in drawer on mobile (matching the
+     sidebar and 本卷纪年 drawer). It is either closed (off-screen right) or
+     open; the .dock-peek / .dock-half / .dock-full classes collapse to that
+     binary here (peek = closed, half/full = open). Per-occurrence previews are
+     the orthogonal .lookup-sheet, which still rises from the bottom. */
   .person-pane {
     display: flex;
     flex-direction: column;
     position: fixed;
-    top: auto; right: 0; bottom: 0; left: 0;
-    width: 100%;
-    max-width: 100%;
-    height: 92dvh;
-    max-height: 92dvh;
+    top: 0; right: 0; bottom: 0; left: auto;
+    width: min(92vw, 460px);
+    max-width: 92vw;
+    height: 100dvh;
+    max-height: 100dvh;
     z-index: 60;
-    transform: translateY(88%);
-    transition: transform 0.22s var(--ease-out, ease);
-    border-top: 1px solid var(--border);
-    border-left: 0;
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 -8px 28px rgba(43, 33, 24, 0.26);
-    padding-top: 0;
+    transform: translateX(100%);
+    transition: transform 0.24s var(--ease-out, ease);
+    border-top: 0;
+    border-left: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: -8px 0 28px rgba(43, 33, 24, 0.26);
+    padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
-    padding-left: env(safe-area-inset-left, 0px);
+    padding-left: 0;
     padding-right: env(safe-area-inset-right, 0px);
     overflow: hidden;
   }
-  /* peek (~12% visible) → mostly hidden; half (~58%) → mid; full (~92%) → up. */
-  .layout.dock-peek .person-pane { transform: translateY(88%); }
-  .layout.dock-half .person-pane { transform: translateY(42%); }
-  .layout.dock-full .person-pane { transform: translateY(0); }
+  /* peek → closed (off to the right); half / full → open. */
+  .layout.dock-peek .person-pane { transform: translateX(100%); }
+  .layout.dock-half .person-pane,
+  .layout.dock-full .person-pane { transform: translateX(0); }
 
-  /* Grabber handle at the top of the sheet — the drag affordance. */
+  /* Drag affordance: a vertical handle pinned to the drawer's left edge.
+     Swipe right to dismiss (see onSheetPointerUp). */
   .context-dock .dock-grabber {
     display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-    width: 100%; height: 1.6rem; padding: 0;
+    position: absolute;
+    left: 0; top: 50%;
+    transform: translateY(-50%);
+    width: 1.4rem; height: 3.4rem; padding: 0;
     background: none; border: 0; cursor: grab;
     touch-action: none;
+    z-index: 1;
   }
   .dock-grabber-bar {
-    width: 2.4rem; height: 0.28rem; border-radius: 999px;
+    width: 0.28rem; height: 2.4rem; border-radius: 999px;
     background: var(--border);
   }
   /* The identity banner stays its natural height; the results below scroll. */

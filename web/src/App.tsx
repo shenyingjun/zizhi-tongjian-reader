@@ -1213,24 +1213,18 @@ export default function App() {
     if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
   };
 
-  // Mobile sheet drag handling (grabber). Swipe up = expand, swipe down =
-  // collapse one detent (at half → dockBack ladder), tap = toggle half/full.
+  // Mobile drawer drag handling (grabber). The dock is a right slide-in drawer,
+  // so a swipe RIGHT dismisses it (dockBack ladder). A small horizontal handle
+  // on the drawer's left edge is the affordance; tap is a no-op.
   const sheetDragRef = useRef<number | null>(null);
-  const onSheetPointerDown = (e: React.PointerEvent) => { sheetDragRef.current = e.clientY; };
+  const onSheetPointerDown = (e: React.PointerEvent) => { sheetDragRef.current = e.clientX; };
   const onSheetPointerUp = (e: React.PointerEvent) => {
     const start = sheetDragRef.current;
     sheetDragRef.current = null;
     if (start == null) return;
-    const dy = e.clientY - start;
-    const TH = 30;
-    if (dy < -TH) {
-      setSheetDetent(prev => (prev === 'peek' ? 'half' : 'full'));
-    } else if (dy > TH) {
-      if (sheetDetent === 'full') setSheetDetent('half');
-      else dockBack();
-    } else {
-      setSheetDetent(prev => (prev === 'full' ? 'half' : 'full'));
-    }
+    const dx = e.clientX - start;
+    const TH = 40;
+    if (dx > TH) dockBack();
   };
 
   if (error) return (
@@ -1444,8 +1438,8 @@ export default function App() {
           className="dock-grabber"
           onPointerDown={onSheetPointerDown}
           onPointerUp={onSheetPointerUp}
-          title="拖动调整高度"
-          aria-label="拖动调整高度"
+          title="向右滑动关闭"
+          aria-label="向右滑动关闭"
         >
           <span className="dock-grabber-bar" aria-hidden="true" />
         </button>
