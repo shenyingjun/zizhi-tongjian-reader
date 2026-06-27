@@ -91,11 +91,31 @@ SURNAMES = set(
     "苻寇桑屈雍简栾荀郦郗桥伍卞邴臧鲍栗蒙樊荆关召展屠晁鼌审英布彭越黥郅郤庞蒯"
     "华都国佘仲赫尔独窦伏")
 
+# Curated expansion of the 姓 whitelist (reference: surnames_baijiaxing.json, the
+# canonical 百家姓). NOT a wholesale union — a wholesale 百家姓 swap admits ~9k new
+# jieba-nr surfaces, ~80% garbage, because the surname-gate is the ONLY filter and
+# many 姓 are homographs of states (晋/齐/楚/燕), offices (诸/左/公/司) or function
+# words (有/言/益). These chars were scored against the corpus (fraction of the
+# surfaces they admit that are real names vs. titles/idioms); only 姓 whose
+# admissions are dominantly real names are added. Excluded: state/office/function
+# homographs and given-name fragments (全忠/弘俶). This recovers genuinely-missing
+# 姓 like 柴 (柴绍), 裴, 项, 庾, 霍, 房, 辛, 班, 葛, 颜, 廉, 狄 … without the blowup.
+SURNAMES_EXTRA = set(
+    "裴项翟奚褚岑应隗郁娄柴路闵甄滕赖仇靳舒毕禹冉焦祝梅湛贡乔竺谯茹习裘席祁嵇"
+    "蔺扈倪缪瞿阚茅夔巩支俞巢包查逄姬缑訾池乜鞠贲党喻柯滑钦逯佟璩芮郜酆浦钭傅"
+    "景房阎时羊章索庄邢辛盖牧班鄂申柏葛甘季法皮解边刁庾蒲霍费颜廉狄卓阮骆殷温"
+    "符管苗麻单纪吉")
+SURNAMES |= SURNAMES_EXTRA
+
 # Compound (2-char) surnames → a 3-char auto name must begin with one of these.
 COMPOUND = {
     "司马", "诸葛", "欧阳", "上官", "夏侯", "公孙", "令狐", "慕容", "拓跋",
     "宇文", "长孙", "赫连", "尔朱", "独孤", "侯莫", "皇甫", "钟离", "东方",
     "西门", "公子", "公叔", "申屠", "万俟", "尉迟", "鲜于", "闾丘", "南宫",
+    # 百家姓 复姓 present in 资治通鉴; offices (司徒/司空/司寇), titles (单于) and
+    # 公-prefixed / place-ambiguous forms are deliberately excluded.
+    "呼延", "淳于", "太叔", "仲孙", "轩辕", "段干", "百里", "羊舌", "微生",
+    "梁丘", "澹台", "宗政",
 }
 
 # A name char-2/3 that is a particle / common verb / admin·geographic unit marks
