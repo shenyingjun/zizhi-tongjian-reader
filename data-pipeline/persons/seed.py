@@ -134,6 +134,13 @@ TITLE_GLUE_ALIASES = {
     "赵主勒": "石勒",
     "汉主渊": "刘渊",
     "魏王豹": "魏豹",
+    # Present auto-canonicals (本名已自动入库) — bind their title-glue forms.
+    "燕王跋": "冯跋",
+    "汉主寿": "李寿",
+    "晋公护": "宇文护",
+    "秦主健": "苻健",
+    "秦主泓": "姚泓",
+    "宋公裕": "刘裕", "宋王裕": "刘裕",
 }
 
 # Surname chars that are ALSO very common function words / nouns in 文言. A name
