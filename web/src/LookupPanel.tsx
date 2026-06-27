@@ -10,6 +10,13 @@ interface Props {
   currentJuan: number;
   highlightPid: number | null;
   onJump: (juanNo: number, paragraphId: number) => void;
+  // Curated-occurrence mode (a bound person is active): the occurrence list is
+  // built from the person's verified appearance paragraphs + name surfaces
+  // instead of a literal substring search. occurrenceKey is the stable person
+  // id, used only to key the search effect.
+  occurrenceNames?: string[] | null;
+  occurrencePids?: Set<string> | null;
+  occurrenceKey?: string | null;
 }
 
 function formatCE(y: number | null): string {
@@ -74,7 +81,7 @@ function groupHits(hits: LookupHit[]): JuanGroup[] {
  * interleaved notes. Matches of `q` are highlighted in both main and notes;
  * matches that span a note insertion point stay highlighted across the split.
  */
-function FullParagraphInterleaved({ p, q }: { p: Paragraph; q: string }) {
+function FullParagraphInterleaved({ p, q }: { p: Paragraph; q: string | string[] }) {
   const segments = useMemo(() => splitParagraph(p), [p]);
   const mainMatches = useMemo(() => findMatches(p.main, q), [p.main, q]);
   return (
@@ -121,7 +128,7 @@ function popoverStyle(rect: DOMRect): React.CSSProperties {
   return { position: 'fixed', left, top, width: W, maxHeight: maxH };
 }
 
-export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid, onJump }: Props) {
+export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid, onJump, occurrenceNames, occurrencePids, occurrenceKey }: Props) {
   const [hits, setHits] = useState<LookupHit[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -286,6 +293,12 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
     scroller.scrollTop = Math.max(0, targetTop);
   }, [highlightPid]);
 
+  // Curated mode is active when a bound person supplied verified names + pids.
+  const curated = !!(occurrenceNames && occurrenceNames.length > 0 && occurrencePids);
+  // Needles to highlight inside the full-paragraph peek/sheet: the person's
+  // name surfaces in curated mode, else the literal query.
+  const peekNeedles: string | string[] = curated ? occurrenceNames! : query;
+
   useEffect(() => {
     if (!query) {
       setHits(null);
@@ -302,18 +315,32 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
     loadLookup()
       .then(corpus => {
         if (cancelled) return;
-        const filtered = searchCorpus(query, corpus, { maxJuan, limit: 500 });
-        const all = maxJuan === null ? filtered : searchCorpus(query, corpus, { limit: 5000 });
-        setHits(filtered);
-        setFutureCount(all.length - filtered.length);
+        if (curated) {
+          // NER-accurate: restrict to the person's verified appearance pids and
+          // match any of their name surfaces (canonical + aliases).
+          const names = occurrenceNames!;
+          const pids = occurrencePids!;
+          const filtered = searchCorpus(names, corpus, { maxJuan, limit: 2000, restrictPids: pids });
+          const all = maxJuan === null
+            ? filtered
+            : searchCorpus(names, corpus, { limit: 5000, restrictPids: pids });
+          setHits(filtered);
+          setFutureCount(all.length - filtered.length);
+        } else {
+          const filtered = searchCorpus(query, corpus, { maxJuan, limit: 500 });
+          const all = maxJuan === null ? filtered : searchCorpus(query, corpus, { limit: 5000 });
+          setHits(filtered);
+          setFutureCount(all.length - filtered.length);
+        }
       })
       .catch(e => !cancelled && setError(String(e)))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
     // hits intentionally omitted from deps: it's only read to decide whether
-    // to show the loading skeleton on first fetch.
+    // to show the loading skeleton on first fetch. occurrenceKey stands in for
+    // the names/pids props (which change identity each render).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, maxJuan, currentJuan]);
+  }, [query, maxJuan, currentJuan, occurrenceKey]);
 
   if (!query) {
     return (
@@ -507,7 +534,7 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
             {popover.error ? (
               <div className="error small">加载失败：{popover.error}</div>
             ) : popover.para ? (
-              <FullParagraphInterleaved p={popover.para} q={query} />
+              <FullParagraphInterleaved p={popover.para} q={peekNeedles} />
             ) : (
               <div className="muted small">加载中……</div>
             )}
@@ -535,7 +562,7 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
               {sheet.error ? (
                 <div className="error small">加载失败：{sheet.error}</div>
               ) : sheet.para ? (
-                <FullParagraphInterleaved p={sheet.para} q={query} />
+                <FullParagraphInterleaved p={sheet.para} q={peekNeedles} />
               ) : (
                 <div className="muted small">加载中……</div>
               )}

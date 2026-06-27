@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>P0 Person Identity — design board · 资治通鉴 Reader</title>
+  <style>
+    :root{
+      --bg:#f4ecd8; --bg-panel:#ece2c8; --bg-input:#fdf6e3; --fg:#2b2118; --fg-inv:#f4ecd8;
+      --accent:#7a3b2e; --accent-pressed:#5a2a20; --accent-tint:rgba(122,59,46,.08);
+      --hu:#996666; --muted:#8a7a64; --border:#c8b994; --hover-bg:#ddd0b0;
+      --radius-sm:3px; --radius-md:4px;
+      --serif:'Noto Serif SC','Source Han Serif SC','Songti SC','SimSun',serif;
+      --sans:'Noto Sans SC','Source Han Sans SC','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:#e7dcc0;color:var(--fg);font-family:var(--sans);line-height:1.7}
+    .board{max-width:1180px;margin:0 auto;padding:2rem 1.25rem 4rem}
+    .board > h1{font-family:var(--serif);color:var(--accent);font-size:1.5rem;margin:.2rem 0 .15rem}
+    .board > p.lede{color:var(--muted);margin:0 0 1.6rem;font-size:.92rem;max-width:60ch}
+    .legend{display:flex;flex-wrap:wrap;gap:.5rem 1.1rem;font-size:.78rem;color:var(--muted);margin-bottom:1.8rem}
+    .legend b{color:var(--fg)}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.5rem}
+    @media(max-width:820px){.grid{grid-template-columns:1fr}}
+    .panel{background:var(--bg);border:1px solid var(--border);border-radius:8px;overflow:hidden;box-shadow:0 2px 10px rgba(43,33,24,.08)}
+    .panel > .cap{background:var(--bg-panel);border-bottom:1px solid var(--border);padding:.5rem .8rem;font-size:.78rem;color:var(--muted)}
+    .panel > .cap b{color:var(--fg);font-size:.86rem}
+    .stage{padding:1.1rem 1rem 1.2rem;position:relative}
+
+    /* ── reader line (原文 = serif, sovereign) ── */
+    .reader{font-family:var(--serif);font-size:1.04rem;line-height:1.95;color:var(--fg)}
+    .reader .yr{color:#5b3d1a;font-weight:600;display:block;margin-bottom:.2em}
+    .hu-marker{color:var(--hu);font-size:.78em}
+    .person-name{color:inherit;font:inherit;font-weight:500;text-decoration:underline dotted 1px;
+      text-decoration-color:color-mix(in srgb,var(--accent) 55%,transparent);text-underline-offset:.18em;
+      background:transparent;border:0;border-radius:var(--radius-sm);padding:0 .02em;cursor:help}
+    .person-name:hover,.person-name:focus-visible{color:var(--accent);text-decoration-style:solid;
+      text-decoration-color:var(--accent);background:var(--accent-tint);outline:2px solid var(--accent);outline-offset:2px}
+    .person-name.is-active{color:var(--accent-pressed);background:rgba(122,59,46,.12)}
+
+    /* ── editorial card vocabulary (sans, clearly NOT 原文) ── */
+    .card{font-family:var(--sans);background:var(--bg-input);border:1px solid var(--border);border-radius:6px;
+      box-shadow:0 8px 24px rgba(43,33,24,.16);padding:.7rem .8rem .75rem}
+    .card.inpane{box-shadow:none;background:var(--bg-panel)}
+    .prov{display:inline-flex;align-items:center;gap:.3rem;font-size:.7rem;color:var(--accent);
+      background:var(--accent-tint);border:1px solid rgba(122,59,46,.18);border-radius:999px;padding:.05rem .5rem;letter-spacing:.02em}
+    .prov::before{content:"§";font-weight:700}
+    .chead{display:flex;align-items:baseline;gap:.5rem;margin-bottom:.45rem}
+    .pname{font-family:var(--serif);color:var(--accent);font-weight:700;font-size:1.1rem}
+    .aka{color:var(--muted);font-size:.8rem}
+    .identity{font-size:.86rem;margin:.15rem 0 .55rem;color:var(--fg)}
+    .boundary{display:flex;align-items:center;gap:.35rem;font-size:.74rem;color:var(--accent);
+      background:rgba(122,59,46,.06);border:1px solid rgba(122,59,46,.16);border-radius:var(--radius-md);
+      padding:.28rem .5rem;margin:.1rem 0 .55rem}
+    .boundary::before{content:"⊣";font-weight:700}
+    .count{color:var(--muted);font-size:.78rem;margin:.1rem 0 .5rem}
+    .appearance{border-radius:var(--radius-md);background:rgba(122,59,46,.06);padding:.45rem .55rem;margin:.4rem 0}
+    .appearance:hover{background:var(--hover-bg)}
+    .meta{display:flex;align-items:center;gap:.5rem;color:var(--muted);font-size:.75rem;font-variant-numeric:tabular-nums}
+    .srctag{font-size:.68rem;border:1px solid var(--border);border-radius:999px;padding:.02rem .4rem;color:var(--muted)}
+    .srctag.hu{color:var(--hu);border-color:#d8b9b9;background:rgba(153,102,102,.06)}
+    .snippet{font-family:var(--serif);display:block;line-height:1.55;margin:.18rem 0;font-size:.92rem}
+    mark{background:#f4d089;color:var(--fg);padding:0 .1em;border-radius:2px;font-weight:600}
+    .jump{color:var(--accent);font-size:.76rem;text-decoration:none;font-weight:600}
+    .future{border-top:1px solid rgba(122,59,46,.14);margin-top:.55rem;padding-top:.5rem;color:var(--muted);font-size:.78rem}
+    .btn{font-family:var(--sans);cursor:pointer;border:1px solid var(--border);background:var(--bg-panel);
+      color:var(--fg);border-radius:var(--radius-md);padding:.32rem .6rem;font-size:.78rem}
+    .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--fg-inv)}
+    .btn.ghost{background:transparent}
+    .btnrow{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem}
+
+    /* confidence pills */
+    .conf{font-size:.68rem;border-radius:999px;padding:.02rem .42rem;border:1px solid}
+    .conf.rev{color:#3c6b3c;border-color:#9cbf9c;background:rgba(60,107,60,.08)}
+    .conf.high{color:var(--accent);border-color:rgba(122,59,46,.3);background:var(--accent-tint)}
+    .conf.maybe{color:#8a6a2a;border-color:#cbb077;background:rgba(138,106,42,.08)}
+    .conf.low{color:var(--muted);border-color:var(--border);background:transparent}
+
+    .candidate{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-panel);
+      padding:.5rem .6rem;margin:.4rem 0;cursor:pointer}
+    .candidate:hover{background:var(--hover-bg)}
+    .candidate .clue{color:var(--muted);font-size:.76rem;margin-top:.15rem}
+    .ask{font-size:.82rem;color:var(--fg);margin:.1rem 0 .5rem}
+
+    /* mobile sheet frame */
+    .phone{max-width:300px;margin:0 auto;border:1px solid var(--border);border-radius:18px;overflow:hidden;background:var(--bg)}
+    .phone .top{font-family:var(--serif);padding:1rem .9rem;font-size:.98rem;line-height:1.9;min-height:120px}
+    .phone .sheet{background:var(--bg-input);border-top:1px solid var(--border);border-radius:14px 14px 0 0;
+      box-shadow:0 -8px 22px rgba(43,33,24,.22);padding:.7rem .85rem .9rem}
+    .phone .sheet .chead{align-items:center}
+    .phone .close{margin-left:auto;color:var(--muted);font-size:1.1rem}
+    .note{color:var(--muted);font-size:.78rem;margin:.5rem 0 0}
+  </style>
+</head>
+<body>
+<div class="board">
+  <h1>P0 · 人物识别体验 — design board</h1>
+  <p class="lede">Iterated from the PM PRD + UX spec. Every identity surface is editorial (<span class="prov">编者信息 · 非原文</span>), spoiler-safe by default, and falls back to literal search when unsure. 原文 stays serif &amp; sovereign; editorial aids are sans-serif.</p>
+  <div class="legend">
+    <span><b>原文</b> serif, untouched</span>
+    <span><b>编者</b> sans-serif card</span>
+    <span><span class="conf rev">人工复核</span> reviewed</span>
+    <span><span class="conf high">自动识别</span> high</span>
+    <span><span class="conf maybe">可能</span> medium</span>
+    <span><span class="conf low">不确定</span> low → search</span>
+  </div>
+
+  <div class="grid">
+
+    <!-- 1. Desktop hover popover — single confident match -->
+    <div class="panel">
+      <div class="cap"><b>1 · Desktop hover popover</b> — confident single match (reviewed)</div>
+      <div class="stage">
+        <div class="reader">
+          <span class="yr">威烈王二十三年（前403年）</span>
+          初命晋大夫<button class="person-name is-active">魏斯</button>、<button class="person-name">赵籍</button>、<button class="person-name">韩虔</button>为诸侯。<span class="hu-marker">［注］</span>
+        </div>
+        <div class="card" style="margin-top:.7rem">
+          <div class="chead"><span class="pname">魏斯</span><span class="aka">魏文侯 · 文侯</span><span class="prov" style="margin-left:auto">编者信息 · 非原文</span></div>
+          <div class="identity">战国魏国开国之君，三家分晋后受命为诸侯。</div>
+          <div class="boundary">仅显示至当前位置：卷001 · 前403年</div>
+          <div class="count">此前出现 <b>2</b> 段 · <b>3</b> 处　<span class="conf rev">人工复核</span></div>
+          <div class="appearance">
+            <div class="meta">前405年 · 卷001 <span class="srctag">原文</span></div>
+            <span class="snippet">…晋大夫<mark>魏斯</mark>与赵籍、韩虔专晋政。</span>
+            <a class="jump" href="#">跳至此段 →</a>
+          </div>
+          <div class="future">此后另有 12 处出现，已隐藏以避免剧透。</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Right-pane full panel -->
+    <div class="panel">
+      <div class="cap"><b>2 · Right-pane person panel</b> — pinned, full timeline (replaces top of 出处检索)</div>
+      <div class="stage" style="background:var(--bg-panel)">
+        <div class="card inpane">
+          <div class="chead"><span class="pname">王莽</span><span class="aka">字巨君 · 新室</span></div>
+          <span class="prov">编者信息 · 非原文</span>
+          <div class="identity" style="margin-top:.5rem">西汉外戚、权臣，后篡汉自立，建“新”。</div>
+          <div class="boundary">仅显示至当前位置：卷032 · 段184</div>
+          <div class="count">此前出现 <b>12</b> 段　<span class="conf high">自动识别</span></div>
+          <div class="appearance">
+            <div class="meta">前8年 · 卷031 <span class="srctag">原文</span></div>
+            <span class="snippet">…以外戚子弟<mark>王莽</mark>为黄门郎。</span>
+            <a class="jump" href="#">跳至此段 →</a>
+          </div>
+          <div class="appearance">
+            <div class="meta">前7年 · 卷031 <span class="srctag hu">胡注</span></div>
+            <span class="snippet">…胡三省曰：<mark>莽</mark>之诸父皆为将军、列侯。</span>
+            <a class="jump" href="#">跳至此段 →</a>
+          </div>
+          <div class="future">此后另有 18 处出现，已隐藏以避免剧透。
+            <div class="btnrow"><button class="btn ghost">临时显示此后出现（含剧透）</button></div>
+          </div>
+        </div>
+        <p class="note">下方仍保留「出处检索」用于非人物词语。</p>
+      </div>
+    </div>
+
+    <!-- 3. Disambiguation -->
+    <div class="panel">
+      <div class="cap"><b>3 · Disambiguation</b> — 同名异人, reader chooses (no false precision)</div>
+      <div class="stage">
+        <div class="reader"><span class="yr">宣帝本始三年</span>…京兆尹<button class="person-name is-active">张敞</button>奏…</div>
+        <div class="card" style="margin-top:.7rem">
+          <div class="chead"><span class="pname">“张敞”</span><span class="prov" style="margin-left:auto">编者识别 · 非原文</span></div>
+          <p class="ask">可能指以下人物，请选择更符合上下文的一位：</p>
+          <div class="candidate">
+            <div><b>张敞</b> · 西汉京兆尹 <span class="conf high" style="margin-left:.3rem">较高</span></div>
+            <div class="clue">线索：本段同见「京兆」「宣帝」</div>
+          </div>
+          <div class="candidate">
+            <div><b>张敞</b> · 东汉地方官 <span class="conf low" style="margin-left:.3rem">不确定</span></div>
+            <div class="clue">线索不足</div>
+          </div>
+          <div class="btnrow"><button class="btn">按字面搜「张敞」</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Low confidence / not in KB fallback -->
+    <div class="panel">
+      <div class="cap"><b>4 · Low-confidence &amp; not-in-KB</b> — honest fallback to literal search</div>
+      <div class="stage">
+        <div class="card">
+          <div class="chead"><span class="pname">未确认人物</span><span class="prov" style="margin-left:auto">编者信息 · 非原文</span></div>
+          <p class="ask">“韩某”尚未在离线人物库中确认。可按字面检索其此前出处。</p>
+          <div class="btnrow"><button class="btn primary">搜此前出处</button><button class="btn">查看可能人物</button></div>
+        </div>
+        <div class="card" style="margin-top:.8rem">
+          <div class="chead"><span class="pname">“某将”</span><span class="prov" style="margin-left:auto">编者识别 · 非原文</span></div>
+          <p class="ask">可能是人物，但上下文不足以确定身份 <span class="conf low">不确定</span></p>
+          <div class="btnrow"><button class="btn primary">按字面搜「某将」</button></div>
+          <p class="note">默认动作是诚实的字面检索，而非假装精确。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Spoiler reveal confirm -->
+    <div class="panel">
+      <div class="cap"><b>5 · Spoiler reveal</b> — opt-in, one-time confirm, never persists by default</div>
+      <div class="stage">
+        <div class="card" style="max-width:360px">
+          <div class="chead"><span class="pname">显示此后出现？</span></div>
+          <p class="ask">这会显示当前阅读位置<b>之后</b>的《通鉴》内容，可能剧透此人结局。</p>
+          <div class="btnrow"><button class="btn">取消</button><button class="btn primary">显示一次</button></div>
+          <p class="note">仅本次生效；可在「设置」中长期开启。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Mobile -->
+    <div class="panel">
+      <div class="cap"><b>6 · Mobile</b> — tap name → bottom sheet (long-press still = OS selection)</div>
+      <div class="stage" style="background:var(--bg-panel)">
+        <div class="phone">
+          <div class="top">…命晋大夫<button class="person-name is-active">魏斯</button>、赵籍、韩虔为诸侯。</div>
+          <div class="sheet">
+            <div class="chead"><span class="pname">魏斯</span><span class="aka">魏文侯</span><span class="close">×</span></div>
+            <span class="prov">编者信息 · 非原文</span>
+            <div class="boundary" style="margin-top:.5rem">仅显示至 卷001 · 前403年</div>
+            <div class="appearance">
+              <div class="meta">前405年 · 卷001 <span class="srctag">原文</span></div>
+              <span class="snippet">…晋大夫<mark>魏斯</mark>与赵籍专晋政。</span>
+              <a class="jump" href="#">跳至此段 →</a>
+            </div>
+            <div class="future">此后 12 处已隐藏 · <a class="jump" href="#">临时显示（含剧透）</a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

@@ -1,11 +1,13 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import type { Manifest, Juan, GuideSummary } from './corpus';
-import { loadManifest, loadJuan, loadJuanGuide } from './corpus';
+import type { Manifest, Juan, GuideSummary, Person, PersonMention, GuidePersonRef, AppearanceRow } from './corpus';
+import { loadManifest, loadJuan, loadJuanGuide, loadPeople, loadPersonMentions, loadAppearances } from './corpus';
 import Sidebar from './Sidebar';
 import Reader from './Reader';
 import YearToc from './YearToc';
 import LookupPanel from './LookupPanel';
+import PersonCard from './PersonCard';
+import type { PersonSpan } from './highlight';
 import './styles.css';
 
 const LAST_JUAN_KEY = 'zztj.lastJuan';
@@ -89,7 +91,6 @@ export default function App() {
     }
     return true;
   });
-  const [showLookup, setShowLookup] = useState<boolean>(false);
   // Mobile-only right-side drawer dedicated to 本卷纪年. Kept separate from
   // the search/lookup drawer so search keeps its full vertical space in
   // landscape (where the screen is already short).
@@ -127,6 +128,22 @@ export default function App() {
   // 卷 ships no guide file (graceful absence).
   const [guideByAnchorPid, setGuideByAnchorPid] =
     useState<Map<number, GuideSummary>>(new Map());
+  // ── 人物识别 (person identity) state ──
+  // Canonical person KB (loaded once; empty when no person assets ship).
+  const [people, setPeople] = useState<Map<string, Person>>(new Map());
+  // Cross-卷 verified appearance index (persons/appearances.json). Drives the
+  // NER-accurate occurrence list for a bound person; empty when assets absent.
+  const [appearances, setAppearances] = useState<Map<string, AppearanceRow[]>>(new Map());
+  // Person mentions for the currently loaded 卷 (empty when the 卷 has no
+  // person sidecar — a graceful, non-blocking absence).
+  const [mentions, setMentions] = useState<PersonMention[]>([]);
+  // Opt-in reveal of an open person's future (spoiler) appearances.
+  // Whether the identity banner shows the full life arc (剧透) vs the
+  // spoiler-safe establishing brief.
+  const [spoilerSummary, setSpoilerSummary] = useState<boolean>(false);
+  // When the reader uses 跳至此段 to revisit an earlier mention, we stash the
+  // paragraph they jumped *from* so a "返回刚才阅读处" pill can bring them back.
+  const [jumpReturnPid, setJumpReturnPid] = useState<number | null>(null);
   // Pid of a year the user explicitly clicked in YearToc. When set, the
   // YearToc highlight uses this directly rather than the scroll-derived
   // activeParagraphId — so the highlight stays locked on what the user
@@ -164,6 +181,45 @@ export default function App() {
   const [lookupQuery, setLookupQuery] = useState<string>(initialRoute.q);
   const [committedQuery, setCommittedQuery] = useState<string>(initialRoute.q);
   const [filterByJuan, setFilterByJuan] = useState<boolean>(true);
+  // ── The dock's single source of truth: one persistent "subject" ──
+  // A discriminated union — years (resting) | lookup (出处检索) | person
+  // (人物身份). The dock shows a person card IFF subject.kind === 'person';
+  // a typed/selected name NEVER auto-opens a card. An empty lookup query is
+  // unrepresentable (it renders 'years'). The transient selection popover is
+  // owned by window.getSelection() and is never written into the subject.
+  type DockSubject =
+    | { kind: 'years' }
+    | { kind: 'lookup'; query: string;
+        origin: 'selection-promoted' | 'typed' | 'unbound-pill' }
+    | { kind: 'person'; personId: string; atPid: number;
+        origin: 'inline' | 'guide' | 'lookup-promoted';
+        from: DockSubject | null; clickedLabel?: string };
+  const [subject, setSubject] = useState<DockSubject>(
+    initialRoute.q ? { kind: 'lookup', query: initialRoute.q, origin: 'typed' } : { kind: 'years' },
+  );
+  // Live mirror of the subject readable from effect/handler closures.
+  const subjectRef = useRef<DockSubject>(subject);
+  subjectRef.current = subject;
+  // Most recent lookup query / person — power the header seg control's
+  // "检索"/"人物" buttons, which stay re-selectable once a subject of that
+  // kind has existed.
+  const [lastLookup, setLastLookup] = useState<string>(initialRoute.q || '');
+  const [lastPerson, setLastPerson] = useState<
+    { personId: string; atPid: number; origin: 'inline' | 'guide' | 'lookup-promoted'; clickedLabel?: string } | null
+  >(null);
+  // Mobile bottom-sheet detent for the SUBJECT (lookup/person). 'peek' == the
+  // sheet is collapsed (== years/dismissed); 'half'/'full' show the subject.
+  // Pure function of the subject by default (set on subject change); the user
+  // can swipe between half and full.
+  type SheetDetent = 'peek' | 'half' | 'full';
+  const [sheetDetent, setSheetDetent] = useState<SheetDetent>(
+    initialRoute.q ? 'half' : 'peek',
+  );
+  // Transient "compose a fresh typed search" intent — opens the 检索 input
+  // even before a (non-empty) lookup subject exists, without violating the
+  // "empty lookup is unrepresentable" rule (the subject stays 'years' until a
+  // non-empty query is typed). Entry point for typed search (the header ⌕).
+  const [searchCompose, setSearchCompose] = useState<boolean>(false);
   // Paragraph that should be visually highlighted as the lookup target.
   const [highlightPid, setHighlightPid] = useState<number | null>(initialRoute.p);
   // Paragraph to scroll to once the target juan finishes loading.
@@ -277,6 +333,32 @@ export default function App() {
     localStorage.setItem('zztj.showSidebar', showSidebar ? '1' : '0');
   }, [showSidebar]);
 
+  // Load the canonical person KB once. Absent assets resolve to an empty map
+  // (loadPeople swallows errors) → no identity layer, literal search only.
+  useEffect(() => {
+    loadPeople().then(setPeople);
+  }, []);
+
+  // Load the per-卷 person mention sidecar alongside the 卷 text. Missing files
+  // resolve to null → empty mentions → no person affordances for that 卷.
+  // Opening a new 卷 also dismisses any open person card (pop the subject back
+  // to 纪年 if a person was open).
+  useEffect(() => {
+    let cancelled = false;
+    setMentions([]);
+    setSpoilerSummary(false);
+    if (subjectRef.current.kind === 'person') {
+      setSubject({ kind: 'years' });
+      setLookupQuery('');
+      setCommittedQuery('');
+    }
+    loadPersonMentions(juanNo).then(file => {
+      if (cancelled || !file) return;
+      setMentions(file.mentions);
+    });
+    return () => { cancelled = true; };
+  }, [juanNo]);
+
   // Track which paragraph is most prominent in viewport. Also persist scroll
   // position per juan and mark a juan as "read" once the reader has scrolled
   // to the bottom area.
@@ -380,10 +462,9 @@ export default function App() {
   //     its toolbar button as a fallback; 本卷纪年 is gesture-only by design.
   //   - The trigger zone is a thin strip (24px) so reader text selection is
   //     not affected by touches that start inside the body.
-  const drawerStateRef = useRef({ sidebar: false, lookup: false, year: false });
+  const drawerStateRef = useRef({ sidebar: false, year: false });
   drawerStateRef.current = {
     sidebar: showSidebar,
-    lookup: showLookup,
     year: showYearDrawer,
   };
   useEffect(() => {
@@ -405,7 +486,6 @@ export default function App() {
       fromLeft = t.clientX <= EDGE;
       fromRight = t.clientX >= w - EDGE;
       const anyOpen = drawerStateRef.current.sidebar
-        || drawerStateRef.current.lookup
         || drawerStateRef.current.year;
       // Only track the gesture if it could possibly do something:
       // either it starts in an edge strip (potential open) or a drawer
@@ -423,21 +503,18 @@ export default function App() {
       if (Math.abs(dy) > MAX_OFF_AXIS) return;
       if (Math.abs(dx) < THRESHOLD_X) return;
 
-      const { sidebar, lookup, year } = drawerStateRef.current;
+      const { sidebar, year } = drawerStateRef.current;
       // Close gestures win over open gestures so the user can dismiss a
       // drawer without an accidental re-open on the opposite edge.
       if (sidebar && dx < 0) { setShowSidebar(false); return; }
       if (year && dx > 0) { setShowYearDrawer(false); return; }
-      if (lookup && dx > 0) { setShowLookup(false); return; }
 
       if (fromLeft && dx > 0) {
         setShowSidebar(true);
-        setShowLookup(false);
         setShowYearDrawer(false);
       } else if (fromRight && dx < 0) {
         setShowYearDrawer(true);
         setShowSidebar(false);
-        setShowLookup(false);
       }
     };
     const onTouchCancel = () => { startX = null; };
@@ -451,33 +528,24 @@ export default function App() {
     };
   }, []);
 
-  // Capture text selection within the reader pane to drive the lookup.
+  // Capture text selection within the reader pane to drive a transient,
+  // selection-owned popover (one explicit "search" affordance on ALL devices —
+  // no more desktop auto-fill). The popover is NEVER written into the dock
+  // subject; it auto-dies on deselect by construction.
   //
   // Two important rules keep the user's selection stable:
   //
-  //   1. We never call `setLookupQuery` while the user is actively dragging
-  //      (between pointerdown and pointerup). A React state update here would
-  //      re-render the LookupPanel and, more critically, could trigger work
-  //      that runs on the same frame as the browser updating the selection —
-  //      contributing to the "jumpy" feel.
+  //   1. We never fan a React state update out to the reader body while the
+  //      user is actively dragging (between pointerdown and pointerup).
   //
-  //   2. We only ever write to `lookupQuery` (the input value + lookup panel
-  //      query), never to `committedQuery`. That means the reader's paragraph
-  //      DOM — and therefore the user's live Selection range — is never torn
-  //      down by a selection-driven update. This is what makes drag-extend
-  //      and Ctrl+C reliable.
+  //   2. We only ever paint other-occurrence matches via the CSS Custom
+  //      Highlight API (selectionMatch) — never via committedQuery / <mark>
+  //      wrapping. Rebuilding the reader text nodes would collapse the user's
+  //      live Selection and break Ctrl+C.
   //
   // selectionchange (vs. mouseup) reliably fires for both pointer and touch
-  // gestures, so this works on mobile where mouseup is unreliable after
-  // the OS text-selection long-press. On hover-capable devices the selection
-  // auto-fills the always-visible search input. On touch the lookup drawer
-  // is hidden by default, so we defer until the user explicitly taps the
-  // floating "搜出处" pill — making "I'm just copying" still work.
-  const hoverCapable = useMemo(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return false;
-    try { return window.matchMedia('(hover: hover)').matches; } catch { return false; }
-  }, []);
-  const [pendingSelection, setPendingSelection] = useState<string | null>(null);
+  // gestures, so this works on mobile where mouseup is unreliable after the OS
+  // text-selection long-press.
   // Text of the current reader selection, used to paint yellow highlights on
   // every other occurrence via the CSS Custom Highlight API. We intentionally
   // do NOT route this through committedQuery / <mark> wrapping: rebuilding the
@@ -485,6 +553,18 @@ export default function App() {
   // Ctrl+C. Custom highlights are painted over the existing DOM, leaving the
   // selection (and clipboard) untouched.
   const [selectionMatch, setSelectionMatch] = useState<string>('');
+  // The transient selection popover, owned by window.getSelection(). `rect` is
+  // the viewport anchor on desktop (null → mobile bottom pill). `personId` is
+  // set only when the selection exactly equals a unique in-卷 person name.
+  const [selectionPopover, setSelectionPopover] = useState<
+    { text: string; rect: { cx: number; top: number } | null; personId: string | null } | null
+  >(null);
+  const selectionPopoverRef = useRef<typeof selectionPopover>(null);
+  selectionPopoverRef.current = selectionPopover;
+  // Resolve a selected string to a unique in-卷 person id (else null). Assigned
+  // after nameIndex/juanSurfaceIndex are defined; read via ref so the selection
+  // effect always sees the current resolver.
+  const exactPersonRef = useRef<(t: string) => string | null>(() => null);
 
   useEffect(() => {
     const pane = readerPaneRef.current;
@@ -496,32 +576,35 @@ export default function App() {
     const flushSelection = () => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) {
-        setPendingSelection(null);
+        setSelectionPopover(null);
         setSelectionMatch('');
         return;
       }
       const txt = sel.toString().trim();
       if (!txt || txt.length > 20) {
-        setPendingSelection(null);
+        setSelectionPopover(null);
         setSelectionMatch('');
         return;
       }
       const anchor = sel.anchorNode;
       const anchorEl = anchor instanceof Element ? anchor : anchor?.parentElement ?? null;
       if (!anchorEl || !pane.contains(anchorEl)) {
-        setPendingSelection(null);
+        setSelectionPopover(null);
         setSelectionMatch('');
         return;
       }
       setSelectionMatch(prev => (prev === txt ? prev : txt));
-      if (hoverCapable) {
-        // Fill the input + lookup panel only. Do NOT touch committedQuery —
-        // re-rendering the reader body would collapse this very selection.
-        setLookupQuery(prev => (prev === txt ? prev : txt));
-        setPendingSelection(null);
-      } else {
-        setPendingSelection(prev => (prev === txt ? prev : txt));
+      // Desktop anchors the popover above the selection rect; mobile keeps the
+      // bottom pill (rect == null).
+      let rect: { cx: number; top: number } | null = null;
+      if (!isMobileWidth()) {
+        try {
+          const r = sel.getRangeAt(sel.rangeCount - 1).getBoundingClientRect();
+          if (r && (r.width || r.height)) rect = { cx: r.left + r.width / 2, top: r.top };
+        } catch { /* noop */ }
       }
+      const personId = exactPersonRef.current(txt);
+      setSelectionPopover({ text: txt, rect, personId });
     };
 
     const scheduleFlush = (delay: number) => {
@@ -611,7 +694,7 @@ export default function App() {
       document.removeEventListener('selectionchange', onSelectionChange);
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [juan, hoverCapable]);
+  }, [juan]);
 
   // Paint a yellow highlight over every other occurrence of the selected text.
   // Uses the CSS Custom Highlight API so the existing reader DOM (and thus the
@@ -751,23 +834,82 @@ export default function App() {
 
   const jumpToParagraph = (pid: number) => scrollParagraphIntoView(pid);
 
-  // Look a person/term up via the existing 出处检索 (used by 白话导读 person
-  // chips). Mirrors the selection-action-bar: fill + commit the query and
-  // reveal the lookup panel.
-  const searchFor = (query: string) => {
-    const q = query.trim();
-    if (!q) return;
-    setHighlightPid(null);
-    setLookupQuery(q);
-    setCommittedQuery(q);
-    setShowLookup(true);
-    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
-  };
-
   const isMobileWidth = () =>
     typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches;
 
-  // Jump from a lookup hit: may be same juan or another juan.
+  // Apply a new dock subject and keep the lookupQuery/committedQuery plumbing
+  // (input box, reader <mark>, URL, LookupPanel) in sync with it. Remembers the
+  // last lookup / person so the header seg control can re-select them, and
+  // reconciles the mobile sheet detent (pure function of subject by default).
+  const applySubject = (next: DockSubject) => {
+    setSubject(next);
+    if (next.kind === 'lookup') {
+      setLookupQuery(next.query);
+      setCommittedQuery(next.query);
+      setLastLookup(next.query);
+      setSheetDetent('half');
+    } else if (next.kind === 'person') {
+      const q = people.get(next.personId)?.canonical_name ?? '';
+      setLookupQuery(q);
+      setCommittedQuery(q);
+      setLastPerson({ personId: next.personId, atPid: next.atPid, origin: next.origin, clickedLabel: next.clickedLabel });
+      setSheetDetent('half');
+    } else {
+      setLookupQuery('');
+      setCommittedQuery('');
+      setSheetDetent('peek');
+    }
+  };
+
+  // Return to 纪年 (breadcrumb-home / full dismiss). Drops the live OS selection
+  // so a debounced selectionchange can't re-open a popover and snap back.
+  const goToYears = () => {
+    setSpoilerSummary(false);
+    setHighlightPid(null);
+    setSearchCompose(false);
+    setSelectionPopover(null);
+    setSelectionMatch('');
+    applySubject({ kind: 'years' });
+    try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
+  };
+
+  // The single back/dismiss ladder: person → (from ?? years), lookup → years,
+  // years → no-op (desktop) / collapse to peek (mobile). Always drops the live
+  // selection. Routed by card ×, breadcrumb ‹, Esc, and the sheet swipe-down.
+  const dockBack = () => {
+    try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
+    setSelectionPopover(null);
+    setSelectionMatch('');
+    setSearchCompose(false);
+    setSpoilerSummary(false);
+    setHighlightPid(null);
+    const cur = subjectRef.current;
+    if (cur.kind === 'person') {
+      applySubject(cur.from ?? { kind: 'years' });
+    } else if (cur.kind === 'lookup') {
+      applySubject({ kind: 'years' });
+    } else {
+      setSheetDetent('peek');
+    }
+  };
+  const dockBackRef = useRef(dockBack);
+  dockBackRef.current = dockBack;
+
+  // Look a term up as a fresh 出处检索 — used by 白话导读 unbound pills.
+  const searchFor = (query: string) => {
+    const q = query.trim();
+    if (!q) return;
+    setSpoilerSummary(false);
+    setHighlightPid(null);
+    setSearchCompose(true);
+    setSelectionPopover(null);
+    setSelectionMatch('');
+    applySubject({ kind: 'lookup', query: q, origin: 'unbound-pill' });
+    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+  };
+
+  // Jump from a lookup hit: may be same juan or another juan. On mobile,
+  // collapse the sheet to peek so the jumped-to passage is visible.
   const jumpToHit = (targetJuan: number, paragraphId: number) => {
     setHighlightPid(paragraphId);
     if (targetJuan === juanNo) {
@@ -776,7 +918,319 @@ export default function App() {
       pendingScrollRef.current = paragraphId;
       setJuanNo(targetJuan);
     }
-    if (isMobileWidth()) setShowLookup(false);
+    if (isMobileWidth()) setSheetDetent('peek');
+  };
+
+  // ── 人物识别 derived data ──
+  // Main-text mention spans grouped by paragraph id, for inline affordances.
+  const personSpansByPid = useMemo(() => {
+    const m = new Map<number, PersonSpan[]>();
+    for (const mt of mentions) {
+      if (mt.source !== 'main' || !mt.person_id) continue;
+      const arr = m.get(mt.pid) ?? [];
+      arr.push({ start: mt.start, end: mt.end, personId: mt.person_id, confidence: mt.confidence });
+      m.set(mt.pid, arr);
+    }
+    return m;
+  }, [mentions]);
+
+  // Surface → person ids index for binding 白话导读 关键人物 to the KB.
+  // Only canonical/alias surfaces of reviewed/high people are bindable; an
+  // ambiguous surface (mapping to >1 person) stays unbound (literal search).
+  const nameIndex = useMemo(() => {
+    const idx = new Map<string, Set<string>>();
+    for (const p of people.values()) {
+      if (p.confidence !== 'reviewed' && p.confidence !== 'high') continue;
+      for (const n of p.names) {
+        const set = idx.get(n.text) ?? new Set<string>();
+        set.add(p.id);
+        idx.set(n.text, set);
+      }
+    }
+    return idx;
+  }, [people]);
+
+  // People that actually appear in the current 卷 — guide binding is gated to
+  // these so a name only opens a card when there's at least one safe in-卷 hit.
+  const peopleInJuan = useMemo(() => {
+    const s = new Set<string>();
+    for (const mt of mentions) if (mt.person_id) s.add(mt.person_id);
+    return s;
+  }, [mentions]);
+
+  // Per-卷 surface → person ids, harvested from THIS 卷's mentions — i.e. the
+  // exact collision-free table the body text underlines from. A recurring name
+  // like 李德裕 is globally ambiguous (split into several person instances across
+  // 卷 windows) so `nameIndex` can't bind it, yet within a single 卷 it resolves
+  // to one instance. This lets a 白话导读 name bind to the same person the
+  // paragraph already underlines, instead of falling back to white-dot search.
+  const juanSurfaceIndex = useMemo(() => {
+    const idx = new Map<string, Set<string>>();
+    for (const mt of mentions) {
+      if (!mt.person_id || !mt.surface) continue;
+      const set = idx.get(mt.surface) ?? new Set<string>();
+      set.add(mt.person_id);
+      idx.set(mt.surface, set);
+    }
+    return idx;
+  }, [mentions]);
+
+
+  const resolveGuidePerson = (ref: GuidePersonRef): string | null => {
+    if (ref.person_id && people.has(ref.person_id) && peopleInJuan.has(ref.person_id)) {
+      return ref.person_id;
+    }
+    const ids = nameIndex.get(ref.name);
+    if (ids && ids.size === 1) {
+      const id = [...ids][0];
+      if (peopleInJuan.has(id)) return id;
+    }
+    // Fall back to the per-卷 mention table (the same source the paragraph
+    // underlines from). A name that is globally ambiguous but appears for
+    // exactly one person in THIS 卷 binds to that in-卷 instance.
+    const local = juanSurfaceIndex.get(ref.name);
+    if (local && local.size === 1) {
+      const id = [...local][0];
+      if (peopleInJuan.has(id)) return id;
+    }
+    return null;
+  };
+
+  // Resolve a selected/typed exact string to a unique in-卷 person id, mirroring
+  // resolveGuidePerson's binding rules. Powers the selection popover's optional
+  // 看人物身份 affordance and the header 人物 availability. Read via ref from the
+  // selection effect (which is created before nameIndex et al. exist).
+  exactPersonRef.current = (txt: string): string | null => {
+    const q = txt.trim();
+    if (!q) return null;
+    const ids = nameIndex.get(q);
+    if (ids && ids.size === 1) {
+      const id = [...ids][0];
+      if (peopleInJuan.has(id)) return id;
+    }
+    const local = juanSurfaceIndex.get(q);
+    if (local && local.size === 1) {
+      const id = [...local][0];
+      if (peopleInJuan.has(id)) return id;
+    }
+    return null;
+  };
+
+  // Open a person card (inline underline or guide bound pill). The dock shows a
+  // person card IFF subject.kind === 'person'.
+  const openPerson = (
+    personId: string,
+    atPid: number,
+    source: 'main' | 'guide' = 'main',
+    clickedLabel?: string,
+  ) => {
+    const person = people.get(personId);
+    if (!person) return;
+    // Pre-step (critical, finding P1 #1): clear any stray OS selection BEFORE
+    // opening, so a leftover selection can never swallow the tap.
+    try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
+    setSelectionPopover(null);
+    setSelectionMatch('');
+    setSpoilerSummary(false);
+    setHighlightPid(null);
+    setSearchCompose(false);
+    applySubject({
+      kind: 'person',
+      personId,
+      atPid,
+      origin: source === 'guide' ? 'guide' : 'inline',
+      from: subjectRef.current,
+      clickedLabel,
+    });
+    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+  };
+
+  // Promote the selection popover's 看人物身份 affordance: open the person with
+  // origin 'lookup-promoted' and from=null (per spec §2.1).
+  const promoteSelectionToPerson = (personId: string, atPid: number, clickedLabel?: string) => {
+    const person = people.get(personId);
+    if (!person) return;
+    try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
+    setSelectionPopover(null);
+    setSelectionMatch('');
+    setSpoilerSummary(false);
+    setHighlightPid(null);
+    setSearchCompose(false);
+    applySubject({ kind: 'person', personId, atPid, origin: 'lookup-promoted', from: null, clickedLabel });
+    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+  };
+
+  // The currently open person object (card shown IFF subject.kind==='person').
+  const activePersonObj = subject.kind === 'person' ? people.get(subject.personId) ?? null : null;
+
+  // When a person is open, build the NER-accurate occurrence inputs: the set of
+  // their verified appearance paragraphs ("j:p") plus every name surface to
+  // highlight. null when no person is open → LookupPanel falls back to literal
+  // substring search on the typed query.
+  const occurrenceNames = useMemo(
+    () => (activePersonObj ? activePersonObj.names.map(n => n.text) : null),
+    [activePersonObj],
+  );
+  const occurrencePids = useMemo(() => {
+    if (!activePersonObj) return null;
+    const rows = appearances.get(activePersonObj.id);
+    if (!rows || rows.length === 0) return null;
+    return new Set(rows.map(r => r.juan + ':' + r.pid));
+  }, [activePersonObj, appearances]);
+
+  // Lazy-load the cross-卷 appearance index (≈3MB at full 294-卷 scale) only
+  // once a person is actually open — keeps first paint light. loadAppearances
+  // is process-cached, so this fetch happens at most once.
+  useEffect(() => {
+    if (activePersonObj && appearances.size === 0) {
+      loadAppearances().then(setAppearances);
+    }
+  }, [activePersonObj, appearances.size]);
+
+  // Compact "current position" label for the dock's persistent year chip:
+  // the latest year-anchor at or before the active paragraph.
+  const currentYearLabel = useMemo(() => {
+    if (!juan) return '';
+    if (activeParagraphId == null) return juan.label;
+    let y: number | null = null;
+    for (const yr of juan.years) {
+      if (yr.paragraph_id <= activeParagraphId) y = yr.ce_year;
+      else break;
+    }
+    const yl = y === null ? '' : (y < 0 ? `前${-y}年` : `${y}年`);
+    return yl ? `${juan.label} · ${yl}` : juan.label;
+  }, [juan, activeParagraphId]);
+
+  // Paragraph id of the current year anchor (latest year at/before the active
+  // paragraph). Tapping the breadcrumb year label in 纪年 mode jumps here.
+  const currentYearPid = useMemo(() => {
+    if (!juan || juan.years.length === 0) return null;
+    let pid: number | null = null;
+    for (const yr of juan.years) {
+      if (activeParagraphId == null) { pid = yr.paragraph_id; break; }
+      if (yr.paragraph_id <= activeParagraphId) pid = yr.paragraph_id;
+      else break;
+    }
+    return pid ?? juan.years[0].paragraph_id;
+  }, [juan, activeParagraphId]);
+
+  // The breadcrumb: in 纪年 mode it jumps to the current year's paragraph; in
+  // lookup/person mode the ‹ chevron pops the subject one level (dockBack).
+  const onCrumbClick = () => {
+    if (currentYearPid != null) {
+      setSelectedYearPid(currentYearPid);
+      jumpToParagraph(currentYearPid);
+    }
+  };
+
+  // Global Esc handler: first Esc dismisses a live selection popover; otherwise
+  // it pops the subject via the single dockBack ladder.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (selectionPopoverRef.current) {
+        try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
+        setSelectionPopover(null);
+        setSelectionMatch('');
+        return;
+      }
+      dockBackRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // The header subject segmented control / legend availability.
+  const hasLookupCtx = subject.kind === 'lookup' || !!lastLookup.trim();
+  const hasPersonCtx = subject.kind === 'person' || !!lastPerson;
+  const legendText =
+    subject.kind === 'lookup' ? `出处检索：「${subject.query}」`
+    : subject.kind === 'person' ? `人物身份：${activePersonObj?.canonical_name ?? ''}`
+    : '本卷纪年';
+  // Mobile sheet detent class (inert on desktop, where the dock is column 3).
+  const detentClass = ` dock-${sheetDetent}`;
+
+  // Which body view the dock renders (person > lookup > years).
+  const showPersonView = subject.kind === 'person';
+  const showLookupView = !showPersonView && (subject.kind === 'lookup' || searchCompose);
+  const showYearsView = !showPersonView && !showLookupView;
+  // When in a lookup whose query is a unique in-卷 person name, offer an
+  // explicit promote ("看人物身份 ›") — never an automatic morph (AC3).
+  const lookupPersonId = subject.kind === 'lookup' ? exactPersonRef.current(subject.query) : null;
+  const lookupPerson = lookupPersonId ? people.get(lookupPersonId) ?? null : null;
+
+  // Promote the selection popover's 搜全部出处: write a lookup subject.
+  const promoteSelectionToLookup = () => {
+    const txt = selectionPopover?.text;
+    if (!txt) return;
+    setSearchCompose(true);
+    applySubject({ kind: 'lookup', query: txt, origin: 'selection-promoted' });
+    setSelectionPopover(null);
+    setSelectionMatch('');
+    try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
+    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+  };
+
+  // Promote a lookup → person (from = the lookup, so Back returns to it).
+  const promoteLookupToPerson = () => {
+    if (subject.kind !== 'lookup' || !lookupPersonId) return;
+    setSpoilerSummary(false);
+    setHighlightPid(null);
+    setSearchCompose(false);
+    applySubject({
+      kind: 'person',
+      personId: lookupPersonId,
+      atPid: activeParagraphId ?? currentYearPid ?? 0,
+      origin: 'lookup-promoted',
+      from: subject,
+      clickedLabel: subject.query,
+    });
+  };
+
+  // Header seg: open / re-select the lookup context.
+  const selectLookupSeg = () => {
+    const q = subject.kind === 'lookup' ? subject.query : lastLookup;
+    setSearchCompose(true);
+    if (q.trim()) applySubject({ kind: 'lookup', query: q, origin: 'typed' });
+    else setSheetDetent('half');
+    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+  };
+
+  // Header seg: re-select the last person context.
+  const selectPersonSeg = () => {
+    if (subject.kind === 'person' || !lastPerson) return;
+    setSpoilerSummary(false);
+    setHighlightPid(null);
+    setSearchCompose(false);
+    applySubject({
+      kind: 'person',
+      personId: lastPerson.personId,
+      atPid: lastPerson.atPid,
+      origin: lastPerson.origin,
+      from: subject.kind === 'years' ? null : subject,
+      clickedLabel: lastPerson.clickedLabel,
+    });
+    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+  };
+
+  // Mobile sheet drag handling (grabber). Swipe up = expand, swipe down =
+  // collapse one detent (at half → dockBack ladder), tap = toggle half/full.
+  const sheetDragRef = useRef<number | null>(null);
+  const onSheetPointerDown = (e: React.PointerEvent) => { sheetDragRef.current = e.clientY; };
+  const onSheetPointerUp = (e: React.PointerEvent) => {
+    const start = sheetDragRef.current;
+    sheetDragRef.current = null;
+    if (start == null) return;
+    const dy = e.clientY - start;
+    const TH = 30;
+    if (dy < -TH) {
+      setSheetDetent(prev => (prev === 'peek' ? 'half' : 'full'));
+    } else if (dy > TH) {
+      if (sheetDetent === 'full') setSheetDetent('half');
+      else dockBack();
+    } else {
+      setSheetDetent(prev => (prev === 'full' ? 'half' : 'full'));
+    }
   };
 
   if (error) return (
@@ -793,7 +1247,7 @@ export default function App() {
   // (Spoiler filter is now juan-based, so no need to compute a year cutoff.)
 
   return (
-    <div className={`layout${showSidebar ? '' : ' sidebar-collapsed'}${showLookup ? ' lookup-open' : ''}${showYearDrawer ? ' year-drawer-open' : ''}`}>
+    <div className={`layout${showSidebar ? '' : ' sidebar-collapsed'}${detentClass}${sheetDetent !== 'peek' ? ' dock-open' : ''}${showYearDrawer ? ' year-drawer-open' : ''}`}>
       <Sidebar
         manifest={manifest}
         currentJuan={juanNo}
@@ -814,7 +1268,7 @@ export default function App() {
             className="sidebar-toggle"
             onClick={() => setShowSidebar(s => {
               const next = !s;
-              if (next && isMobileWidth()) { setShowLookup(false); setShowYearDrawer(false); }
+              if (next && isMobileWidth()) { setSheetDetent('peek'); setShowYearDrawer(false); }
               return next;
             })}
             title={showSidebar ? '隐藏目录' : '显示目录'}
@@ -934,14 +1388,20 @@ export default function App() {
           </div>
           <button
             type="button"
-            className="lookup-toggle"
-            onClick={() => setShowLookup(s => {
-              const next = !s;
-              if (next && isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
-              return next;
-            })}
-            title={showLookup ? '隐藏检索' : '出处检索'}
-            aria-label={showLookup ? '隐藏检索' : '出处检索'}
+            className={'lookup-toggle' + (searchCompose || subject.kind === 'lookup' ? ' is-on' : '')}
+            onClick={() => {
+              const open = searchCompose || subject.kind === 'lookup';
+              if (open) {
+                goToYears();
+              } else {
+                if (subject.kind === 'person') goToYears();
+                setSearchCompose(true);
+                setSheetDetent('half');
+                if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+              }
+            }}
+            title={searchCompose || subject.kind === 'lookup' ? '隐藏检索' : '出处检索'}
+            aria-label={searchCompose || subject.kind === 'lookup' ? '隐藏检索' : '出处检索'}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
@@ -951,7 +1411,7 @@ export default function App() {
             </svg>
           </button>
         </header>
-        <div className="reader-scroller" ref={readerPaneRef}>
+        <div className={'reader-scroller' + (selectionMatch ? ' sel-live' : '')} ref={readerPaneRef}>
           {juan
             ? <Reader
                 juan={juan}
@@ -961,72 +1421,196 @@ export default function App() {
                 guideMode={guideMode}
                 guideByAnchorPid={guideByAnchorPid}
                 onPersonSearch={searchFor}
+                personSpansByPid={personSpansByPid}
+                onPersonClick={openPerson}
+                resolveGuidePerson={resolveGuidePerson}
+                activePersonId={subject.kind === 'person' ? subject.personId : null}
               />
             : <div className="loading">载入卷 {juanNo} 中……</div>}
         </div>
-      </main>
-      <aside className="person-pane">
-        {juan && (
-          <YearToc
-            years={juan.years}
-            activeParagraphId={activeParagraphId}
-            selectedYearPid={selectedYearPid}
-            onJump={pid => {
-              setHighlightPid(null);
-              // Lock the YearToc highlight on the clicked year. Decoupled
-              // from activeParagraphId so end-of-pane / no-body edge cases
-              // and any trailing scroll events from the animation can't
-              // shift it. scrollParagraphIntoView's finish() updates
-              // activeParagraphId itself once the scroll settles.
-              setSelectedYearPid(pid);
-              jumpToParagraph(pid);
-            }}
-          />
+        {jumpReturnPid !== null && (
+          <button
+            type="button"
+            className="jump-return-pill"
+            onClick={() => { const pid = jumpReturnPid; setJumpReturnPid(null); setHighlightPid(pid); jumpToParagraph(pid); }}
+          >
+            ↩ 返回刚才阅读处
+          </button>
         )}
-        <div className="lookup-section">
-          <div className="lookup-header">
-            <h3>出处检索</h3>
-            <div className="lookup-controls">
-              <input
-                type="text"
-                className="lookup-input"
-                value={lookupQuery}
-                placeholder="选中正文或在此输入"
-                onChange={e => {
-                  setHighlightPid(null);
-                  setLookupQuery(e.target.value);
-                  // Typing in the input is an explicit search action — commit
-                  // so the reader body highlights too.
-                  setCommittedQuery(e.target.value);
-                }}
-              />
-              {lookupQuery && (
-                <button
-                  type="button"
-                  className="lookup-clear"
-                  onClick={() => { setHighlightPid(null); setLookupQuery(''); setCommittedQuery(''); }}
-                  title="清除"
-                >×</button>
-              )}
+      </main>
+      <aside className="person-pane context-dock">
+        <button
+          type="button"
+          className="dock-grabber"
+          onPointerDown={onSheetPointerDown}
+          onPointerUp={onSheetPointerUp}
+          title="拖动调整高度"
+          aria-label="拖动调整高度"
+        >
+          <span className="dock-grabber-bar" aria-hidden="true" />
+        </button>
+        <div className="dock-head">
+          <button
+            type="button"
+            className="dock-crumb"
+            onClick={onCrumbClick}
+            title="跳至本卷当前纪年"
+            aria-label="跳至本卷当前纪年"
+          >
+            <span className="dock-crumb-year">{currentYearLabel || '本卷纪年'}</span>
+          </button>
+          <div className="dock-subject">
+            <div className="seg" role="group" aria-label="上下文">
+              <button
+                type="button"
+                className={'seg-btn' + (subject.kind === 'years' ? ' is-on' : '')}
+                aria-pressed={subject.kind === 'years'}
+                onClick={goToYears}
+              >纪年</button>
+              <button
+                type="button"
+                className={'seg-btn' + (subject.kind === 'lookup' ? ' is-on' : '')}
+                aria-pressed={subject.kind === 'lookup'}
+                disabled={!hasLookupCtx}
+                onClick={selectLookupSeg}
+              >检索</button>
+              <button
+                type="button"
+                className={'seg-btn' + (subject.kind === 'person' ? ' is-on' : '')}
+                aria-pressed={subject.kind === 'person'}
+                disabled={!hasPersonCtx}
+                onClick={selectPersonSeg}
+              >人物</button>
             </div>
-            <label className="toggle small">
-              <input
-                type="checkbox"
-                checked={filterByJuan}
-                onChange={e => setFilterByJuan(e.target.checked)}
+            <span className="dock-legend" title={legendText}>{legendText}</span>
+          </div>
+        </div>
+
+        <div className="dock-body">
+          {showPersonView && activePersonObj && (
+            <div className="dock-view" key={'person-' + activePersonObj.id}>
+              <PersonCard
+                key={activePersonObj.id}
+                person={activePersonObj}
+                spoiler={spoilerSummary}
+                origin={subject.kind === 'person' ? subject.origin : undefined}
+                clickedLabel={subject.kind === 'person' ? subject.clickedLabel : undefined}
+                autoFocus
+                onToggleSpoiler={() => setSpoilerSummary(s => !s)}
+                onClose={dockBack}
               />
-              <span>仅显示当前卷之前</span>
-            </label>
-          </div>
-          <div className="lookup-body">
-            <LookupPanel
-              query={lookupQuery}
-              maxJuan={filterByJuan ? juanNo : null}
-              currentJuan={juanNo}
-              highlightPid={highlightPid}
-              onJump={jumpToHit}
+              <div className="dock-search-toolbar">
+                <label className="toggle small">
+                  <input
+                    type="checkbox"
+                    checked={filterByJuan}
+                    onChange={e => setFilterByJuan(e.target.checked)}
+                  />
+                  <span>仅本卷之前</span>
+                </label>
+              </div>
+              <div className="lookup-body">
+                <LookupPanel
+                  query={lookupQuery}
+                  maxJuan={filterByJuan ? juanNo : null}
+                  currentJuan={juanNo}
+                  highlightPid={highlightPid}
+                  onJump={jumpToHit}
+                  occurrenceNames={occurrencePids ? occurrenceNames : null}
+                  occurrencePids={occurrencePids}
+                  occurrenceKey={occurrencePids ? activePersonObj.id : null}
+                />
+              </div>
+            </div>
+          )}
+
+          {showLookupView && (
+            <div className="dock-view" key="lookup">
+              <div className="dock-search">
+                <input
+                  type="text"
+                  className="lookup-input"
+                  value={lookupQuery}
+                  placeholder="检索出处…"
+                  aria-label="检索出处"
+                  autoFocus={searchCompose && subject.kind !== 'lookup'}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setHighlightPid(null);
+                    if (v.trim() === '') {
+                      // Empty query is unrepresentable as a lookup subject —
+                      // fall back to 纪年, but keep the compose input open.
+                      setSubject({ kind: 'years' });
+                      setLookupQuery('');
+                      setCommittedQuery('');
+                    } else {
+                      applySubject({ kind: 'lookup', query: v, origin: 'typed' });
+                    }
+                  }}
+                />
+                {lookupQuery && (
+                  <button
+                    type="button"
+                    className="lookup-clear"
+                    onClick={goToYears}
+                    title="清除"
+                  >×</button>
+                )}
+              </div>
+              <div className="dock-search-toolbar">
+                <label className="toggle small">
+                  <input
+                    type="checkbox"
+                    checked={filterByJuan}
+                    onChange={e => setFilterByJuan(e.target.checked)}
+                  />
+                  <span>仅本卷之前</span>
+                </label>
+              </div>
+              <div className="lookup-body">
+                <LookupPanel
+                  query={lookupQuery}
+                  maxJuan={filterByJuan ? juanNo : null}
+                  currentJuan={juanNo}
+                  highlightPid={highlightPid}
+                  onJump={jumpToHit}
+                  occurrenceNames={null}
+                  occurrencePids={null}
+                  occurrenceKey={null}
+                />
+                {lookupPerson && subject.kind === 'lookup' && (
+                  <div className="lookup-promote">
+                    <span className="lookup-promote-text">
+                      「{subject.query}」也是 {lookupPerson.canonical_name} 之名？
+                    </span>
+                    <button
+                      type="button"
+                      className="lookup-promote-btn"
+                      onClick={promoteLookupToPerson}
+                    >看人物身份 ›</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {showYearsView && juan && (
+            <YearToc
+              years={juan.years}
+              activeParagraphId={activeParagraphId}
+              selectedYearPid={selectedYearPid}
+              onJump={pid => {
+                setHighlightPid(null);
+                // Lock the YearToc highlight on the clicked year. Decoupled
+                // from activeParagraphId so end-of-pane / no-body edge cases
+                // and any trailing scroll events from the animation can't
+                // shift it. scrollParagraphIntoView's finish() updates
+                // activeParagraphId itself once the scroll settles.
+                setSelectedYearPid(pid);
+                jumpToParagraph(pid);
+              }}
             />
-          </div>
+          )}
         </div>
       </aside>
       {/* Mobile-only right-side drawer for 本卷纪年. Opened by swiping left
@@ -1049,29 +1633,30 @@ export default function App() {
       </aside>
       <div
         className="drawer-backdrop"
-        onClick={() => { setShowSidebar(false); setShowLookup(false); setShowYearDrawer(false); }}
+        onClick={() => {
+          if (showSidebar) { setShowSidebar(false); return; }
+          if (showYearDrawer) { setShowYearDrawer(false); return; }
+          // Mobile sheet backdrop: one tap returns to reading (纪年).
+          goToYears();
+        }}
         aria-hidden="true"
       />
-      {pendingSelection && createPortal(
-        <div className="selection-action-bar" role="toolbar" aria-label="选词检索">
-          <span className="selection-action-text" title={pendingSelection}>
-            「{pendingSelection.length > 8 ? pendingSelection.slice(0, 7) + '…' : pendingSelection}」
+      {selectionPopover && createPortal(
+        <div
+          className={'selection-action-bar' + (selectionPopover.rect ? ' is-anchored' : '')}
+          style={selectionPopover.rect
+            ? { left: `${selectionPopover.rect.cx}px`, top: `${Math.max(8, selectionPopover.rect.top - 10)}px`, bottom: 'auto' }
+            : undefined}
+          role="toolbar"
+          aria-label="选词检索"
+        >
+          <span className="selection-action-text" title={selectionPopover.text}>
+            「{selectionPopover.text.length > 8 ? selectionPopover.text.slice(0, 7) + '…' : selectionPopover.text}」
           </span>
           <button
             type="button"
             className="selection-action-btn"
-            onClick={() => {
-              const q = pendingSelection;
-              setLookupQuery(q);
-              // Explicit user action — commit so the reader body highlights.
-              setCommittedQuery(q);
-              setShowLookup(true);
-              setPendingSelection(null);
-              // Drop the OS selection so its menu and our pill both go away;
-              // otherwise selectionchange will re-fire when the user taps
-              // elsewhere and the pill might briefly flash back.
-              try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
-            }}
+            onClick={promoteSelectionToLookup}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
@@ -1079,8 +1664,21 @@ export default function App() {
               <circle cx="11" cy="11" r="7" />
               <line x1="21" y1="21" x2="16.5" y2="16.5" />
             </svg>
-            搜出处
+            搜全部出处
           </button>
+          {selectionPopover.personId && (
+            <button
+              type="button"
+              className="selection-action-btn selection-action-person"
+              onClick={() => promoteSelectionToPerson(
+                selectionPopover.personId!,
+                activeParagraphId ?? currentYearPid ?? 0,
+                selectionPopover.text,
+              )}
+            >
+              看人物身份 ›
+            </button>
+          )}
         </div>,
         document.body,
       )}

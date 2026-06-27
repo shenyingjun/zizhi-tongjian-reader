@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>资治通鉴 Reader · 布局重组 5 方案</title>
+<style>
+  :root {
+    --bg: #f3e9cf; --paper: #fbf4df; --surface: #fff;
+    --ink: #2b2118; --muted: #7a6a4f; --accent: #7a3b2e; --accent-pressed: #5c2a20;
+    --hu: #8a5a3a; --border: #e0cfa0; --line: rgba(122,59,46,.14);
+    --tint: rgba(122,59,46,.08);
+    --radius: 9px; --shadow: 0 18px 44px rgba(43,33,24,.20);
+    --sans: "Inter","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    --serif: "Noto Serif SC","Source Han Serif SC","Songti SC","SimSun",serif;
+  }
+  * { box-sizing: border-box; }
+  html,body { margin:0; height:100%; }
+  body { font-family: var(--sans); color: var(--ink); background:
+    radial-gradient(120% 80% at 50% -10%, #f7eed4, var(--bg)); -webkit-font-smoothing: antialiased; }
+
+  /* ---------------- top chrome ---------------- */
+  .topbar { position: sticky; top:0; z-index: 90; display:flex; align-items:center; gap:1rem; flex-wrap:wrap;
+    padding:.7rem 1.2rem; background: rgba(247,238,212,.92); backdrop-filter: blur(10px); border-bottom:1px solid var(--border); }
+  .topbar h1 { font-size:.98rem; margin:0; font-weight:800; letter-spacing:-.01em; }
+  .topbar h1 small { font-weight:500; color: var(--muted); margin-left:.4rem; font-size:.78rem; }
+  .opt-tabs { display:flex; gap:.3rem; flex-wrap:wrap; }
+  .opt-tabs button { font:inherit; font-size:.8rem; font-weight:600; cursor:pointer; color:var(--muted);
+    background:#efe2bf; border:1px solid var(--border); border-radius:999px; padding:.34em .8em;
+    display:flex; align-items:center; gap:.4em; transition: all 160ms cubic-bezier(.22,1,.36,1); }
+  .opt-tabs button .n { font-variant-numeric:tabular-nums; opacity:.6; font-weight:800; }
+  .opt-tabs button[aria-pressed="true"] { background: var(--accent); color:#fdf6e6; border-color:var(--accent);
+    box-shadow:0 2px 8px rgba(92,42,32,.3); }
+  .opt-tabs button[aria-pressed="true"] .n { opacity:.85; }
+  .opt-tabs button:not([aria-pressed="true"]):hover { color: var(--accent); border-color:#d8b8a8; }
+  .rec-dot { width:6px; height:6px; border-radius:50%; background:#2f8f5b; box-shadow:0 0 0 2px rgba(47,143,91,.25); }
+  .view-toggle { margin-left:auto; display:inline-flex; background:#efe2bf; border:1px solid var(--border); border-radius:999px; padding:3px; gap:2px; }
+  .view-toggle button { font:inherit; font-size:.78rem; font-weight:600; border:0; background:transparent; color:var(--muted); padding:.3em .8em; border-radius:999px; cursor:pointer; }
+  .view-toggle button[aria-pressed="true"] { background: var(--accent); color:#fdf6e6; }
+
+  /* ---------------- spec strip ---------------- */
+  .spec { max-width:1240px; margin:0 auto; padding:.9rem 1.2rem .2rem; }
+  .spec-name { font-size:1.05rem; font-weight:800; display:flex; align-items:center; gap:.5rem; }
+  .spec-badge { font-size:.66rem; font-weight:700; color:#2f8f5b; background:rgba(47,143,91,.12); border:1px solid rgba(47,143,91,.35); border-radius:999px; padding:.1em .55em; }
+  .spec-thesis { color:#4a3c2a; font-size:.88rem; margin:.25rem 0 .6rem; max-width:80ch; line-height:1.5; }
+  .spec-grid { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:.6rem; }
+  .spec-cell { background: var(--paper); border:1px solid var(--border); border-radius:8px; padding:.5rem .65rem; }
+  .spec-cell .k { font-size:.66rem; font-weight:700; color:var(--accent); text-transform:none; letter-spacing:.02em; margin-bottom:.2rem; }
+  .spec-cell .v { font-size:.78rem; color:var(--ink); line-height:1.45; }
+  .spec-cell.risk .k { color:#b06a28; }
+
+  /* ---------------- stage ---------------- */
+  .stage-wrap { padding:1.1rem 1.2rem 2.4rem; display:flex; justify-content:center; }
+  .hint-float { text-align:center; font-size:.76rem; color:var(--muted); padding:.2rem 0 .6rem; }
+  .hint-float b { color:var(--accent); }
+
+  /* desktop device frame (landscape) */
+  .device-desktop { width:min(1180px, 96vw); aspect-ratio: 16/10; background:#fff; border:1px solid var(--border);
+    border-radius:14px; box-shadow: var(--shadow); overflow:hidden; position:relative; }
+  .device-desktop .chrome { height:26px; background:#efe6cd; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:6px; padding:0 10px; }
+  .device-desktop .chrome i { width:9px; height:9px; border-radius:50%; background:#cdbf98; display:inline-block; }
+  .device-desktop .screen { position:absolute; top:26px; left:0; right:0; bottom:0; }
+
+  /* phone device frame */
+  .device-phone { width:380px; max-width:94vw; aspect-ratio: 380/760; background:#1c160f; border-radius:34px; padding:11px; box-shadow: var(--shadow); }
+  .device-phone .screen { width:100%; height:100%; background: var(--bg); border-radius:24px; overflow:hidden; position:relative; }
+
+  /* ---------- generic app pieces (shared by options) ---------- */
+  .app { position:absolute; inset:0; display:grid; background: var(--bg); overflow:hidden; }
+  .hdr { grid-area: hdr; display:flex; align-items:center; gap:.6rem; padding:.45rem .75rem; background: rgba(251,244,223,.9);
+    border-bottom:1px solid var(--border); z-index:5; }
+  .hdr .ico { width:26px; height:26px; border-radius:7px; border:1px solid var(--border); background:#fffdf6; color:var(--muted);
+    display:grid; place-items:center; font-size:.8rem; cursor:pointer; }
+  .hdr .ico:hover { color:var(--accent); border-color:#d8b8a8; }
+  .hdr .ttl { font-family:var(--serif); font-weight:700; font-size:.92rem; color:var(--accent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .hdr .grow { flex:1; }
+  .yr-chip { font-size:.72rem; color:var(--accent); background: var(--tint); border:1px solid #d8b8a8; border-radius:999px; padding:.18em .55em; cursor:pointer; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .yr-chip:hover { background: rgba(122,59,46,.16); }
+
+  .toc { grid-area: toc; background: var(--paper); border-right:1px solid var(--border); padding:.7rem .65rem; overflow:auto; font-size:.78rem; }
+  .toc .ct { font-size:.66rem; font-weight:700; color:var(--muted); margin:0 0 .45rem; }
+  .toc ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.1rem; }
+  .toc li { padding:.26em .5em; border-radius:6px; color:var(--muted); cursor:default; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .toc li.on { background: var(--tint); color:var(--accent); font-weight:600; }
+
+  .reader { grid-area: rd; overflow:auto; position:relative; }
+  .reader-inner { margin:0 auto; padding:1.1rem 1.2rem 2rem; }
+  .reader h2 { font-family:var(--serif); font-size:.98rem; margin:0 0 .15rem; color:var(--accent); }
+  .reader .sub { font-size:.7rem; color:var(--muted); margin-bottom:.9rem; }
+  .para { font-family:var(--serif); font-size:1.0rem; line-height:1.95; text-align:justify; margin:0 0 1rem; color:var(--ink); }
+  .pname { font:inherit; background:transparent; border:0; padding:0 1px; cursor:pointer; color:inherit; border-radius:2px;
+    box-shadow: inset 0 -2px 0 rgba(122,59,46,.45); transition: background 140ms, box-shadow 140ms; }
+  .pname:hover { background: rgba(122,59,46,.1); }
+  .pname.on { background: rgba(122,59,46,.16); box-shadow: inset 0 -2px 0 var(--accent); }
+  .ymark { display:flex; align-items:center; gap:.5rem; margin:.2rem 0 .9rem; color:var(--accent); font-size:.74rem; }
+  .ymark::before,.ymark::after { content:""; height:1px; background:var(--line); flex:1; }
+  .ymark b { font-variant-numeric:tabular-nums; }
+
+  /* secondary pane variants */
+  .pane { grid-area: pane; background: var(--paper); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+  .tabs { display:flex; gap:3px; padding:.45rem .5rem; border-bottom:1px solid var(--border); background:rgba(251,244,223,.9); }
+  .tabs button { flex:1; font:inherit; font-size:.74rem; font-weight:600; cursor:pointer; color:var(--muted);
+    background:transparent; border:1px solid transparent; border-radius:7px; padding:.32em 0; transition: all 140ms; }
+  .tabs button[aria-pressed="true"] { background: var(--accent); color:#fdf6e6; }
+  .tabs button:not([aria-pressed="true"]):hover { background:var(--tint); color:var(--accent); }
+  .pane-body { flex:1; overflow:auto; padding:.7rem .75rem; }
+
+  .panel-title { font-size:.74rem; font-weight:700; color:var(--accent); margin:0 0 .5rem; }
+  .yrow { display:flex; gap:.5rem; font-size:.78rem; padding:.22em 0; color:var(--muted); cursor:pointer; }
+  .yrow b { color:var(--ink); font-variant-numeric:tabular-nums; }
+  .yrow.cur { color:var(--accent); font-weight:700; }
+  .yrow:hover { color:var(--accent); }
+  .sinput { width:100%; font:inherit; font-size:.8rem; padding:.4em .55em; border:1px solid var(--border); border-radius:7px; background:#fffdf6; color:var(--ink); margin-bottom:.5rem; }
+
+  /* person masthead + shared occurrence chips */
+  .mast { display:flex; align-items:flex-start; gap:.45rem; padding-bottom:.5rem; border-bottom:1px solid var(--line); margin-bottom:.55rem; }
+  .mast h4 { font-family:var(--serif); font-size:.98rem; font-weight:700; margin:0; }
+  .mast .src { font-size:.6rem; color:var(--muted); border:1px solid var(--border); border-radius:999px; padding:.04em .4em; align-self:center; }
+  .mast .x { margin-left:auto; border:0; background:transparent; color:var(--muted); font-size:1rem; cursor:pointer; line-height:1; }
+  .mast .x:hover { color:var(--accent); }
+  .brief { font-size:.78rem; color:#4a3c2a; margin:.1rem 0 .5rem; }
+  .meta { display:flex; gap:.35rem; flex-wrap:wrap; font-size:.7rem; margin-bottom:.5rem; }
+  .meta .c { border:1px solid var(--border); border-radius:999px; padding:.04em .45em; color:var(--muted); }
+  .meta .c.cf { color:var(--accent); border-color:#d8b8a8; background:var(--tint); }
+  .tlh { display:flex; align-items:center; gap:.35rem; font-size:.74rem; color:var(--muted); padding-top:.4rem; border-top:1px solid var(--line); margin-bottom:.45rem; }
+  .tlh b { color:var(--ink); }
+  .chips { display:flex; flex-wrap:wrap; gap:.32rem; }
+  .jchip { font:inherit; font-size:.72rem; cursor:pointer; display:inline-flex; align-items:center; gap:.28em;
+    background:#fffdf6; border:1px solid var(--border); border-radius:999px; padding:.2em .55em; color:var(--ink); transition: all 130ms; }
+  .jchip .y { font-variant-numeric:tabular-nums; font-weight:600; }
+  .jchip .s { color:var(--muted); font-size:.92em; } .jchip .s.hu { color:var(--hu); }
+  .jchip .a { color:var(--accent); font-weight:700; }
+  .jchip:hover { background:#f0e4c4; border-color:#d8b8a8; }
+  .reveal { margin-top:.55rem; width:100%; text-align:left; font:inherit; font-size:.74rem; font-weight:600; cursor:pointer;
+    background:var(--tint); border:1px dashed #cdab9a; border-radius:7px; padding:.42em .55em; color:var(--accent); }
+  .reveal:hover { background: rgba(122,59,46,.13); }
+  .future { margin-top:.5rem; padding-top:.45rem; border-top:1px solid var(--line); }
+  .future h5 { margin:0 0 .35rem; font-size:.72rem; color:var(--accent); }
+  .future .jchip { background: rgba(176,110,40,.08); border-color:#d9bd8a; }
+  .future .jchip .y { color:#8a5a1a; }
+
+  /* drawer (opt1) */
+  .drawer { position:absolute; top:0; right:0; bottom:0; width:300px; background:var(--paper); border-left:1px solid var(--border);
+    box-shadow:-12px 0 30px rgba(43,33,24,.14); transform: translateX(100%); transition: transform 200ms cubic-bezier(.22,1,.36,1);
+    display:flex; flex-direction:column; z-index:8; }
+  .drawer.open { transform:none; }
+
+  /* overlay tray (opt3) */
+  .tray { position:absolute; top:8px; right:8px; width:300px; max-height: calc(100% - 16px); background:var(--paper); border:1px solid var(--border);
+    border-radius:10px; box-shadow: var(--shadow); transform: translateX(12px) scale(.99); opacity:0; pointer-events:none;
+    transition: all 180ms cubic-bezier(.22,1,.36,1); display:flex; flex-direction:column; overflow:hidden; z-index:8; }
+  .tray.open { transform:none; opacity:1; pointer-events:auto; }
+
+  /* horizontal ribbon (opt3) */
+  .ribbon { grid-area: rib; height:46px; background:rgba(251,244,223,.92); border-bottom:1px solid var(--border);
+    display:flex; align-items:center; padding:0 1rem; }
+  .ribbon .rail { position:relative; height:2px; background: color-mix(in srgb, var(--border) 80%, transparent);
+    margin:0 auto; width: min(100%, 78ch); }
+  .tick { position:absolute; top:-3px; width:1px; height:8px; background:#caa; transform: translateX(-50%); }
+  .tick.maj { height:8px; background:var(--muted); }
+  .tick .lab { position:absolute; top:-16px; left:50%; transform:translateX(-50%); font-size:.6rem; color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .bead { position:absolute; top:50%; width:11px; height:11px; border-radius:50%; background:var(--accent); transform: translate(-50%,-50%);
+    box-shadow:0 0 0 3px rgba(122,59,46,.2); transition: left 220ms cubic-bezier(.22,1,.36,1); cursor:pointer; }
+  .bead-lab { position:absolute; bottom:14px; left:50%; transform:translateX(-50%); font-size:.62rem; color:var(--accent); font-weight:700;
+    background:var(--paper); padding:0 .3em; white-space:nowrap; transition: left 220ms; }
+
+  /* bottom scrubber (opt4) */
+  .scrub { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); width:min(640px, calc(100% - 40px)); height:40px;
+    background:var(--paper); border:1px solid var(--border); border-radius:999px; box-shadow: var(--shadow);
+    display:flex; align-items:center; gap:.5rem; padding:0 .7rem; z-index:7; }
+  .scrub .now { font-size:.72rem; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .scrub .track { position:relative; flex:1; height:2px; background: color-mix(in srgb, var(--border) 80%, transparent); }
+  .scrub .track .t { position:absolute; top:-3px; width:1px; height:8px; background:#caa; transform:translateX(-50%); }
+  .scrub .track .b { position:absolute; top:50%; width:10px; height:10px; border-radius:50%; background:var(--accent); transform:translate(-50%,-50%); box-shadow:0 0 0 3px rgba(122,59,46,.2); transition:left 200ms; }
+
+  /* inline popover (opt4) */
+  .pop { position:absolute; width:280px; background:var(--paper); border:1px solid var(--border); border-radius:10px; box-shadow: var(--shadow);
+    padding:.65rem .7rem; z-index:9; font-size:.82rem; }
+
+  /* command tray (opt4 search) */
+  .cmd { position:absolute; top:14px; left:50%; transform:translateX(-50%); width:min(520px, calc(100% - 40px)); background:var(--paper);
+    border:1px solid var(--border); border-radius:12px; box-shadow: var(--shadow); padding:.7rem .75rem; z-index:9; }
+
+  .empty { color:var(--muted); font-size:.76rem; text-align:center; padding:1.4rem .5rem; line-height:1.6; }
+
+  /* ---------- phone layouts ---------- */
+  .ph { position:absolute; inset:0; display:flex; flex-direction:column; background:var(--bg); }
+  .ph-hdr { display:flex; align-items:center; gap:.5rem; padding:.5rem .6rem; background:rgba(251,244,223,.95); border-bottom:1px solid var(--border); }
+  .ph-hdr .ico { width:24px; height:24px; border-radius:6px; border:1px solid var(--border); background:#fffdf6; color:var(--muted); display:grid; place-items:center; font-size:.72rem; }
+  .ph-hdr .ttl { font-family:var(--serif); font-weight:700; font-size:.8rem; color:var(--accent); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ph-rd { flex:1; overflow:auto; padding:.8rem .85rem; }
+  .ph-rd .para { font-size:.92rem; line-height:1.9; }
+  .ph-mini-scrub { display:flex; align-items:center; gap:.5rem; padding:.3rem .7rem; background:rgba(251,244,223,.95); border-bottom:1px solid var(--border); font-size:.68rem; color:var(--accent); font-weight:700; }
+  .ph-mini-scrub .track { position:relative; flex:1; height:2px; background:color-mix(in srgb,var(--border) 80%, transparent); }
+  .ph-mini-scrub .track .b { position:absolute; top:50%; left:62%; width:8px; height:8px; border-radius:50%; background:var(--accent); transform:translate(-50%,-50%); }
+  .ph-sheet { position:absolute; left:0; right:0; bottom:0; background:var(--paper); border-top:1px solid var(--border);
+    border-radius:16px 16px 0 0; box-shadow:0 -10px 30px rgba(43,33,24,.18); display:flex; flex-direction:column; max-height:72%; }
+  .ph-grip { width:38px; height:4px; border-radius:999px; background:#cdbf98; margin:.5rem auto .2rem; }
+  .ph-sheet-body { overflow:auto; padding:.3rem .8rem .9rem; }
+  .ph-scrub-bottom { position:absolute; left:12px; right:12px; bottom:12px; height:38px; background:var(--paper); border:1px solid var(--border);
+    border-radius:999px; box-shadow:var(--shadow); display:flex; align-items:center; gap:.5rem; padding:0 .7rem; }
+  .ph-scrub-bottom .now { font-size:.7rem; font-weight:700; color:var(--accent); }
+  .ph-scrub-bottom .track { position:relative; flex:1; height:2px; background:color-mix(in srgb,var(--border) 80%, transparent); }
+  .ph-scrub-bottom .track .b { position:absolute; top:50%; left:55%; width:9px; height:9px; border-radius:50%; background:var(--accent); transform:translate(-50%,-50%); }
+
+  .toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%) translateY(8px); background:var(--accent); color:#fdf6e6;
+    font-size:.8rem; font-weight:600; padding:.5em .9em; border-radius:999px; opacity:0; pointer-events:none; transition:all 180ms cubic-bezier(.22,1,.36,1); z-index:200; }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  @media (prefers-reduced-motion: reduce){ * { animation:none!important; transition:none!important; } }
+  @media (max-width:980px){ .spec-grid{ grid-template-columns:repeat(2,1fr);} }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>资治通鉴 Reader<small>布局重组 · 5 方案</small></h1>
+    <div class="opt-tabs" id="optTabs">
+      <button data-opt="opt1"><span class="n">1</span>案头抽屉</button>
+      <button data-opt="opt2"><span class="n">2</span>工具三签 <span class="rec-dot" title="推荐"></span></button>
+      <button data-opt="opt3"><span class="n">3</span>纪年横梁</button>
+      <button data-opt="opt4"><span class="n">4</span>边缘时间</button>
+      <button data-opt="opt5"><span class="n">5</span>上下文检视</button>
+    </div>
+    <div class="view-toggle" id="viewToggle">
+      <button data-view="desktop" aria-pressed="true">桌面横屏</button>
+      <button data-view="mobile" aria-pressed="false">手机</button>
+    </div>
+  </div>
+
+  <div class="spec" id="spec"></div>
+  <div class="hint-float">提示：点击正文中的 <b>「王翦」</b> 体验人物卡；点击 <b>纪年</b> 元素体验时间导航。</div>
+  <div class="stage-wrap" id="stage"></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+  // ---------- data ----------
+  const SPEC = {
+    opt1:{name:"① 案头抽屉 Scholar Drawer",rec:false,
+      thesis:"沉浸单栏阅读，左目录收起；纪年 / 人物 / 检索全部收进一个可召唤的右侧「案头」抽屉（分签）。阅读区不被压缩——抽屉浮于其上。",
+      jinian:"抽屉内「纪年」签 + 顶栏当前年芯片（点芯片直达纪年签）",
+      ps:"人物与检索共用同一「出处」列表；点人名→抽屉开到人物签",
+      mobile:"底部 sheet，三签 人物/检索/纪年；目录仍为左抽屉",
+      risk:"频繁在阅读↔查阅间切换时，抽屉像「模式切换」。用快捷键 + 记住上次签缓解。"},
+    opt2:{name:"② 工具三签 Tool Dock",rec:true,
+      thesis:"阅读为主 + 常驻右侧工具坞（约 360px），分签 纪年 / 检索 / 人物，随操作智能切换。读者最想要的「单一上下文右栏」。",
+      jinian:"右坞「纪年」签；坞头常驻当前年芯片，切到别的签也看得见",
+      ps:"人物卡只显身份块；下方共用 OccurrenceList（出现位置 = 出处），零重复",
+      mobile:"同一坞变底部 sheet，签 纪年/检索/人物；取消单独的右侧纪年抽屉",
+      risk:"常驻坞仍占宽；非当前签的信息被藏。靠智能默认签 + 坞头年份芯片缓解。"},
+    opt3:{name:"③ 纪年横梁 Chronology Ribbon",rec:false,
+      thesis:"时间为骨：标题下一条 sticky 横向时间轴贯穿阅读宽度，随滚动指示当前年；无常驻右栏，人物/检索按需从右侧浮层 tray 召唤。",
+      jinian:"顶部横向 scrubber（贯穿全宽，当前年红珠 + 标签）",
+      ps:"点人名 / 检索 → 右侧 overlay tray；人物拥有出现列表，检索独立",
+      mobile:"顶部 36px 迷你 scrubber（横滑切年）；人物/检索为底部 sheet",
+      risk:"横轴易让人误以为各年时长相等；标签密集时拥挤。可加文本密度底纹。"},
+    opt4:{name:"④ 边缘时间 Marginal Time",rec:false,
+      thesis:"极简沉浸单栏（最宽阅读）。年份成为阅读内的分隔标记 + 悬浮底部时间轴；人物就地弹出（词旁 popover），检索用命令面板。工具只在好奇心起处出现。",
+      jinian:"正文内年份分隔条 + 召唤式底部胶囊 scrubber（悬停/滚动/T 键出现）",
+      ps:"人物 = 词旁 popover（含出现芯片）；检索 = 顶部命令面板；二者互斥",
+      mobile:"底部拇指 scrubber；人物卡默认段内展开；检索底部 sheet",
+      risk:"隐藏的时间轴可发现性差。顶栏保留当前年小芯片作为入口。"},
+    opt5:{name:"⑤ 上下文检视 Context Inspector",rec:false,
+      thesis:"单一右侧检视器随「上一步操作」变形：空闲=纪年、点人=人物、检索=出处。顶部内嵌年份 scrubber 始终可见；证据列表统一。",
+      jinian:"检视器顶部常驻 scrubber + 可「展开」为全表",
+      ps:"身份 masthead + 共用「证据/出处」列表；后文锁在 显示后文（含剧透）",
+      mobile:"底部 sheet，标题随上下文变；顶部 scrubber 保留；⋯ 切模式",
+      risk:"变形不如固定分签可预测。保留显式上下文标题 + 模式菜单，不擅自切走。"},
+  };
+
+  const P = {
+    name:"王翦", src:"来自正文", brief:"秦名将，频阳东乡人。", dynasty:"秦", conf:"身份已复核",
+    aliases:["王将军","频阳王氏"], priorLabel:"卷007 · 前226年 · 不含当前段",
+    prior:[{y:"前236",s:"原文"},{y:"前229",s:"原文"},{y:"前228",s:"胡注",hu:1},{y:"前227",s:"原文"}],
+    fcount:9, identity:"秦灭六国第一名将，破赵、平燕、以六十万灭楚。频阳东乡人。",
+    future:[{y:"前225",s:"原文"},{y:"前224",s:"原文"},{y:"前223",s:"胡注",hu:1}],
+  };
+  const YEARS = [{y:"前236",t:"伐赵"},{y:"前230",t:"灭韩"},{y:"前228",t:"破赵"},{y:"前226",t:"议伐楚",cur:1},{y:"前225",t:"灌大梁"},{y:"前223",t:"灭楚"}];
+  const TOC = ["卷006 · 秦纪一","卷007 · 秦纪二","卷008 · 秦纪三","卷009 · 汉纪一"];
+
+  // ---------- shared builders ----------
+  const chip = a => `<button class="jchip" data-jump="${a.y}"><span class="y">${a.y}</span><span class="s${a.hu?' hu':''}">${a.s}</span><span class="a">→</span></button>`;
+  const para = () => `
+    <p class="para">王贲攻楚，取十馀城。王使<button class="pname" data-x>李信</button>问于<button class="pname pw">王翦</button>曰：「吾欲取荆，于将军度用几何人而足？」<button class="pname" data-x>李信</button>曰：「不过用二十万。」王以问<button class="pname pw">王翦</button>，<button class="pname pw">王翦</button>曰：「非六十万人不可。」</p>`;
+  const para2 = () => `
+    <p class="para">始皇曰：「王将军老矣，何怯也！」遂使<button class="pname" data-x>李信</button>、<button class="pname" data-x>蒙恬</button>将二十万南伐荆。<button class="pname pw">王翦</button>言不用，因谢病，归老于频阳。</p>`;
+
+  function readerInner(opts){
+    opts = opts||{};
+    const ym = opts.inlineYears ? `<div class="ymark"><b>前226年</b> · 始皇帝下</div>` : "";
+    return `<div class="reader-inner" style="max-width:${opts.measure||'660px'}">
+      <h2>卷007 · 秦纪二</h2><div class="sub">始皇帝下 · 前226年</div>
+      ${ym}${para()}<div data-inline-slot></div>${para2()}
+    </div>`;
+  }
+  function tocHTML(){ return `<div class="ct">资治通鉴 · 目录</div><ul>${TOC.map((t,i)=>`<li class="${i===1?'on':''}">${t}</li>`).join("")}</ul>`; }
+  function yearsHTML(){ return `<div class="panel-title">本卷纪年</div>${YEARS.map(y=>`<div class="yrow ${y.cur?'cur':''}" data-jump="${y.y}"><b>${y.y}</b> ${y.t}${y.cur?' · 当前':''}</div>`).join("")}`; }
+  function searchHTML(){ return `<input class="sinput" value="王翦" readonly /><div class="panel-title">出处 · 12 处</div><div class="chips">${P.prior.map(chip).join("")}</div>`; }
+
+  function personMast(withList){
+    const list = withList ? `
+      <div class="tlh" title="仅显示本段之前：${P.priorLabel}">🔒 此前出现 <b>${P.prior.length}</b> 段 · 读到本段前</div>
+      <div class="chips" data-chips>${P.prior.map(chip).join("")}</div>
+      <div data-revzone><button class="reveal" data-reveal>显示后文（含剧透 · ${P.fcount} 处） ▾</button></div>` : `
+      <div class="tlh">🔒 此前出现 <b>${P.prior.length}</b> 段 · 见下方出处列表</div>`;
+    return `<div class="mast"><h4>${P.name}</h4><span class="src">${P.src}</span><button class="x" data-close>×</button></div>
+      <p class="brief">${P.brief}</p>
+      <div class="meta"><span class="c">${P.dynasty}</span><span class="c cf">${P.conf} ⓘ</span></div>
+      <p class="brief" style="color:var(--muted);font-size:.72rem">别称　${P.aliases.join(" · ")}</p>
+      ${list}`;
+  }
+  function revealHTML(){ return `<div class="future"><h5>此后出现（含剧透）· ${P.fcount} 段　<button class="reveal" data-hide style="display:inline;width:auto;padding:.1em .5em;margin:0;border-style:solid">收起</button></h5>
+    <p class="brief">${P.identity}</p><div class="chips" data-chips>${P.future.map(chip).join("")}</div></div>`; }
+
+  // ---------- option desktop renderers ----------
+  function buildDesktop(opt){
+    const f = document.createElement("div"); f.className="device-desktop";
+    f.innerHTML = `<div class="chrome"><i></i><i></i><i></i></div><div class="screen"></div>`;
+    const s = f.querySelector(".screen");
+    s.innerHTML = LAYOUT[opt]();
+    return f;
+  }
+
+  const HDR = (opt, extra="") => `<header class="hdr">
+    <span class="ico" title="目录">▤</span><span class="ttl">卷007 秦纪二</span><span class="grow"></span>
+    ${extra}<span class="ico" data-tool title="工具">⚒</span><span class="ico" title="设置">⚙</span></header>`;
+
+  const LAYOUT = {
+    // ① drawer: reader full width, summonable right drawer
+    opt1: () => `<div class="app" data-opt="opt1" style="grid-template-rows:auto 1fr; grid-template-columns:1fr; grid-template-areas:'hdr' 'rd';">
+      ${HDR("opt1", `<span class="yr-chip" data-year>前226年 ▾</span>`)}
+      <div class="reader" style="grid-area:rd">${readerInner({measure:'700px'})}</div>
+      <aside class="drawer" data-drawer>
+        <div class="tabs" data-tabs><button data-tab="人物" aria-pressed="true">人物</button><button data-tab="出处">出处</button><button data-tab="纪年">纪年</button></div>
+        <div class="pane-body" data-pane><div class="empty">点击正文人名，或用顶栏年份芯片打开纪年。</div></div>
+      </aside></div>`,
+
+    // ② tool dock: permanent two-pane with tabs
+    opt2: () => `<div class="app" data-opt="opt2" style="grid-template-rows:auto 1fr; grid-template-columns:1fr 360px; grid-template-areas:'hdr hdr' 'rd pane';">
+      ${HDR("opt2")}
+      <div class="reader" style="grid-area:rd">${readerInner({measure:'640px'})}</div>
+      <aside class="pane">
+        <div class="tabs" data-tabs><button data-tab="纪年" aria-pressed="true">纪年</button><button data-tab="出处">检索</button><button data-tab="人物">人物</button></div>
+        <div class="pane-body" data-pane>${yearsHTML()}</div>
+      </aside></div>`,
+
+    // ③ ribbon: horizontal timeline + summonable tray
+    opt3: () => `<div class="app" data-opt="opt3" style="grid-template-rows:auto auto 1fr; grid-template-columns:1fr; grid-template-areas:'hdr' 'rib' 'rd';">
+      ${HDR("opt3")}
+      <div class="ribbon" data-ribbon></div>
+      <div class="reader" style="grid-area:rd">${readerInner({measure:'700px'})}
+        <aside class="tray" data-tray><div class="tabs" data-tabs><button data-tab="人物" aria-pressed="true">人物</button><button data-tab="出处">检索</button></div><div class="pane-body" data-pane></div></aside>
+      </div></div>`,
+
+    // ④ marginal: immersive + inline years + bottom scrubber + popover
+    opt4: () => `<div class="app" data-opt="opt4" style="grid-template-rows:auto 1fr; grid-template-columns:1fr; grid-template-areas:'hdr' 'rd';">
+      ${HDR("opt4", `<span class="yr-chip" data-year>前226年</span>`)}
+      <div class="reader" style="grid-area:rd">${readerInner({measure:'720px', inlineYears:true})}
+        <div class="scrub" data-scrub></div>
+      </div></div>`,
+
+    // ⑤ inspector: morphing pane + embedded scrubber
+    opt5: () => `<div class="app" data-opt="opt5" style="grid-template-rows:auto 1fr; grid-template-columns:1fr 380px; grid-template-areas:'hdr hdr' 'rd pane';">
+      ${HDR("opt5")}
+      <div class="reader" style="grid-area:rd">${readerInner({measure:'640px'})}</div>
+      <aside class="pane" data-inspector>
+        <div style="padding:.5rem .6rem; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:.5rem; background:rgba(251,244,223,.9)">
+          <b style="font-size:.78rem; color:var(--accent)" data-insp-title>本卷纪年</b>
+          <span class="grow" style="flex:1"></span><button class="x" data-close style="border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:1rem">×</button>
+        </div>
+        <div style="padding:.4rem .6rem; border-bottom:1px solid var(--line)"><div class="scrub" data-embed-scrub style="position:static;transform:none;width:100%;box-shadow:none;border:0;background:transparent;padding:0;height:30px"></div></div>
+        <div class="pane-body" data-pane>${yearsHTML()}</div>
+      </aside></div>`,
+  };
+
+  // ribbon/scrubber tick renderer
+  function fillRibbon(rail, withLabels){
+    rail.innerHTML = "";
+    YEARS.forEach((y,i)=>{
+      const pct = (i/(YEARS.length-1))*100;
+      const t = document.createElement("div"); t.className="tick"+(i%1===0?" maj":""); t.style.left=pct+"%";
+      if (withLabels && (i===0||i===YEARS.length-1||y.cur)) t.innerHTML=`<span class="lab">${y.y}</span>`;
+      t.dataset.jump=y.y; rail.appendChild(t);
+    });
+    const cur = YEARS.findIndex(y=>y.cur); const cpct=(cur/(YEARS.length-1))*100;
+    const bead=document.createElement("div"); bead.className="bead"; bead.style.left=cpct+"%"; rail.appendChild(bead);
+    const bl=document.createElement("div"); bl.className="bead-lab"; bl.style.left=cpct+"%"; bl.textContent="前226年 始皇帝下"; rail.appendChild(bl);
+  }
+
+  // ---------- mobile renderers ----------
+  function buildPhone(opt){
+    const f=document.createElement("div"); f.className="device-phone";
+    f.innerHTML=`<div class="screen">${PHONE[opt]()}</div>`;
+    return f;
+  }
+  const phHdr = extra => `<div class="ph-hdr"><span class="ico">▤</span><span class="ttl">卷007 秦纪二</span>${extra||''}<span class="ico">⚙</span></div>`;
+  const phRd = () => `<div class="ph-rd">${para()}${para2()}</div>`;
+  const phTabs = (a,b,c,act) => `<div class="tabs">${[a,b,c].map(t=>`<button ${t===act?'aria-pressed="true"':''}>${t}</button>`).join("")}</div>`;
+  const PHONE = {
+    opt1: () => `<div class="ph">${phHdr('<span class="ico">⚒</span>')}${phRd()}
+      <div class="ph-sheet"><div class="ph-grip"></div>${phTabs('人物','检索','纪年','人物')}<div class="ph-sheet-body">${personMast(true)}</div></div></div>`,
+    opt2: () => `<div class="ph">${phHdr('<span class="ico">⚒</span>')}${phRd()}
+      <div class="ph-sheet"><div class="ph-grip"></div>${phTabs('纪年','检索','人物','纪年')}<div class="ph-sheet-body">${yearsHTML()}</div></div></div>`,
+    opt3: () => `<div class="ph"><div class="ph-mini-scrub"><span>前226年</span><div class="track"><div class="b"></div></div></div>${phHdr()}${phRd()}
+      <div class="ph-sheet"><div class="ph-grip"></div>${phTabs('人物','检索','—','人物')}<div class="ph-sheet-body">${personMast(true)}</div></div></div>`,
+    opt4: () => `<div class="ph">${phHdr('<span class="yr-chip">前226</span>')}<div class="ph-rd"><div class="ymark"><b>前226年</b> 始皇帝下</div>${para()}
+      <div class="pop" style="position:static;width:auto;margin:.2rem 0 1rem;box-shadow:none">${personMast(true)}</div>${para2()}</div>
+      <div class="ph-scrub-bottom"><span class="now">前226</span><div class="track"><div class="b"></div></div></div></div>`,
+    opt5: () => `<div class="ph">${phHdr()}${phRd()}
+      <div class="ph-sheet"><div class="ph-grip"></div><div style="display:flex;align-items:center;gap:.5rem;padding:.2rem .6rem .4rem"><b style="font-size:.78rem;color:var(--accent)">人物</b><span style="flex:1"></span><span class="ico" style="border:0">⋯</span></div>
+      <div style="padding:0 .6rem .4rem"><div class="ph-mini-scrub" style="border:0;padding:.2rem 0"><span>前226</span><div class="track"><div class="b"></div></div></div></div>
+      <div class="ph-sheet-body">${personMast(true)}</div></div></div>`,
+  };
+
+  // ---------- interactions ----------
+  let curOpt="opt2", curView="desktop";
+
+  function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("show"),1100); }
+
+  function renderSpec(){
+    const d=SPEC[curOpt];
+    document.getElementById("spec").innerHTML=`
+      <div class="spec-name">${d.name}${d.rec?'<span class="spec-badge">● 团队推荐起点</span>':''}</div>
+      <p class="spec-thesis">${d.thesis}</p>
+      <div class="spec-grid">
+        <div class="spec-cell"><div class="k">本卷纪年 去哪</div><div class="v">${d.jinian}</div></div>
+        <div class="spec-cell"><div class="k">人物卡 + 检索</div><div class="v">${d.ps}</div></div>
+        <div class="spec-cell"><div class="k">移动端</div><div class="v">${d.mobile}</div></div>
+        <div class="spec-cell risk"><div class="k">最大风险</div><div class="v">${d.risk}</div></div>
+      </div>`;
+  }
+
+  function setPane(scope, html){ const p=scope.querySelector("[data-pane]"); if(p){ p.innerHTML=html; wirePane(scope); } }
+  function paneFor(tab){
+    if(tab==="纪年") return yearsHTML();
+    if(tab==="出处"||tab==="检索") return searchHTML();
+    if(tab==="人物") return personMast(curOpt==="opt2"||curOpt==="opt5"?false:true) + (curOpt==="opt2"||curOpt==="opt5"?`<div class="panel-title" style="margin-top:.6rem">出现位置 · 出处</div><div class="chips" data-chips>${P.prior.map(chip).join("")}</div><div data-revzone><button class="reveal" data-reveal>显示后文（含剧透 · ${P.fcount} 处） ▾</button></div>`:"");
+    return `<div class="empty">—</div>`;
+  }
+
+  function wirePane(scope){
+    scope.querySelectorAll("[data-jump]").forEach(el=>el.addEventListener("click",()=>{ toast("跳至 "+el.dataset.jump+" 年 · 此段"); el.classList.add("on"); setTimeout(()=>el.classList.remove("on"),500); }));
+    const rev=scope.querySelector("[data-reveal]");
+    if(rev) rev.addEventListener("click",()=>{ const z=scope.querySelector("[data-revzone]"); z.innerHTML=revealHTML(); wirePane(scope);
+      const h=z.querySelector("[data-hide]"); if(h)h.addEventListener("click",()=>{ z.innerHTML=`<button class="reveal" data-reveal>显示后文（含剧透 · ${P.fcount} 处） ▾</button>`; wirePane(scope); }); });
+    scope.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>closeContext(scope)));
+  }
+
+  function closeContext(scope){
+    const app=scope.closest(".app")||scope;
+    if(curOpt==="opt1"){ const dr=app.querySelector("[data-drawer]"); if(dr)dr.classList.remove("open"); }
+    if(curOpt==="opt3"){ const tr=app.querySelector("[data-tray]"); if(tr)tr.classList.remove("open"); }
+    if(curOpt==="opt4"){ app.querySelectorAll(".pop,.cmd").forEach(n=>n.remove()); }
+    if(curOpt==="opt2"){ setPane(app, yearsHTML()); selectTab(app,"纪年"); }
+    if(curOpt==="opt5"){ const t=app.querySelector("[data-insp-title]"); if(t)t.textContent="本卷纪年"; setPane(app, yearsHTML()); }
+    app.querySelectorAll(".pname.on").forEach(n=>n.classList.remove("on"));
+  }
+
+  function selectTab(scope, tab){
+    const tabs=scope.querySelector("[data-tabs]"); if(!tabs)return;
+    [...tabs.children].forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.tab===tab)));
+  }
+
+  function openPerson(app, btn){
+    app.querySelectorAll(".pname.on").forEach(n=>n.classList.remove("on")); btn.classList.add("on");
+    if(curOpt==="opt1"){ const dr=app.querySelector("[data-drawer]"); dr.classList.add("open"); selectTab(dr,"人物"); setPane(dr, paneFor("人物")); }
+    else if(curOpt==="opt2"){ selectTab(app,"人物"); setPane(app, paneFor("人物")); }
+    else if(curOpt==="opt3"){ const tr=app.querySelector("[data-tray]"); tr.classList.add("open"); selectTab(tr,"人物"); setPane(tr, personMast(true)); }
+    else if(curOpt==="opt4"){ openPopover(app, btn); }
+    else if(curOpt==="opt5"){ app.querySelector("[data-insp-title]").textContent="人物"; setPane(app, paneFor("人物")); }
+  }
+
+  function openPopover(app, btn){
+    app.querySelectorAll(".pop,.cmd").forEach(n=>n.remove());
+    const reader=app.querySelector(".reader"); const rr=reader.getBoundingClientRect(); const br=btn.getBoundingClientRect();
+    const pop=document.createElement("div"); pop.className="pop"; pop.innerHTML=personMast(true);
+    reader.appendChild(pop);
+    let left=br.left-rr.left+reader.scrollLeft+10; let top=br.bottom-rr.top+reader.scrollTop+6;
+    if(left+280>reader.clientWidth-10) left=reader.clientWidth-290;
+    pop.style.left=Math.max(8,left)+"px"; pop.style.top=top+"px"; wirePane(pop);
+  }
+
+  function wireStage(){
+    const app=document.querySelector(".app"); if(!app)return;
+    // tabs
+    const tabsEl=app.querySelectorAll("[data-tabs]");
+    tabsEl.forEach(tabs=>tabs.addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b)return;
+      const scope=b.closest("[data-drawer],[data-tray]")||app; selectTab(scope,b.dataset.tab); setPane(scope, paneFor(b.dataset.tab)); }));
+    // person names
+    app.querySelectorAll(".pname.pw").forEach(b=>b.addEventListener("click",e=>{ e.stopPropagation(); openPerson(app,b); }));
+    app.querySelectorAll(".pname[data-x]").forEach(b=>b.addEventListener("click",()=>toast("示例仅「王翦」可点")));
+    // tool button (opt1 drawer)
+    app.querySelectorAll("[data-tool]").forEach(b=>b.addEventListener("click",()=>{ if(curOpt==="opt1"){ const dr=app.querySelector("[data-drawer]"); dr.classList.toggle("open"); if(dr.classList.contains("open")&&!dr.querySelector(".mast,.panel-title")) setPane(dr, paneFor("人物")); } else toast("工具"); }));
+    // year chip
+    app.querySelectorAll("[data-year]").forEach(c=>c.addEventListener("click",()=>{ if(curOpt==="opt1"){ const dr=app.querySelector("[data-drawer]"); dr.classList.add("open"); selectTab(dr,"纪年"); setPane(dr, yearsHTML()); } else toast("本卷纪年"); }));
+    // ribbon
+    const rib=app.querySelector("[data-ribbon]"); if(rib){ const rail=document.createElement("div"); rail.className="rail"; rib.appendChild(rail); fillRibbon(rail,true);
+      rail.querySelectorAll(".tick").forEach(t=>t.addEventListener("click",()=>toast("跳至 "+t.dataset.jump+" 年"))); }
+    // bottom scrubber
+    const sc=app.querySelector("[data-scrub]"); if(sc){ sc.innerHTML=`<span class="now">前226年</span><div class="track"></div>`; const tr=sc.querySelector(".track");
+      YEARS.forEach((y,i)=>{ const pct=(i/(YEARS.length-1))*100; const tk=document.createElement("div"); tk.className="t"; tk.style.left=pct+"%"; tr.appendChild(tk); });
+      const cur=YEARS.findIndex(y=>y.cur); const b=document.createElement("div"); b.className="b"; b.style.left=(cur/(YEARS.length-1))*100+"%"; tr.appendChild(b); }
+    // embedded scrubber (opt5)
+    const es=app.querySelector("[data-embed-scrub]"); if(es){ es.innerHTML=`<span class="now" style="font-size:.7rem;font-weight:700;color:var(--accent)">前226年</span><div class="track" style="position:relative;flex:1;height:2px;background:color-mix(in srgb,var(--border) 80%,transparent);margin-left:.5rem"></div>`;
+      const tr=es.querySelector(".track"); const cur=YEARS.findIndex(y=>y.cur); const b=document.createElement("div"); b.style.cssText="position:absolute;top:50%;left:"+(cur/(YEARS.length-1))*100+"%;width:9px;height:9px;border-radius:50%;background:var(--accent);transform:translate(-50%,-50%)"; tr.appendChild(b); }
+    // default pane wiring
+    app.querySelectorAll("[data-pane]").forEach(p=>wirePane(p.closest("[data-drawer],[data-tray]")||app));
+    // outside click closes popover (opt4)
+    if(curOpt==="opt4"){ app.addEventListener("click",e=>{ if(!e.target.closest(".pop")&&!e.target.classList.contains("pname")) app.querySelectorAll(".pop").forEach(n=>n.remove()); }); }
+  }
+
+  function render(){
+    const stage=document.getElementById("stage"); stage.innerHTML="";
+    stage.appendChild(curView==="desktop"? buildDesktop(curOpt) : buildPhone(curOpt));
+    renderSpec();
+    if(curView==="desktop") wireStage();
+    else { // light wiring for phone occurrence chips
+      document.querySelectorAll("#stage [data-jump]").forEach(el=>el.addEventListener("click",()=>{toast("跳至 "+el.dataset.jump+" 年");}));
+      document.querySelectorAll("#stage [data-reveal]").forEach(r=>r.addEventListener("click",()=>{ const z=r.closest("[data-revzone]")||r.parentElement; z.innerHTML=revealHTML(); }));
+    }
+  }
+
+  document.getElementById("optTabs").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b)return;
+    curOpt=b.dataset.opt; [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed",String(x===b))); render(); });
+  document.getElementById("viewToggle").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b)return;
+    curView=b.dataset.view; [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed",String(x===b))); render(); });
+
+  // init: select opt2 (recommended)
+  document.querySelector('#optTabs [data-opt="opt2"]').setAttribute("aria-pressed","true");
+  render();
+</script>
+</body>
+</html>

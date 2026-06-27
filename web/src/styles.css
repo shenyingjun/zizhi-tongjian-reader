@@ -15,6 +15,7 @@
   --hover-bg: #ddd0b0;
   --radius-sm: 3px;
   --radius-md: 4px;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
   font-family: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif;
 }
 
@@ -112,13 +113,14 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .sidebar-toggle svg { display: block; width: 18px; height: 18px; }
 
 .lookup-toggle {
-  display: none;
+  display: inline-flex;
   background: none; border: 0; border-radius: 4px;
   color: var(--muted); cursor: pointer; padding: 0.3rem;
   align-items: center; justify-content: center; line-height: 0;
   transition: color 0.15s ease, background 0.15s ease;
 }
 .lookup-toggle:hover { color: var(--accent); background: var(--accent-tint); }
+.lookup-toggle.is-on { color: var(--accent); background: var(--accent-tint); }
 .lookup-toggle svg { display: block; width: 18px; height: 18px; }
 
 .drawer-backdrop { display: none; }
@@ -185,6 +187,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  position: relative;
   background: var(--bg);
   /* Enable container queries so .reader-header chrome can collapse based
      on the reader pane's own width rather than the viewport. The reader
@@ -443,26 +446,48 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   margin: 0; font-size: 0.78em; font-weight: 700;
   letter-spacing: 0.04em; color: #7a5a2a; text-transform: none;
 }
-.guide-people { list-style: none; margin: 0.2em 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.3em; }
-.guide-person { display: flex; align-items: baseline; gap: 0.5em; flex-wrap: wrap; }
-.guide-person-name {
-  font: inherit; font-weight: 600;
-  background: transparent; color: var(--accent);
-  border: 0; border-bottom: 1px dashed var(--accent);
-  padding: 0 0.05em; cursor: pointer; border-radius: 0;
+/* A 白话导读 关键人物 rendered as a chip. Bound chips read as a link (accent
+   name, dotted underline) and open the identity banner; unbound chips read as a
+   plain searchable tag and fall back to literal 出处检索. The visual difference
+   carries the meaning — no legend or per-chip label needed. */
+.guide-people {
+  display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.3em 0 0; padding: 0;
 }
-.guide-person-name:hover { color: var(--accent-pressed); }
-.guide-person-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.guide-person-role { font-size: 0.86em; color: #6b5436; }
-.guide-foot {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 0.6em;
-  margin-top: 0.2em; padding-top: 0.55em;
-  border-top: 1px solid #ead9ac;
+.pchip {
+  font-family: inherit; display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.82rem; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg-input);
+  border-radius: 999px; padding: 0.16rem 0.6rem; color: var(--fg);
 }
-.guide-note { font-size: 0.76em; color: #8a6a3a; }
+.pchip.bound { border-color: rgba(122, 59, 46, 0.35); }
+.pchip-dot {
+  width: 0.5rem; height: 0.5rem; border-radius: 50%; flex: 0 0 auto;
+}
+.pchip.bound .pchip-dot { background: #4a7a3a; }
+.pchip.unbound .pchip-dot { background: #fff; box-shadow: inset 0 0 0 1px var(--border); }
+.pchip.bound .pchip-name {
+  color: var(--accent); font-weight: 600;
+  text-decoration: underline dotted 1px; text-underline-offset: 0.16em;
+}
+.pchip.unbound .pchip-name { color: var(--fg); text-decoration: none; }
+/* Unbound pill = a 检索 affordance, not an identity link. A search glyph +
+   faint 检索 micro-label distinguish it from the bound (green-dot) person
+   pill, and there is deliberately no person underline. */
+.pchip-search { width: 0.78rem; height: 0.78rem; flex: 0 0 auto; color: var(--muted); }
+.pchip.unbound:hover .pchip-search { color: var(--accent); }
+.pchip-tag {
+  font-size: 0.64rem; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 0 0.34em; line-height: 1.5; letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+.pchip-role { color: var(--muted); font-size: 0.74rem; }
+.pchip:hover { background: var(--hover-bg); }
+.pchip.bound:hover { background: rgba(122, 59, 46, 0.1); }
+.pchip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
   .settings-menu:popover-open { animation: none; }
-  .guide-expand, .guide-person-name, .seg-btn { transition: none; }
+  .guide-expand, .pchip, .seg-btn { transition: none; }
 }
 
 .year-toc {
@@ -504,6 +529,233 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .person-placeholder h3 { margin-top: 0; color: var(--accent); }
 .muted { color: var(--muted); }
 .small { font-size: 0.85em; }
+
+/* ── 上下文聚焦 dock (Variant A) ───────────────────────────────────────────
+   The right pane shows exactly ONE context at a time. A persistent head holds
+   a tappable 卷·年 chip (→ idle 纪年) and a search field; the body swaps between
+   人物 / 检索 / 纪年 with a short crossfade. This kills the old stacking that
+   pushed 本卷纪年 down and let the person card and search results compete. */
+.context-dock { gap: 0; padding: 0; }
+.dock-head {
+  flex-shrink: 0;
+  display: flex; flex-direction: column; gap: 0.5rem;
+  padding: 0.75rem 1rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+}
+/* Breadcrumb-style position line: always labels the current 卷·年 and jumps the
+   reader there. Back navigation lives in the 纪年 segment / card × / Esc. */
+.dock-crumb {
+  display: inline-flex; align-items: center; gap: 0.2rem;
+  align-self: flex-start; max-width: 100%;
+  padding: 0.1rem 0.1rem; margin-left: -0.1rem;
+  background: none; border: 0; border-radius: var(--radius-sm);
+  cursor: pointer; font: inherit; font-size: 0.92rem; font-weight: 600;
+  color: var(--accent);
+}
+.dock-crumb:hover .dock-crumb-year { text-decoration: underline; text-underline-offset: 0.16em; }
+.dock-crumb-year {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.dock-search { position: relative; margin: 0.7rem 1rem 0.2rem; }
+.dock-search .lookup-input { width: 100%; }
+.dock-search .lookup-clear {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  background: none; border: 0; color: var(--muted); cursor: pointer;
+  font-size: 1.1rem; padding: 0 0.3rem;
+}
+.dock-search .lookup-clear:hover { color: var(--accent); }
+.dock-search-toolbar {
+  flex-shrink: 0; padding: 0.5rem 1rem 0.1rem;
+  display: flex; align-items: center; justify-content: flex-end;
+}
+
+/* Grabber handle — only meaningful as the bottom-sheet drag affordance on
+   mobile; hidden on desktop where the dock is a fixed column. */
+.dock-grabber { display: none; }
+
+/* Header segmented control (纪年 · 检索 · 人物) + one-line legend. Reuses the
+   shared .seg / .seg-btn idiom; the legend names the active subject. */
+.dock-subject { display: flex; flex-direction: column; gap: 0.35rem; }
+.dock-subject .seg { align-self: stretch; }
+.dock-subject .seg-btn { flex: 1; }
+.dock-subject .seg-btn:disabled { opacity: 0.4; cursor: default; }
+.dock-legend {
+  font-size: 0.74rem; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  line-height: 1.4;
+}
+
+/* "「X」也是某人之名？ 看人物身份 ›" promote line under search results. */
+.lookup-promote {
+  flex-shrink: 0; margin-top: 0.6rem; padding-top: 0.6rem;
+  border-top: 1px dashed var(--border);
+  display: flex; flex-direction: column; gap: 0.3rem;
+}
+.lookup-promote-text { font-size: 0.8rem; color: var(--muted); }
+.lookup-promote-btn {
+  align-self: flex-start;
+  font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  background: var(--accent-tint); color: var(--accent);
+  border: 1px solid rgba(122, 59, 46, 0.3); border-radius: 999px;
+  padding: 0.22em 0.8em;
+}
+.lookup-promote-btn:hover { background: rgba(122, 59, 46, 0.14); }
+.lookup-promote-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.dock-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.dock-view {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  overflow: hidden;
+  animation: dock-fade 0.18s var(--ease-out, ease) both;
+}
+@keyframes dock-fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+/* The swapped views own their own scroll + padding. */
+.dock-view > .person-banner { flex-shrink: 0; margin: 0.75rem 1rem 0; }
+.dock-view > .lookup-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 1rem 1rem; }
+.dock-body > .year-toc { flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 0.6rem 1rem 1rem; }
+.dock-body > .year-toc ul { height: auto; max-height: none; overflow: visible; }
+@media (prefers-reduced-motion: reduce) {
+  .dock-view { animation: none; }
+}
+
+
+/* ── 人物识别 (person identity) ─────────────────────────────────────────── */
+
+/* Inline person affordance inside 原文. Stays serif and inline so the source
+   text reads naturally; a subtle dotted underline signals "identity here"
+   without competing with 胡注 markers or search highlights. */
+.person-name {
+  font: inherit; color: inherit;
+  background: transparent;
+  border: 0; padding: 0;
+  cursor: pointer;
+  /* Underline-only affordance so a search <mark> inside a name doesn't sit in a
+     second tinted box (no highlight-in-a-highlight). The fill is reserved for
+     the transient hover / active states. */
+  text-decoration: underline solid var(--accent);
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 2px;
+  border-radius: var(--radius-sm);
+  box-decoration-break: clone;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.person-name:hover { background: var(--accent); color: #fff; text-decoration-color: #fff; padding: 0 0.06em; }
+.person-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* When a person is open, all their occurrences carry the yellow search-hit
+   highlight (the name is searched). The clicked occurrence is emphasized with a
+   slightly stronger box — never a second nested box on top of the search-hit
+   (that "highlight-in-a-highlight" looked broken). */
+.person-name.is-active .search-hit {
+  background: #ffd36b;
+  box-shadow: 0 0 0 1px #c79a30;
+}
+/* Hover paints the whole name; drop the inner search box so it isn't doubled. */
+.person-name:hover .search-hit {
+  background: transparent; color: inherit; box-shadow: none; padding: 0;
+}
+
+/* A 白话导读 关键人物 bound to the KB: a small dot marks that a spoiler-safe
+   person card is available (vs. an unbound name that only fires literal search). */
+.guide-person-name.is-bound::before {
+  content: ''; display: inline-block;
+  width: 0.4em; height: 0.4em; margin-right: 0.35em;
+  border-radius: 999px; background: #4a7a3a;
+  vertical-align: 0.1em;
+}
+
+/* Person identity banner atop the 出处检索 results — an editorial aid, so
+   sans-serif and clearly 编者信息 · 非原文, never styled like 原文 / 胡注. The
+   result list below it IS this person's occurrences (a literal name search). */
+.person-banner {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  background: #fbf4df;
+  border: 1px solid #e0cfa0;
+  border-radius: var(--radius-md);
+  padding: 0.6em 0.75em;
+  margin-bottom: 0.55rem;
+  color: #3a2a1c;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+.person-card-head { display: flex; align-items: flex-start; gap: 0.5em; }
+.person-card-id { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.3em 0.5em; flex: 1; }
+.person-card-name { margin: 0; font-size: 1.0rem; color: #2b1d10; font-weight: 700; }
+.person-prov {
+  font-size: 0.68em; color: #8a6a3a;
+  border: 1px solid #d8c08a; border-radius: 999px;
+  padding: 0.02em 0.4em; cursor: help; white-space: nowrap;
+}
+/* Provenance tag — how the user reached this card (来自正文 / 来自导读 /
+   来自检索). A small text chip rendered from a data-origin attribute. */
+.person-prov-origin {
+  font-size: 0.66em; color: #6b5436;
+  background: #f0e4c4; border: 1px solid #e0cfa0; border-radius: 999px;
+  padding: 0.04em 0.45em; white-space: nowrap;
+}
+.person-prov-origin::after { content: attr(aria-label); }
+/* Reconcile line — shown when the clicked surface label differs from the
+   canonical name, e.g. 「太祖」，即曹操（同一人）. */
+.person-card-reconcile {
+  margin: 0.3em 0 0; font-size: 0.78rem; color: #6b5436;
+}
+.person-card-close {
+  background: transparent; border: 0; cursor: pointer;
+  color: #8a6a3a; font-size: 1.15rem; line-height: 1; padding: 0.1em 0.2em;
+  border-radius: var(--radius-sm); flex-shrink: 0;
+}
+.person-card-close:hover { background: rgba(122, 59, 46, 0.1); color: var(--accent); }
+.person-card-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.person-banner-summary {
+  margin: 0.35em 0 0.1em;
+  color: #3a2a1c;
+}
+.person-banner-summary.is-spoiler {
+  color: #5a4632;
+}
+.person-meta-chip {
+  font-size: 0.72em; color: #6b5436;
+  background: #f0e4c4; border: 1px solid #e0cfa0; border-radius: 999px;
+  padding: 0.04em 0.45em;
+}
+.person-meta-conf {
+  font-size: 0.72em; color: #4a6a3a;
+  background: rgba(74, 122, 58, 0.12); border: 1px solid rgba(74, 122, 58, 0.4);
+  border-radius: 999px; padding: 0.04em 0.45em;
+}
+.person-meta-conf[data-confidence="medium"],
+.person-meta-conf[data-confidence="low"],
+.person-meta-conf[data-confidence="unresolved"] {
+  color: #8a6a3a; background: #f0e4c4; border-color: #d8c08a;
+}
+.person-card-aliases { margin: 0.2em 0 0.4em; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3em; }
+.person-aliases-label { font-size: 0.72em; font-weight: 700; color: #7a5a2a; }
+.person-alias { font-size: 0.8em; color: #5a4632; }
+.person-alias:not(:last-child)::after { content: '、'; color: #b09a6a; }
+/* Spoiler switch: 无剧透 establishing brief ⇄ full life arc. */
+.person-spoiler-toggle {
+  margin-top: 0.3em;
+  font: inherit; font-size: 0.76rem; font-weight: 600; cursor: pointer;
+  background: transparent; color: #9a6a4a; border: 0; padding: 0;
+  text-decoration: underline; text-underline-offset: 0.16em;
+}
+.person-spoiler-toggle.is-on { color: var(--accent); }
+.person-spoiler-toggle:hover { color: var(--accent-pressed); }
+.person-spoiler-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* "返回刚才阅读处" pill after a 跳至此段 jump. */
+.jump-return-pill {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: 1.2rem; z-index: 30;
+  font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  background: var(--accent); color: #fff; border: 0;
+  border-radius: 999px; padding: 0.5em 1.1em;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+}
+.jump-return-pill:hover { background: var(--accent-pressed); }
+.jump-return-pill:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 .year-toc { flex-shrink: 0; }
 
@@ -881,11 +1133,24 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 }
 .selection-action-btn:active { background: rgba(244, 236, 216, 0.34); }
 .selection-action-btn svg { width: 14px; height: 14px; }
+.selection-action-person { background: rgba(244, 236, 216, 0.12); }
 
-/* The pill is JS-gated on touch only, but redundancy is cheap: hover-capable
-   devices already have the always-visible search input and shouldn't see it. */
-@media (hover: hover) {
-  .selection-action-bar { display: none; }
+/* Desktop / anchored variant: a small popover positioned just above the
+   selection rather than pinned to the bottom edge. JS supplies left/top from
+   the selection's bounding rect; we translate to center horizontally and lift
+   it clear of the text. */
+.selection-action-bar.is-anchored {
+  left: 0; top: 0; bottom: auto;
+  transform: translate(-50%, -100%);
+  animation: selection-action-pop-anchored 0.16s var(--ease-out);
+}
+@keyframes selection-action-pop-anchored {
+  from { opacity: 0; transform: translate(-50%, calc(-100% + 6px)); }
+  to   { opacity: 1; transform: translate(-50%, -100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .selection-action-bar { animation: none; }
 }
 
 .loading, .error {
@@ -902,6 +1167,14 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   background: #ffe6a0;
   padding: 0 0.05em; border-radius: 2px;
   box-shadow: 0 0 0 1px #d9b860;
+}
+/* While a live text selection is active, suppress the subject's search/person
+   <mark> paint so only ONE highlight system shows at a time (the yellow
+   selection-match). We deliberately do NOT rebuild the reader DOM for this —
+   just neutralise the existing marks so the clipboard / selection stay intact. */
+.reader-scroller.sel-live .search-hit {
+  background: transparent;
+  box-shadow: none;
 }
 
 /* Highlight every other occurrence of the currently selected text. Painted via
@@ -958,42 +1231,73 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
     box-shadow: none;
   }
 
-  /* Person pane (year toc + search) becomes a right slide-in drawer. */
+  /* Person/检索 subject becomes a bottom SHEET on mobile (peek / half / full
+     detents), driven by the layout's .dock-peek / .dock-half / .dock-full
+     classes. The 本卷纪年 list is NEVER in this sheet — it keeps its own
+     right-edge .year-drawer. translateY + a grabber give it a native sheet
+     feel; the orthogonal showLookup axis is retired (detent IS the state). */
   .person-pane {
     display: flex;
+    flex-direction: column;
     position: fixed;
-    top: 0; right: 0; bottom: 0;
-    width: 88%;
-    max-width: 360px;
+    top: auto; right: 0; bottom: 0; left: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 92dvh;
+    max-height: 92dvh;
     z-index: 60;
-    transform: translateX(100%);
-    transition: transform 0.22s ease;
-    border-left: 1px solid var(--border);
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.25);
-    padding-top: env(safe-area-inset-top, 0px);
+    transform: translateY(88%);
+    transition: transform 0.22s var(--ease-out, ease);
+    border-top: 1px solid var(--border);
+    border-left: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 28px rgba(43, 33, 24, 0.26);
+    padding-top: 0;
     padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
+    overflow: hidden;
   }
-  .layout.lookup-open .person-pane {
-    transform: translateX(0);
-  }
+  /* peek (~12% visible) → mostly hidden; half (~58%) → mid; full (~92%) → up. */
+  .layout.dock-peek .person-pane { transform: translateY(88%); }
+  .layout.dock-half .person-pane { transform: translateY(42%); }
+  .layout.dock-full .person-pane { transform: translateY(0); }
 
-  /* Backdrop appears when either drawer is open; tap to close. */
+  /* Grabber handle at the top of the sheet — the drag affordance. */
+  .context-dock .dock-grabber {
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    width: 100%; height: 1.6rem; padding: 0;
+    background: none; border: 0; cursor: grab;
+    touch-action: none;
+  }
+  .dock-grabber-bar {
+    width: 2.4rem; height: 0.28rem; border-radius: 999px;
+    background: var(--border);
+  }
+  /* The identity banner stays its natural height; the results below scroll. */
+  .person-pane .person-banner { max-height: none; }
+
+  /* Backdrop appears when either drawer or the open sheet is showing. */
   .drawer-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.35);
+    background: rgba(0, 0, 0, 0.28);
     z-index: 50;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
   }
   .layout:not(.sidebar-collapsed) .drawer-backdrop,
-  .layout.lookup-open .drawer-backdrop,
+  .layout.dock-open .drawer-backdrop,
   .layout.year-drawer-open .drawer-backdrop {
     display: block;
     opacity: 1;
     pointer-events: auto;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .person-pane { transition: none; }
   }
 
   /* 本卷纪年 lives in its own slide-in drawer on mobile. Opened only by an
@@ -1070,10 +1374,13 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
   }
   .settings-label { font-size: 0.95rem; }
   .seg-btn { padding: 0.5rem 0.85rem; min-width: 2.7rem; font-size: 0.9rem; }
-  /* Year TOC is redundant in the mobile drawer — search is the focus. */
-  .person-pane .year-toc { display: none; }
-  .person-pane .lookup-section {
-    margin-top: 0; padding-top: 0; border-top: 0;
+  /* The dock head (年份 chip + 检索) and swapped body fill the bottom sheet.
+     Drop the inner border so the sheet reads as one surface. */
+  .context-dock .dock-head { border-bottom: 0; padding-top: 0.2rem; }
+  /* On mobile the identity banner sits at the top of the slide-in sheet (opened
+     by tapping a person); the 出处检索 occurrences follow beneath it and scroll. */
+  .person-banner {
+    margin-bottom: 0.7rem;
   }
 
   /* Tighten reader chrome on small screens. Keep the safe-area top padding

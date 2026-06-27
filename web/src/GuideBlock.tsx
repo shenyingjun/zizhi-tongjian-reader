@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import type { GuideSummary } from './corpus';
+import type { GuideSummary, GuidePersonRef } from './corpus';
 
 interface Props {
   summary: GuideSummary;
@@ -8,9 +8,14 @@ interface Props {
   mode: 'brief' | 'full';
   // Look a person up via the existing 出处检索.
   onPersonSearch: (query: string) => void;
+  // Resolve a 关键人物 ref to a canonical person id, or null for literal fallback.
+  resolveGuidePerson: (ref: GuidePersonRef) => string | null;
+  // Open the spoiler-safe person card. The guide's anchor_pid is its "current
+  // position" for spoiler filtering.
+  onPersonClick: (personId: string, pid: number, source?: 'main' | 'guide', clickedLabel?: string) => void;
 }
 
-export default function GuideBlock({ summary, mode, onPersonSearch }: Props) {
+export default function GuideBlock({ summary, mode, onPersonSearch, resolveGuidePerson, onPersonClick }: Props) {
   // Per-block expand is LOCAL — independent of the global mode. In 'full'
   // mode every block is already expanded and the toggle is hidden; switching
   // the global mode remounts blocks (keyed by mode upstream) so local state
@@ -75,29 +80,49 @@ export default function GuideBlock({ summary, mode, onPersonSearch }: Props) {
           {summary.key_people && summary.key_people.length > 0 && (
             <section className="guide-field">
               <h4 className="guide-field-label">关键人物</h4>
-              <ul className="guide-people">
-                {summary.key_people.map((person, i) => (
-                  <li key={i} className="guide-person">
+              <div className="guide-people">
+                {summary.key_people.map((person, i) => {
+                  const boundId = resolveGuidePerson(person);
+                  if (boundId) {
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        className="pchip bound"
+                        onClick={() => onPersonClick(boundId, summary.anchor_pid, 'guide', person.name)}
+                        title={`查看「${person.name}」的人物信息（编者整理·非原文）`}
+                        aria-label={`${person.name}，查看人物信息`}
+                      >
+                        <span className="pchip-dot" aria-hidden="true" />
+                        <span className="pchip-name">{person.name}</span>
+                        {person.role && <span className="pchip-role">{person.role}</span>}
+                      </button>
+                    );
+                  }
+                  return (
                     <button
+                      key={i}
                       type="button"
-                      className="guide-person-name"
+                      className="pchip unbound"
                       onClick={() => onPersonSearch(person.query || person.name)}
                       title={`检索「${person.name}」的出处`}
+                      aria-label={`${person.name}，检索出处`}
                     >
-                      {person.name}
+                      <svg className="pchip-search" viewBox="0 0 24 24" fill="none"
+                           stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"
+                           strokeLinejoin="round" aria-hidden="true">
+                        <circle cx="11" cy="11" r="7" />
+                        <line x1="21" y1="21" x2="16.5" y2="16.5" />
+                      </svg>
+                      <span className="pchip-name">{person.name}</span>
+                      {person.role && <span className="pchip-role">{person.role}</span>}
+                      <span className="pchip-tag" aria-hidden="true">检索</span>
                     </button>
-                    {person.role && <span className="guide-person-role">{person.role}</span>}
-                  </li>
-                ))}
-              </ul>
+                  );
+                })}
+              </div>
             </section>
           )}
-
-          <div className="guide-foot">
-            <span className="guide-note">
-              {summary.editorial_note || '编者整理，非原文'}
-            </span>
-          </div>
         </div>
       )}
     </aside>

@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import type { Juan, Paragraph, HuNote, GuideSummary } from './corpus';
-import { splitParagraph, findMatches, highlightWithRanges, highlight } from './highlight';
+import type { Juan, Paragraph, HuNote, GuideSummary, GuidePersonRef } from './corpus';
+import { splitParagraph, findMatches, highlightWithRanges, highlight, renderTextSegment, type PersonSpan } from './highlight';
 import GuideBlock from './GuideBlock';
 
 interface Props {
@@ -13,11 +13,23 @@ interface Props {
   // anchor_pid → reviewed editorial summary for this 卷.
   guideByAnchorPid: Map<number, GuideSummary>;
   onPersonSearch: (query: string) => void;
+  // pid → main-text person mention spans (empty/absent when no person data).
+  personSpansByPid: Map<number, PersonSpan[]>;
+  onPersonClick: (personId: string, pid: number, source?: 'main' | 'guide', clickedLabel?: string) => void;
+  // Resolve a guide 关键人物 ref to a canonical person id, or null for literal fallback.
+  resolveGuidePerson: (ref: GuidePersonRef) => string | null;
+  // The person whose card is currently open (for inline active highlighting).
+  activePersonId: string | null;
 }
 
 function ParagraphView({
-  p, showHu, highlightQuery, isTarget, isDisclaimer, after,
-}: { p: Paragraph; showHu: boolean; highlightQuery: string; isTarget: boolean; isDisclaimer: boolean; after?: ReactNode }) {
+  p, showHu, highlightQuery, isTarget, isDisclaimer, after, personSpans, onPersonClick, activePersonId,
+}: {
+  p: Paragraph; showHu: boolean; highlightQuery: string; isTarget: boolean;
+  isDisclaimer: boolean; after?: ReactNode;
+  personSpans: PersonSpan[]; onPersonClick: (personId: string, pid: number, source?: 'main' | 'guide', clickedLabel?: string) => void;
+  activePersonId: string | null;
+}) {
   const segments = useMemo(() => splitParagraph(p), [p]);
   const mainMatches = useMemo(() => findMatches(p.main, highlightQuery), [p.main, highlightQuery]);
   const [overridden, setOverridden] = useState<Set<number>>(new Set());
@@ -42,7 +54,9 @@ function ParagraphView({
         if (seg.kind === 'text') {
           return (
             <span key={i}>
-              {highlightWithRanges(seg.text, seg.mainStart!, mainMatches)}
+              {personSpans.length
+                ? renderTextSegment(seg.text, seg.mainStart!, mainMatches, personSpans, onPersonClick, p.id, activePersonId)
+                : highlightWithRanges(seg.text, seg.mainStart!, mainMatches)}
             </span>
           );
         }
@@ -70,6 +84,7 @@ function ParagraphView({
 export default function Reader({
   juan, showHu, highlightQuery, highlightPid,
   guideMode, guideByAnchorPid, onPersonSearch,
+  personSpansByPid, onPersonClick, resolveGuidePerson, activePersonId,
 }: Props) {
   return (
     <article className="reader-body">
@@ -84,6 +99,9 @@ export default function Reader({
             highlightQuery={highlightQuery}
             isTarget={highlightPid === p.id}
             isDisclaimer={i === juan.paragraphs.length - 1}
+            personSpans={personSpansByPid.get(p.id) ?? []}
+            onPersonClick={onPersonClick}
+            activePersonId={activePersonId}
             after={
               guide ? (
                 <GuideBlock
@@ -92,6 +110,8 @@ export default function Reader({
                   summary={guide}
                   mode={guideMode === 'full' ? 'full' : 'brief'}
                   onPersonSearch={onPersonSearch}
+                  resolveGuidePerson={resolveGuidePerson}
+                  onPersonClick={onPersonClick}
                 />
               ) : null
             }

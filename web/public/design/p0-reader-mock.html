@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>P0 UX — 卷007 reader mock · 资治通鉴 Reader</title>
+  <style>
+    :root{
+      --bg:#f4ecd8; --bg-panel:#ece2c8; --bg-input:#fdf6e3; --bg-sidebar:#2b2118;
+      --fg:#2b2118; --fg-inv:#f4ecd8; --accent:#7a3b2e; --accent-pressed:#5a2a20;
+      --accent-tint:rgba(122,59,46,.08); --hu:#996666; --muted:#8a7a64; --muted-on-dark:#b8a888;
+      --border:#c8b994; --hover-bg:#ddd0b0; --radius-sm:3px; --radius-md:4px;
+      --serif:'Noto Serif SC','Source Han Serif SC','Songti SC','SimSun',serif;
+      --sans:'Noto Sans SC','Source Han Sans SC','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:#e6dcc2;color:var(--fg);font-family:var(--serif);line-height:1.95}
+
+    /* design board chrome */
+    .board{padding:1.1rem 1.1rem 3rem}
+    .board-h{font-family:var(--sans);color:var(--accent);font-weight:700;font-size:1rem;margin:.2rem 0 1rem}
+    .frame-label{font-family:var(--sans);font-size:.8rem;color:#5a4632;font-weight:600;margin:1.4rem 0 .5rem;display:flex;align-items:center;gap:.5rem}
+    .frame-label::before{content:"";width:.7rem;height:.7rem;border-radius:2px;background:var(--accent)}
+    .frame-note{font-family:var(--sans);font-weight:400;color:var(--muted);font-size:.74rem}
+
+    /* desktop frame — fixed width, independent of the (narrow) canvas iframe */
+    .device-desktop{width:1080px;max-width:100%;overflow:auto;border:1px solid var(--border);border-radius:10px;
+      box-shadow:0 6px 22px rgba(43,33,24,.14);background:var(--bg)}
+    .layout{width:1080px;display:grid;grid-template-columns:208px 1fr 320px;min-height:560px}
+
+    /* mobile device frame */
+    .device-mobile{width:380px;max-width:100%;border:10px solid #1c150e;border-radius:34px;overflow:hidden;
+      box-shadow:0 10px 30px rgba(43,33,24,.26);background:var(--bg);position:relative}
+    .m-status{background:var(--bg-sidebar);color:var(--fg-inv);font-family:var(--sans);font-size:.7rem;
+      display:flex;justify-content:space-between;padding:.35rem .9rem;align-items:center}
+    .m-bar{display:flex;align-items:center;gap:.5rem;background:var(--bg);border-bottom:1px solid var(--border);
+      padding:.5rem .7rem;font-family:var(--sans)}
+    .m-ic{width:1.6rem;height:1.6rem;border:1px solid var(--border);border-radius:var(--radius-md);
+      display:flex;align-items:center;justify-content:center;color:var(--accent);background:var(--bg-input);font-size:.8rem}
+    .m-title{flex:1;color:var(--accent);font-weight:600;font-size:.9rem}
+    .m-reader{padding:.9rem 1rem 1.2rem;position:relative;height:520px;overflow:hidden}
+    .m-reader .rtitle{font-size:1.02rem}
+    .m-reader .p{font-size:1rem}
+
+    /* mobile bottom sheet (person card) */
+    .sheet-scrim{position:absolute;inset:0;background:rgba(28,21,14,.32);z-index:8}
+    .sheet{position:absolute;left:0;right:0;bottom:0;z-index:9;font-family:var(--sans);
+      background:var(--bg-input);border-radius:16px 16px 0 0;box-shadow:0 -10px 30px rgba(43,33,24,.3);
+      padding:.5rem .9rem 1.1rem;max-height:78%;overflow:auto}
+    .sheet-grip{width:2.4rem;height:.28rem;border-radius:999px;background:var(--border);margin:.15rem auto .55rem}
+
+    /* sidebar */
+    .sidebar{background:var(--bg-sidebar);color:var(--fg-inv);font-family:var(--sans);padding:.9rem .6rem;overflow:auto}
+    .brand{font-weight:700;font-size:.95rem;padding:0 .4rem .2rem}
+    .brand-sub{color:var(--muted-on-dark);font-size:.72rem;padding:0 .4rem .7rem;border-bottom:1px solid #4a3a28;margin-bottom:.5rem}
+    .dyn{color:var(--muted-on-dark);font-size:.74rem;padding:.5rem .4rem .2rem;letter-spacing:.04em}
+    .jl{display:block;color:var(--fg-inv);text-decoration:none;font-size:.84rem;padding:.28rem .5rem;border-radius:var(--radius-md);opacity:.82}
+    .jl:hover{background:#3a2c1f;opacity:1}
+    .jl.active{background:var(--accent);opacity:1}
+    .jl.read::after{content:"·已读";color:var(--muted-on-dark);font-size:.72em;margin-left:.4em}
+
+    /* reader */
+    .reader{padding:1.6rem 2rem 5rem;overflow:hidden;position:relative}
+    .reader-inner{max-width:680px;margin:0 auto}
+    .rtitle{color:var(--accent);font-weight:600;border-bottom:1px solid var(--border);margin:0 0 .2rem;padding-bottom:.35rem;font-size:1.15rem}
+    .rsub{color:var(--muted);font-size:.8rem;font-family:var(--sans);margin:0 0 1.3rem}
+    .p{margin:.75em 0;font-size:1.06rem}
+    .p-emperor{color:var(--accent);font-weight:600;font-size:1.1rem;text-align:center}
+    .p-year{color:#5b3d1a;font-weight:600;margin-top:1.1em}
+    .hu-marker{color:var(--hu);font-size:.74em;cursor:pointer;font-family:var(--sans)}
+    .hu-note{color:var(--hu);font-size:.86em;padding:0 .25em}
+
+    .person-name{color:inherit;font:inherit;font-weight:500;text-decoration:underline dotted 1px;
+      text-decoration-color:color-mix(in srgb,var(--accent) 52%,transparent);text-underline-offset:.18em;
+      background:transparent;border:0;border-radius:var(--radius-sm);padding:0 .02em;cursor:help}
+    .person-name:hover,.person-name:focus-visible{color:var(--accent);text-decoration-style:solid;
+      text-decoration-color:var(--accent);background:var(--accent-tint);outline:2px solid var(--accent);outline-offset:1px}
+    .person-name.is-active{color:var(--accent-pressed);background:rgba(122,59,46,.12)}
+
+    /* 白话导读 guide block — editorial, sans, clearly NOT 原文 */
+    .guide{font-family:var(--sans);background:var(--bg-panel);border:1px solid var(--border);
+      border-left:3px solid var(--accent);border-radius:var(--radius-md);padding:.7rem .85rem .8rem;margin:1rem 0 1.2rem}
+    .guide-tag{display:inline-flex;align-items:center;gap:.3rem;font-size:.68rem;color:var(--accent);
+      background:var(--accent-tint);border:1px solid rgba(122,59,46,.18);border-radius:999px;padding:.05rem .5rem}
+    .guide-tag::before{content:"导";font-weight:700}
+    .guide-h{font-family:var(--serif);font-weight:700;color:var(--accent);font-size:1rem;margin:.45rem 0 .25rem}
+    .guide-one{font-size:.9rem;margin:.1rem 0 .5rem}
+    .guide-sec{font-size:.72rem;color:var(--muted);margin:.55rem 0 .25rem;letter-spacing:.04em}
+    .guide-what{font-size:.85rem;color:var(--fg);margin:.1rem 0 .2rem}
+    .people{display:flex;flex-wrap:wrap;gap:.4rem;margin:.25rem 0 .1rem}
+    .pchip{font-family:var(--sans);display:inline-flex;align-items:center;gap:.3rem;font-size:.82rem;
+      border:1px solid var(--border);background:var(--bg-input);border-radius:999px;padding:.16rem .55rem;cursor:pointer}
+    .pchip.bound{border-color:rgba(122,59,46,.35)}
+    .pchip.bound .nm{color:var(--accent);font-weight:600;text-decoration:underline dotted 1px;text-underline-offset:.16em}
+    .pchip.bound.is-active{background:rgba(122,59,46,.12)}
+    .pchip .role{color:var(--muted);font-size:.74rem}
+    .pchip.unbound .nm{color:var(--fg)}
+    .pchip .dot{width:.5rem;height:.5rem;border-radius:50%;background:#9cbf9c;flex:0 0 auto}
+    .pchip.unbound .dot{background:var(--border)}
+    .guide-prov{margin-top:.55rem;color:var(--muted);font-size:.72rem;border-top:1px solid rgba(122,59,46,.14);padding-top:.45rem}
+
+    /* person card popover (anchored over reader) */
+    .popover{position:absolute;left:50%;top:300px;transform:translateX(-120px);width:360px;max-width:calc(100vw - 32px);
+      font-family:var(--sans);background:var(--bg-input);border:1px solid var(--border);border-radius:7px;
+      box-shadow:0 12px 30px rgba(43,33,24,.24);padding:.7rem .8rem .75rem;z-index:5}
+    .prov{display:inline-flex;align-items:center;gap:.3rem;font-size:.68rem;color:var(--accent);
+      background:var(--accent-tint);border:1px solid rgba(122,59,46,.18);border-radius:999px;padding:.05rem .5rem}
+    .prov::before{content:"§";font-weight:700}
+    .chead{display:flex;align-items:baseline;gap:.5rem;border-bottom:1px dashed rgba(122,59,46,.2);padding-bottom:.4rem;margin-bottom:.45rem}
+    .pname{font-family:var(--serif);color:var(--accent);font-weight:700;font-size:1.1rem}
+    .aka{color:var(--muted);font-size:.78rem}
+    .identity{font-size:.85rem;margin:.1rem 0 .5rem}
+    .boundary{display:flex;align-items:center;gap:.35rem;font-size:.73rem;color:var(--accent);
+      background:rgba(122,59,46,.06);border:1px solid rgba(122,59,46,.16);border-radius:var(--radius-md);padding:.28rem .5rem;margin:.1rem 0 .5rem}
+    .boundary::before{content:"🔒";font-size:.85em}
+    .count{color:var(--muted);font-size:.77rem;margin:.1rem 0 .45rem;display:flex;align-items:center;gap:.4rem}
+    .conf{font-size:.67rem;border-radius:999px;padding:.02rem .42rem;border:1px solid}
+    .conf.rev{color:#3c6b3c;border-color:#9cbf9c;background:rgba(60,107,60,.08)}
+    .conf.high{color:var(--accent);border-color:rgba(122,59,46,.3);background:var(--accent-tint)}
+    .appearance{border-radius:var(--radius-md);background:rgba(122,59,46,.06);padding:.42rem .55rem;margin:.35rem 0}
+    .appearance:hover{background:var(--hover-bg)}
+    .meta{display:flex;align-items:center;gap:.5rem;color:var(--muted);font-size:.74rem;font-variant-numeric:tabular-nums}
+    .srctag{font-size:.66rem;border:1px solid var(--border);border-radius:999px;padding:.02rem .4rem;color:var(--muted)}
+    .srctag.hu{color:var(--hu);border-color:#d8b9b9;background:rgba(153,102,102,.06)}
+    .snippet{font-family:var(--serif);display:block;line-height:1.55;margin:.18rem 0;font-size:.9rem}
+    mark{background:#f4d089;color:var(--fg);padding:0 .1em;border-radius:2px;font-weight:600}
+    .jump{color:var(--accent);font-size:.75rem;text-decoration:none;font-weight:600}
+    .future{border-top:1px solid rgba(122,59,46,.14);margin-top:.5rem;padding-top:.45rem;color:var(--muted);font-size:.76rem}
+    .reveal{color:var(--accent);font-size:.74rem;text-decoration:none;font-weight:600;cursor:pointer}
+
+    /* right pane */
+    .rightpane{background:var(--bg-panel);border-left:1px solid var(--border);font-family:var(--sans);padding:1.1rem .95rem;overflow:auto}
+    .rp-h{margin:0 0 .35rem;color:var(--accent);font-size:.95rem;display:flex;align-items:center;gap:.5rem}
+    .rp-card{background:var(--bg-input);border:1px solid var(--border);border-radius:6px;padding:.65rem .75rem;margin-bottom:1rem}
+    .rp-sub{color:var(--muted);font-size:.78rem;margin:.2rem 0 0}
+    .rp-input{width:100%;font-family:var(--sans);font-size:.85rem;padding:.4rem .55rem;border:1px solid var(--border);
+      border-radius:var(--radius-md);background:var(--bg-input);color:var(--fg);margin-top:.3rem}
+    .callout{position:absolute;left:1rem;bottom:1rem;font-family:var(--sans);font-size:.72rem;color:var(--muted);
+      background:rgba(253,246,227,.85);border:1px dashed var(--border);border-radius:6px;padding:.4rem .55rem;max-width:280px}
+    .callout b{color:var(--accent)}
+  </style>
+</head>
+<body>
+<div class="board">
+  <div class="board-h">P0 人物识别 — UX 设计板（卷007 · 实装对照）</div>
+
+  <div class="frame-label">桌面 Desktop <span class="frame-note">三栏：目录 · 阅读 · 人物/检索；人物卡固定在右栏</span></div>
+  <div class="device-desktop">
+  <div class="layout">
+
+  <!-- ── sidebar ── -->
+  <nav class="sidebar">
+    <div class="brand">资治通鉴</div>
+    <div class="brand-sub">胡三省音注 · 简体 · 离线</div>
+    <div class="dyn">秦纪</div>
+    <a class="jl read" href="#">卷006 秦纪一</a>
+    <a class="jl active" href="#">卷007 秦纪二</a>
+    <a class="jl" href="#">卷008 秦纪三</a>
+    <div class="dyn">汉纪</div>
+    <a class="jl" href="#">卷009 汉纪一</a>
+    <a class="jl" href="#">卷010 汉纪二</a>
+  </nav>
+
+  <!-- ── reader ── -->
+  <main class="reader">
+    <div class="reader-inner">
+      <h1 class="rtitle">卷007　秦纪二</h1>
+      <p class="rsub">起甲戌(前227)尽壬辰(前209)凡十九年 · 始皇帝二十年至二世皇帝元年</p>
+
+      <p class="p p-emperor">始皇帝下</p>
+      <p class="p p-year">二十年（前227年）</p>
+
+      <!-- guide block sits at the year anchor, BEFORE the event text -->
+      <section class="guide" aria-label="白话导读 荆轲刺秦">
+        <span class="guide-tag">白话导读 · 非原文</span>
+        <h2 class="guide-h">荆轲刺秦</h2>
+        <p class="guide-one">荆轲献图时行刺秦王未成，秦随即加兵燕国，在易水西大破燕、代。</p>
+        <p class="guide-sec">事件梗概</p>
+        <p class="guide-what">荆轲到咸阳，通过蒙嘉求见秦王。献督亢图时匕首露出，行刺未中，秦王拔剑反击，荆轲被杀。秦王大怒，增兵伐燕，王翦在易水西击败燕、代联军。</p>
+        <p class="guide-sec">关键人物　<span style="font-weight:400;text-transform:none;letter-spacing:0">（仅显示读到此处为止的出现，不剧透后文）</span></p>
+        <p style="display:flex;gap:.3rem .9rem;flex-wrap:wrap;margin:.1rem 0 .5rem;font-size:.72rem;color:var(--muted)">
+          <span style="display:inline-flex;align-items:center;gap:.3rem"><span style="background:#4a7a3a;width:.5rem;height:.5rem;border-radius:50%;display:inline-block"></span>已绑定＝打开人物卡片</span>
+          <span style="display:inline-flex;align-items:center;gap:.3rem"><span style="background:var(--border);width:.5rem;height:.5rem;border-radius:50%;display:inline-block"></span>字面检索＝搜索原文词语</span>
+        </p>
+        <div class="people">
+          <span class="pchip bound"><span class="dot"></span><span class="nm">荆轲</span><span class="role">燕使</span><span style="font-size:.66rem;color:#2f5a22;background:rgba(74,122,58,.16);padding:.02em .34em;border-radius:999px">已绑定</span></span>
+          <span class="pchip bound is-active"><span class="dot"></span><span class="nm">王翦</span><span class="role">秦将</span><span style="font-size:.66rem;color:#2f5a22;background:rgba(74,122,58,.16);padding:.02em .34em;border-radius:999px">已绑定</span></span>
+          <span class="pchip bound"><span class="dot"></span><span class="nm">蒙嘉</span><span class="role">秦王宠臣</span><span style="font-size:.66rem;color:#2f5a22;background:rgba(74,122,58,.16);padding:.02em .34em;border-radius:999px">已绑定</span></span>
+          <span class="pchip unbound"><span class="dot"></span><span class="nm">王</span><span class="role">秦王政</span><span style="font-size:.66rem;color:var(--muted);background:var(--hover-bg,#eee);padding:.02em .34em;border-radius:999px">字面检索</span></span>
+        </div>
+        <p class="guide-prov">编者导读，非《通鉴》原文。绑定人物以「身份已复核」为准；未绑定者保留字面检索。</p>
+      </section>
+
+      <!-- real 原文 with inline person affordances -->
+      <p class="p">①<button class="person-name">荆轲</button>至咸阳，因王宠臣<button class="person-name">蒙嘉</button>卑辞以求见；王大喜，朝服，设九宾而见之。<button class="person-name">荆轲</button>奉图而进于王，图穷而匕首见，因把王袖而揕之；未至身，王惊起，袖绝。<span class="hu-marker">［注］</span></p>
+
+      <p class="p p-year">二十一年（前226年）</p>
+      <p class="p">①冬，十月，<button class="person-name is-active">王翦</button>拔蓟，燕王及太子率其精兵东保辽东，<button class="person-name">李信</button>急追之。</p>
+
+      <!-- person card opened from 王翦 (text or guide chip), spoiler-safe -->
+      <section class="popover" role="dialog" aria-label="王翦 编者人物信息">
+        <div class="chead"><span class="pname">王翦</span><span class="aka">来自正文</span><span class="prov" style="margin-left:auto">编者信息 · 非原文</span></div>
+        <div class="identity">秦名将，频阳东乡人。</div>
+        <div class="boundary" title="仅显示本段之前：卷007 · 前226年 · 不含当前段">此前出现 <b>4</b> 段 · 读到本段前　<span class="conf rev" style="margin-left:auto">身份已复核 ⓘ</span></div>
+        <div class="appearance">
+          <div class="meta">前229年 · 卷006 <span class="srctag">原文</span></div>
+          <span class="snippet">…秦大举伐赵，<mark>王翦</mark>将上地，下井陉。</span>
+          <a class="jump" href="#">跳至此段 →</a>
+        </div>
+        <div class="appearance">
+          <div class="meta">前228年 · 卷006 <span class="srctag hu">胡注</span></div>
+          <span class="snippet">…胡三省曰：<mark>王翦</mark>，秦之宿将，老谋持重。</span>
+          <a class="jump" href="#">跳至此段 →</a>
+        </div>
+        <div class="future">此后另有 9 处出现，已隐藏以避免剧透。
+          &nbsp;<a class="reveal" href="#">显示后文（含剧透 · 9 处）</a>
+          <div style="margin-top:.3rem;color:var(--muted);font-size:.72rem">一键显示，可随时「收起」复原。</div>
+        </div>
+      </section>
+    </div>
+
+    <div class="callout">
+      <b>这一页演示：</b>① 原文内人物虚线可点；② 白话导读「关键人物」已绑定到人物库（绿点=已复核，灰点=未绑定回退检索）；③ 人物卡片以阅读进度为界，未来出现默认隐藏。
+    </div>
+  </main>
+
+  <!-- ── right pane ── -->
+  <aside class="rightpane">
+    <h2 class="rp-h">人物　<span class="prov">编者信息 · 非原文</span></h2>
+    <div class="rp-card">
+      <div style="font-family:var(--serif);color:var(--accent);font-weight:700">王翦</div>
+      <div class="rp-sub">点击正文或导读中的人物，在此固定查看完整「此前出现」时间线。</div>
+    </div>
+    <h2 class="rp-h">出处检索</h2>
+    <input class="rp-input" placeholder="选中正文或在此输入词语…" />
+    <p class="rp-sub">非人物词语仍走字面检索；本卷及之前结果优先（可关剧透过滤）。</p>
+  </aside>
+
+  </div>
+  </div><!-- /device-desktop -->
+
+  <!-- ── mobile frame ── -->
+  <div class="frame-label">移动 Mobile <span class="frame-note">单栏阅读；点击人物 → 底部弹出人物卡（bottom sheet），同样以阅读进度为界</span></div>
+  <div class="device-mobile">
+    <div class="m-status"><span>9:41</span><span>资治通鉴 · 离线</span><span>100%</span></div>
+    <div class="m-bar">
+      <span class="m-ic">☰</span>
+      <span class="m-title">卷007　秦纪二</span>
+      <span class="m-ic">Aa</span>
+      <span class="m-ic">⌕</span>
+    </div>
+    <div class="m-reader">
+      <h1 class="rtitle">卷007　秦纪二</h1>
+      <p class="rsub" style="margin-bottom:.8rem">始皇帝二十年至二世元年</p>
+      <p class="p p-year">二十一年（前226年）</p>
+      <p class="p">①冬，十月，<button class="person-name is-active">王翦</button>拔蓟，燕王及太子率其精兵东保辽东，<button class="person-name">李信</button>急追之。<span class="hu-marker">［注］</span></p>
+      <p class="p">①王贲伐楚，取十余城。<button class="person-name">王</button>问于将军<button class="person-name">李信</button>曰：「吾欲取荆，于将军度用几何人而足？」</p>
+
+      <!-- mobile bottom sheet: person card -->
+      <div class="sheet-scrim"></div>
+      <section class="sheet" role="dialog" aria-label="王翦 编者人物信息">
+        <div class="sheet-grip"></div>
+        <div class="chead"><span class="pname">王翦</span><span class="aka">来自正文</span><span class="prov" style="margin-left:auto">编者信息 · 非原文</span></div>
+        <div class="identity">秦名将，频阳东乡人。</div>
+        <div class="boundary" title="仅显示本段之前：卷007 · 前226年 · 不含当前段">此前出现 <b>4</b> 段 · 读到本段前　<span class="conf rev" style="margin-left:auto">身份已复核 ⓘ</span></div>
+        <div class="appearance">
+          <div class="meta">前229年 · 卷006 <span class="srctag">原文</span></div>
+          <span class="snippet">…秦大举伐赵，<mark>王翦</mark>将上地，下井陉。</span>
+          <a class="jump" href="#">跳至此段 →</a>
+        </div>
+        <div class="appearance">
+          <div class="meta">前228年 · 卷006 <span class="srctag hu">胡注</span></div>
+          <span class="snippet">…胡三省曰：<mark>王翦</mark>，秦之宿将，老谋持重。</span>
+          <a class="jump" href="#">跳至此段 →</a>
+        </div>
+        <div class="future">此后另有 9 处出现，已隐藏以避免剧透。&nbsp;<a class="reveal" href="#">显示后文（含剧透 · 9 处）</a></div>
+      </section>
+    </div>
+  </div><!-- /device-mobile -->
+
+</div><!-- /board -->
+</body>
+</html>

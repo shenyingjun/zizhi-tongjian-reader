@@ -85,6 +85,14 @@ export interface GuidePersonRef {
   // Optional search query to look the person up via the existing 出处检索.
   query?: string;
   role?: string;
+  // ── P0 person-identity binding (backward-compatible) ──
+  // When present, this key person resolves to a canonical Person in the KB and
+  // opens the spoiler-safe person card instead of a literal search. Unbound
+  // refs (no person_id and unresolved at runtime) keep the `query || name`
+  // literal-search behavior exactly as before.
+  person_id?: string;
+  candidate_ids?: string[];
+  confidence?: PersonConfidence;
 }
 
 export interface GuideSummary {
@@ -132,6 +140,149 @@ export function loadJuanGuide(no: number): Promise<JuanGuideFile | null> {
       })
       .catch(() => null); // network/parse errors are non-blocking — source text still renders
     _guideCache.set(no, cached);
+  }
+  return cached;
+}
+
+// ── 人物识别 (person identity) ─────────────────────────────────────────────
+// A static, offline person knowledge base + per-卷 mention sidecars, shipped
+// beside the text/ and guide/ assets. Source paragraph JSON is never mutated —
+// person data lives entirely in these sidecars (mirroring the guide/ layer).
+// Confidence tiers are honest about resolution quality; only 'reviewed'/'high'
+// assert identity, everything else falls back to literal 出处检索.
+
+export type PersonConfidence =
+  | 'reviewed' | 'high' | 'medium' | 'low' | 'unresolved';
+
+export interface PersonName {
+  text: string;
+  type: 'name' | 'style' | 'title' | 'posthumous' | 'clan' | 'alias';
+}
+
+export interface Person {
+  id: string;
+  canonical_name: string;
+  names: PersonName[];
+  dynasty?: string;
+  era_hint?: string;
+  floruit?: { start: number | null; end: number | null };
+  // Spoiler-safe establishing identity (station/origin/kin, no later outcomes).
+  // Shown by default in the card. NOT 原文 — rendered as 编者信息.
+  brief?: string;
+  // Full editorial identity; may narrate later events, so revealed only behind
+  // the explicit spoiler toggle. NOT 原文.
+  identity: string;
+  confidence: PersonConfidence;
+}
+
+export interface PeopleFile {
+  version: 1;
+  people: Person[];
+}
+
+// One detected occurrence of a person in a 卷, keyed to an existing Paragraph.id.
+export interface PersonMention {
+  pid: number;
+  ce_year: number | null;
+  source: 'main' | 'hu';
+  note_index?: number;
+  start: number;          // char offset within main text or the 胡注 text
+  end: number;
+  surface: string;        // matched surface form
+  person_id?: string;
+  candidate_ids?: string[];
+  confidence: PersonConfidence;
+}
+
+export interface JuanPersonMentions {
+  juan_no: number;
+  version: 1;
+  mentions: PersonMention[];
+}
+
+// A resolved prior appearance shown in the person card (spoiler-filtered).
+export interface PersonAppearance {
+  person_id: string;
+  juan: number;
+  pid: number;
+  ce_year: number | null;
+  source: 'main' | 'hu';
+  surface: string;
+}
+
+// One row of the cross-卷 appearance index (persons/appearances.json). It is a
+// per-(person, paragraph) appearance in reading order, used to assemble
+// spoiler-filtered prior/future appearances that span 卷 boundaries (the
+// per-卷 mention sidecars only cover the current 卷).
+export interface AppearanceRow {
+  juan: number;
+  pid: number;
+  ce_year: number | null;
+  source: 'main' | 'hu';
+}
+
+export interface AppearancesFile {
+  version: 1;
+  appearances: Record<string, AppearanceRow[]>;
+}
+
+// Cross-卷 appearance index, cached process-wide. Absent file → empty map
+// (graceful: the app falls back to current-卷 mentions only).
+let _appearancesCache: Promise<Map<string, AppearanceRow[]>> | null = null;
+
+export function loadAppearances(): Promise<Map<string, AppearanceRow[]>> {
+  if (!_appearancesCache) {
+    _appearancesCache = fetch(`${BASE}text/persons/appearances.json`)
+      .then(r => {
+        if (!r.ok) throw new Error(`appearances ${r.status}`);
+        return r.json() as Promise<AppearancesFile>;
+      })
+      .then(f => {
+        const m = new Map<string, AppearanceRow[]>();
+        for (const [pid, rows] of Object.entries(f.appearances)) m.set(pid, rows);
+        return m;
+      })
+      .catch(() => new Map<string, AppearanceRow[]>());
+  }
+  return _appearancesCache;
+}
+
+// The people KB is one small file for the slice; cached process-wide.
+let _peopleCache: Promise<Map<string, Person>> | null = null;
+
+export function loadPeople(): Promise<Map<string, Person>> {
+  if (!_peopleCache) {
+    _peopleCache = fetch(`${BASE}text/persons/people.json`)
+      .then(r => {
+        if (!r.ok) throw new Error(`people ${r.status}`);
+        return r.json() as Promise<PeopleFile>;
+      })
+      .then(f => {
+        const m = new Map<string, Person>();
+        for (const p of f.people) m.set(p.id, p);
+        return m;
+      })
+      .catch(() => new Map<string, Person>()); // absent KB → no identity, graceful
+  }
+  return _peopleCache;
+}
+
+// Per-卷 mention sidecar. A missing file (404) resolves to null — expected for
+// any 卷 we haven't built person data for yet (graceful absence).
+const _mentionsCache = new Map<number, Promise<JuanPersonMentions | null>>();
+
+export function loadPersonMentions(no: number): Promise<JuanPersonMentions | null> {
+  let cached = _mentionsCache.get(no);
+  if (!cached) {
+    const padded = String(no).padStart(3, '0');
+    cached = fetch(`${BASE}text/persons/mentions/juan_${padded}.json`)
+      .then(r => {
+        if (r.status === 404) return null;
+        if (!r.ok) throw new Error(`mentions ${no} ${r.status}`);
+        return r.json() as Promise<JuanPersonMentions>;
+      })
+      .catch(() => null);
+    _mentionsCache.set(no, cached);
   }
   return cached;
 }
@@ -189,29 +340,46 @@ function isPunct(c: string): boolean { return PUNCT.indexOf(c) >= 0; }
 function isSentEnd(c: string): boolean { return SENT_END.indexOf(c) >= 0; }
 
 export function searchCorpus(
-  query: string,
+  query: string | string[],
   corpus: LookupEntry[],
-  opts: { maxJuan?: number | null; limit?: number } = {},
+  opts: { maxJuan?: number | null; limit?: number; restrictPids?: Set<string> | null } = {},
 ): LookupHit[] {
-  const q = query.trim();
-  if (!q) return [];
-  const { maxJuan = null, limit = 200 } = opts;
+  // Accept one needle (literal 出处检索) or several (a bound person's
+  // canonical_name + aliases). Longest-first so an alias nested inside the
+  // canonical form (翦 ⊂ 王翦) never pre-empts the longer match.
+  const needles = Array.from(
+    new Set((Array.isArray(query) ? query : [query]).map(s => s.trim()).filter(Boolean)),
+  ).sort((a, b) => b.length - a.length);
+  if (needles.length === 0) return [];
+  const { maxJuan = null, limit = 200, restrictPids = null } = opts;
   const hits: LookupHit[] = [];
   for (const entry of corpus) {
     // Spoiler filter: hide hits from 卷 the user hasn't reached yet.
     if (maxJuan !== null && entry.j > maxJuan) continue;
-    // Collect all raw match indices, then merge ones whose context
-    // windows would overlap so the user sees a single combined snippet
-    // with multiple highlights instead of near-duplicate excerpts.
-    const idxs: number[] = [];
-    let from = 0;
-    while (true) {
-      const idx = entry.t.indexOf(q, from);
-      if (idx < 0) break;
-      idxs.push(idx);
-      from = idx + q.length;
+    // Curated-occurrence filter: when a bound person drives the query, only
+    // their verified appearance paragraphs (from appearances.json) qualify —
+    // this is what makes the list NER-accurate instead of substring-fuzzy.
+    if (restrictPids !== null && !restrictPids.has(entry.j + ':' + entry.p)) continue;
+    // Collect every match (position + its own length, since needles vary),
+    // then drop overlaps (longer needle wins) and merge ones whose context
+    // windows touch so the user sees one combined snippet, not duplicates.
+    const raw: { pos: number; len: number }[] = [];
+    for (const nd of needles) {
+      let from = 0;
+      while (true) {
+        const idx = entry.t.indexOf(nd, from);
+        if (idx < 0) break;
+        raw.push({ pos: idx, len: nd.length });
+        from = idx + nd.length;
+      }
     }
-    if (idxs.length === 0) continue;
+    if (raw.length === 0) continue;
+    raw.sort((a, b) => a.pos - b.pos || b.len - a.len);
+    const idxs: { pos: number; len: number }[] = [];
+    let lastEnd = -1;
+    for (const m of raw) {
+      if (m.pos >= lastEnd) { idxs.push(m); lastEnd = m.pos + m.len; }
+    }
     const noteStarts = entry.m;
     // Build region boundaries: each region is [start, end) within `t`. A
     // single-space separator sits between consecutive regions. Regions
@@ -235,12 +403,12 @@ export function searchCorpus(
     };
     const huStart = noteStarts && noteStarts.length > 0 ? noteStarts[0] : -1;
     const inHuFor = (i: number) => huStart >= 0 && i >= huStart;
-    let group: number[] = [idxs[0]];
+    let group: { pos: number; len: number }[] = [idxs[0]];
     const flush = () => {
-      const first = group[0];
-      const last = group[group.length - 1];
+      const first = group[0].pos;
+      const lastM = group[group.length - 1];
       const [lo, hi] = regions[regionOf(first)];
-      const matchEnd = last + q.length;
+      const matchEnd = lastM.pos + lastM.len;
       // Soft window: at least SNIPPET_PAD chars on each side, clamped to
       // the region.
       let start = Math.max(lo, first - SNIPPET_PAD);
@@ -276,7 +444,7 @@ export function searchCorpus(
         y: entry.y,
         k: entry.k,
         snippet: entry.t.slice(start, end),
-        matches: group.map(i => ({ start: i - start, len: q.length })),
+        matches: group.map(m => ({ start: m.pos - start, len: m.len })),
         inHu: inHuFor(first),
         atStart: start === lo,
         atEnd: end === hi || cutAtSentEnd,
@@ -288,8 +456,8 @@ export function searchCorpus(
       // ±SNIPPET_PAD windows would overlap, AND both live in the same
       // region. Crossing a main/胡注 or note-to-note boundary always breaks
       // the group so distinct excerpts stay distinct.
-      const close = idxs[i] - (prev + q.length) <= 2 * SNIPPET_MAX;
-      const sameRegion = regionOf(idxs[i]) === regionOf(group[0]);
+      const close = idxs[i].pos - (prev.pos + prev.len) <= 2 * SNIPPET_MAX;
+      const sameRegion = regionOf(idxs[i].pos) === regionOf(group[0].pos);
       if (close && sameRegion) {
         group.push(idxs[i]);
       } else {
