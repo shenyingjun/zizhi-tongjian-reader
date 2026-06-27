@@ -260,6 +260,92 @@ def load_ner_people(min_occ=2):
     return recs
 
 
+_HAN_ONLY = re.compile(r"^[\u4e00-\u9fff]+$")
+
+# Titles, kinship and reign/posthumous designations the UPOS model tags as PROPN
+# person but which are not a personal name. Small + auditable.
+_MODEL_TITLE_BLOCK = {
+    "光武", "文武", "道宗", "赞普", "谷蠡", "述律", "单于", "可汗", "阏氏", "须卜",
+    "居次", "大单于", "骨都侯", "当户", "赤松子", "羲和", "大良造", "左贤", "右贤",
+    "左谷蠡", "右谷蠡",
+}
+
+
+def load_model_ner_people(hand_people):
+    """Tier-2: a classical-Chinese UPOS NER pass (ner_model.py →
+    ner_model_candidates.json) used ONLY to recover *foreign-headed* person names
+    the Han-surname gate in `load_ner_people` structurally cannot reach — 突厥/鲜卑/
+    匈奴/吐蕃 names like 突利, 阿史那思摩, 颉利, 默啜, 斛律光, 呼韩邪.
+
+    The model's raw output also contains bare given-name fragments (世民 ⊂ 李世民),
+    clan/compound surnames (宇文, 慕容), reign/posthumous designations (孝武, 睿武孝文)
+    and title/state glues (柔然处罗). We keep ONLY surfaces that:
+      - are all-Han, 2–5 chars, not a known non-person / bad surface,
+      - are NOT surname-headed (that's `load_ner_people`'s job — avoids duplicates),
+      - are NOT a 1–2 char suffix of any known full name (drops given-name frags),
+      - are NOT a bare compound surname / title / 孝X posthumous,
+      - do NOT begin with a known non-person prefix (state/title glue),
+    at frequency n≥3, OR len≥4 & n≥2 (the long foreign compounds are reliable even
+    at n=2, e.g. 阿史那思摩). Returns {} when the model feed is absent (tier simply
+    off). Records carry no role/query/year, like `load_ner_people`."""
+    f = Path(__file__).resolve().parent / "ner_model_candidates.json"
+    if not f.exists():
+        return collections.defaultdict(list)
+    raw = json.loads(f.read_text(encoding="utf-8"))
+
+    def surname_headed(s: str) -> bool:
+        return (bool(s) and s[0] in CLEAN_SURNAMES) or (len(s) >= 3 and s[:2] in COMPOUND)
+
+    # Known full names → their 1–2 char suffixes (given-name fragments to drop).
+    full_names: set[str] = set()
+    for p in hand_people:
+        for s in [p.get("canonical_name", ""), *p.get("names", []), *p.get("match", [])]:
+            if s and 2 <= len(s) <= 6:
+                full_names.add(s)
+    for nm in load_guide_people().keys():
+        if 2 <= len(nm) <= 6:
+            full_names.add(nm)
+    full_names |= set(load_ner_people().keys())
+    for s in raw:
+        if surname_headed(s) and 2 <= len(s) <= 6:
+            full_names.add(s)
+    tails: set[str] = set()
+    for fn in full_names:
+        for k in (1, 2):
+            if len(fn) - k >= 2:
+                tails.add(fn[k:])
+
+    def prefix_blocked(s: str) -> bool:
+        return any(len(s) > k and s[:k] in WIKI_NONPERSON for k in (2, 3))
+
+    recs: dict[str, list] = collections.defaultdict(list)
+    for surf, info in raw.items():
+        n = info.get("n", 1)
+        if not _HAN_ONLY.match(surf):
+            continue
+        if not (2 <= len(surf) <= 5):
+            continue
+        if surf in WIKI_NONPERSON or bad_auto_surface(surf):
+            continue
+        if surf in COMPOUND or surf in _MODEL_TITLE_BLOCK:
+            continue
+        if len(surf) == 2 and surf[0] == "孝":          # 孝武/孝文/孝宣… posthumous
+            continue
+        if len(surf) >= 4 and ("孝" in surf or "睿" in surf or "愍" in surf):
+            continue                                     # long posthumous strings
+        if surname_headed(surf):
+            continue
+        if surf in tails:
+            continue
+        if prefix_blocked(surf):
+            continue
+        if not (n >= 3 or (len(surf) >= 4 and n >= 2)):
+            continue
+        for jn in info.get("j", []):
+            recs[surf].append((jn, None, "", ""))
+    return recs
+
+
 def merge_people_sources(*sources):
     """Union several {name: [recs]} maps into one."""
     out: dict[str, list] = collections.defaultdict(list)
@@ -517,7 +603,8 @@ def build_seed(hand_people, juans_allowed):
     # and NER over the 原文 itself (closes the gap where a body-text figure was
     # never named in any summary). Both flow through the same grow/split/collision
     # machinery, so a name seen in both just accumulates 卷.
-    people_src = merge_people_sources(load_guide_people(), load_ner_people())
+    people_src = merge_people_sources(load_guide_people(), load_ner_people(),
+                                      load_model_ner_people(hand_people))
     meta = juan_meta()
 
     # Recognisable surface -> hand person id (canonical + aliases + match).
