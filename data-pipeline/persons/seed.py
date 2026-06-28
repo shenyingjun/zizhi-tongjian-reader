@@ -247,6 +247,13 @@ COMMON_WORD_NONPERSON: set[str] = {
     # homograph (李斯/王猛 are the 秦丞相; 百里 名人 are named in full elsewhere).
     "秦丞相",  # 秦(国)+丞相(官) — never one person
     "百里于",  # 百里(复姓)+于(虚词) — a fragment, not a name
+    # RC-1 (R27 国名+兴/衰 disambiguation) — 国名/朝代字 + 兴 is a dynastic-fortune
+    # phrase (自唐兴以来 = "since the Tang arose") OR a 地名 (唐兴县, 台州), NOT the
+    # 唐(姓)+兴 person. Strategy: the surface 唐兴 is dominated corpus-wide by
+    # 「唐兴以来」(phrase ×6) and the 台州 county (破/拔/屯/守唐兴, 唐兴军/南谷); the one
+    # real person (卷114 广武将军唐兴) is never captured here, so blacklisting the
+    # surface loses no person. Generalises to 汉兴/晋兴/宋兴-type 国名兴 phrases.
+    "唐兴",   # 唐兴以来 (phrase) / 唐兴县 (place), never 唐(姓)+兴 as a card
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not

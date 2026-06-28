@@ -416,7 +416,8 @@ _KINSHIP_PATRILINEAL = [
     "从弟", "从兄", "母弟", "母兄", "季父", "叔父", "伯父",
     "子", "孙", "弟", "兄", "父",
 ]
-_KIN_ALT = "|".join(sorted(_KINSHIP_PATRILINEAL, key=len, reverse=True))
+_KIN_ALT = (r"[一二三四五六七八九十]+世孙|世孙|"
+            + "|".join(sorted(_KINSHIP_PATRILINEAL, key=len, reverse=True)))
 _GLOSS_RE = re.compile(
     r"([\u4e00-\u9fff]{1,3})，([\u4e00-\u9fff]{1,4})之(" + _KIN_ALT + r")也"
 )
@@ -614,6 +615,38 @@ def _hu_xref_juan(notes, y_full, allowed):
     return None
 
 
+# RC-2b inverse — 「X，Y之N世孙也」 where the SUBJECT X is the new person and the
+# OBJECT Y is the KNOWN ancestor (谱，珪之六世孙也 → 谱 = 王珪's 6th-gen descendant).
+# The forward path mints the relative Y from a known X; this inverse path mints the
+# subject X from a known ancestor Y, inheriting Y's surname (patrilineal). The
+# ancestor's surname is recovered from the paragraph 胡注 when Y is written 省姓
+# (「王珪事太宗…」 disambiguates 珪 = 王珪, not the 李珪 elsewhere in the 卷).
+def _gloss_subject_ok(x: str) -> bool:
+    return bool(x) and 1 <= len(x) <= 2 and x not in _GLOSS_Y_BLOCK \
+        and not (len(x) <= 2 and x[-1] in "祖宗")
+
+
+def _ancestor_surname(y_surf, canon_to_pids, notes):
+    """Surname of the gloss ancestor Y. A full 姓名 Y yields its own 姓; a 省姓
+    single-char Y is resolved through the paragraph 胡注 「{姓}{Y}…」 (uniquely)."""
+    sn = seed_mod._surname_of(y_surf)
+    if sn and len(y_surf) >= 2 and y_surf in canon_to_pids:
+        return sn
+    if len(y_surf) != 1:
+        return None
+    found = set()
+    for note in notes or ():
+        t = note.get("text", "")
+        idx = t.find(y_surf)
+        while idx > 0:
+            if idx >= 2 and t[idx - 2:idx] in seed_mod.COMPOUND:
+                found.add(t[idx - 2:idx])
+            elif t[idx - 1] in seed_mod.CLEAN_SURNAMES:
+                found.add(t[idx - 1])
+            idx = t.find(y_surf, idx + 1)
+    return next(iter(found)) if len(found) == 1 else None
+
+
 def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                       people_merged, meta, allowed):
     """RC-2b pre-pass — generative recall. When a 「X，Y之Z也」 gloss reconstructs
@@ -623,6 +656,7 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
     patrilineal (shared surname), and Y+姓 must not be a common non-person word.
     Returns the number of cards created; mutates by_id/canon_to_pids/people_merged."""
     created: dict[str, dict] = {}
+    anaphora: dict[str, tuple] = {}   # name -> (given_char) for inverse-minted subjects
     for juan_no in juans:
         jf = text_dir / f"juan_{juan_no:03d}.json"
         if not jf.exists():
@@ -637,52 +671,74 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                 if m.start(1) > 0 and mt[m.start(1) - 1] not in _GLOSS_BOUNDARY:
                     continue
                 x_surf, y_surf = m.group(1), m.group(2)
-                if not _gloss_y_ok(y_surf):
-                    continue
                 pid_x = rule_map.get(x_surf)
-                if not pid_x:
+                inverse = False
+                if pid_x:
+                    # FORWARD — X known, mint the 省姓 relative Y = 姓(X)+Y.
+                    if not _gloss_y_ok(y_surf):
+                        continue
+                    surname = seed_mod._surname_of(by_id[pid_x]["canonical_name"])
+                    if not surname:
+                        continue
+                    if seed_mod._surname_of(y_surf) and y_surf in canon_to_pids:
+                        continue  # already a full-name card → handled by binding pass
+                    new_full, anchor_given = surname + y_surf, None
+                else:
+                    # INVERSE — X is the new descendant, Y the KNOWN ancestor; mint
+                    # X = 姓(Y)+X with the ancestor's surname (recovered from 胡注).
+                    if not _gloss_subject_ok(x_surf):
+                        continue
+                    surname = _ancestor_surname(y_surf, canon_to_pids, para.get("notes"))
+                    if not surname:
+                        continue
+                    new_full = surname + x_surf
+                    anchor_given = x_surf if len(x_surf) == 1 else None
+                    inverse = True
+                if new_full in canon_to_pids or len(new_full) < 2 or len(new_full) > 4:
                     continue
-                surname = seed_mod._surname_of(by_id[pid_x]["canonical_name"])
-                if not surname:
+                if seed_mod.bad_auto_surface(new_full) or \
+                        new_full in seed_mod.COMMON_WORD_NONPERSON:
                     continue
-                if seed_mod._surname_of(y_surf) and y_surf in canon_to_pids:
-                    continue  # already a full-name card → handled by binding pass
-                y_full = surname + y_surf
-                if y_full in canon_to_pids or len(y_full) < 2 or len(y_full) > 4:
-                    continue
-                if seed_mod.bad_auto_surface(y_full) or \
-                        y_full in seed_mod.COMMON_WORD_NONPERSON:
-                    continue
-                xref = _hu_xref_juan(para.get("notes"), y_full, allowed)
-                if y_full in created:
+                xref = _hu_xref_juan(para.get("notes"), new_full, allowed)
+                if new_full in created:
                     for j in {juan_no, xref}:
-                        if j and j not in created[y_full]["juans"]:
-                            created[y_full]["juans"].append(j)
+                        if j and j not in created[new_full]["juans"]:
+                            created[new_full]["juans"].append(j)
+                    if inverse:
+                        rule_map.setdefault(new_full, created[new_full]["id"])
                     continue
                 dyn = (meta.get(juan_no, {}).get("dynasty") or "").strip()
                 cs = meta.get(juan_no, {}).get("ce_start")
                 juans_c = sorted({j for j in (juan_no, xref) if j})
                 j0 = min(juans_c)
                 card = {
-                    "id": seed_mod._auto_id(y_full, 9000 + len(created)),
-                    "canonical_name": y_full,
+                    "id": seed_mod._auto_id(new_full, 9000 + len(created)),
+                    "canonical_name": new_full,
                     "names": [],
                     "dynasty": dyn or "—",
                     "era_hint": f"{dyn}人物" if dyn else "人物",
                     "floruit": [cs, cs] if cs else [None, None],
                     "brief": f"{dyn + '·' if dyn else ''}见于卷{j0:03d}（家世胡注）。",
                     "identity": f"{dyn + '·' if dyn else ''}见于卷{j0:03d}（家世胡注）。",
-                    "match": [y_full],
+                    "match": [new_full],
                     "juans": juans_c,
                     "confidence": "high",
                 }
-                created[y_full] = card
-    for y_full, card in created.items():
+                created[new_full] = card
+                if inverse:
+                    # register the full surface so the alias pass binds 王谱; record
+                    # the 省姓 given char so the anaphora pass binds the bare 谱.
+                    rule_map.setdefault(new_full, card["id"])
+                    if anchor_given:
+                        anaphora[new_full] = anchor_given
+    for new_full, card in created.items():
         people_merged.append(card)
         by_id[card["id"]] = card
-        canon_to_pids.setdefault(y_full, []).append(
+        canon_to_pids.setdefault(new_full, []).append(
             (card["id"], set(card["juans"])))
-    return len(created)
+    inv_anaphora = [(created[n]["id"], created[n]["juans"], g)
+                    for n, g in anaphora.items()]
+    return len(created), inv_anaphora
 
 
 # RC book-enrich — first-mention courtesy-name apposition 「{姓名}，字{X}」. The 字
@@ -761,9 +817,18 @@ def main():
 
     # RC-2b pre-pass — mint cards for pure-new-recall glossed persons (孔戣, only
     # ever written 省姓) so the binding pass below can resolve their 戣 mentions.
+    # Inverse glosses (谱，珪之六世孙也 → 王谱) also register their full surface in
+    # RULES and return the 省姓 given char so the anaphora pass binds the bare 谱.
     gloss_meta = seed_mod.juan_meta()
-    gloss_new_cards = build_gloss_cards(JUANS, TEXT, RULES, canon_to_pids, by_id,
-                                        PEOPLE_MERGED, gloss_meta, set(JUANS))
+    gloss_new_cards, gloss_inv_anaphora = build_gloss_cards(
+        JUANS, TEXT, RULES, canon_to_pids, by_id,
+        PEOPLE_MERGED, gloss_meta, set(JUANS))
+    minted_admit: dict[int, set] = {}   # juan -> {given_char} for inverse-minted subjects
+    for cid, cjuans, gch in gloss_inv_anaphora:
+        if gch and gch not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
+            given_of[cid] = gch
+            for j in cjuans:
+                minted_admit.setdefault(j, set()).add(gch)
 
     # book-enrich — courtesy-name apposition into briefs (after gloss cards exist so
     # newly-minted 家世 cards also get their 字 when the text introduces one).
@@ -837,7 +902,7 @@ def main():
             continue
         juan = json.loads(jf.read_text(encoding="utf-8"))
         surfaces = surfaces_for(juan_no)
-        admitted = ANAPHORA_RULES.get(juan_no, set())
+        admitted = ANAPHORA_RULES.get(juan_no, set()) | minted_admit.get(juan_no, set())
         char_anchor: dict[str, str] = {}  # given-char -> nearest antecedent person_id (卷-local)
         cue_idx = build_role_cue_index(juan["paragraphs"])  # P3 succession split
         mentions = []
