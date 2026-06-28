@@ -241,6 +241,12 @@ COMMON_WORD_NONPERSON: set[str] = {
     "沈废",   # 坐沈废累年 — 沉废 to be cast aside (state)
     "沈勇",   # 性沈勇 — 沉勇 deep & brave (adjective)
     "王苟",   # 王苟先下寿州 — 王+苟先 (cross-word)
+    # RC-1 (R27 lookback-pass audit) — 3-char garbage surfaces _surname_of admits
+    # (国名/复姓 head + 官名/虚词 tail). Surfaced when the lookback pass would have
+    # amplified them into adjacent 卷. Verified: only auto "见于卷NNN" briefs, no real
+    # homograph (李斯/王猛 are the 秦丞相; 百里 名人 are named in full elsewhere).
+    "秦丞相",  # 秦(国)+丞相(官) — never one person
+    "百里于",  # 百里(复姓)+于(虚词) — a fragment, not a name
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not

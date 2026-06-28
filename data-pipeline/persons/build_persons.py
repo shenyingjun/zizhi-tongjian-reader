@@ -769,6 +769,55 @@ def main():
     # newly-minted 家世 cards also get their 字 when the text introduces one).
     briefs_enriched = enrich_briefs(JUANS, TEXT, PEOPLE_MERGED)
 
+    # ── lookback pass — recover 官衔-glued earlier appearances ──
+    # An auto-card's 卷 set comes from NER, which can't split a name glued to a long
+    # 官衔 first-introduction (御史中丞兼尚书右丞夏侯孜), so the card anchors to a LATER
+    # 卷 where the name stands bare (夏侯孜曰) and the genuine first appearance is lost
+    # — the person card then shows only the later 卷. Fix: for each card scan the 1–2
+    # 卷 immediately before its earliest 卷 for a literal occurrence of a DISTINCTIVE
+    # full-name surface (姓+名, ≥3 chars). If the name is there and no other person
+    # claims it in that 卷, register the surface so the mention pass picks it up and
+    # the card aggregates its true first appearance. Bounded to 2 卷 and gated on
+    # «unclaimed» to stay precision-first (single-char 单名 2-char surfaces are left
+    # out — adjacent-卷 homograph risk outweighs the recall).
+    _juan_text_cache: dict[int, str] = {}
+
+    def _juan_text(j):
+        if j not in _juan_text_cache:
+            jf2 = TEXT / f"juan_{j:03d}.json"
+            _juan_text_cache[j] = ("\n".join(
+                pp.get("main", "") for pp in json.loads(
+                    jf2.read_text(encoding="utf-8"))["paragraphs"])
+                if jf2.exists() else "")
+        return _juan_text_cache[j]
+
+    juan_set = set(JUANS)
+    pid_surfaces: dict[str, set] = {}  # pid -> seed-accepted full-name surfaces
+    for jn, smap in RULES.items():
+        for s, sp in smap.items():
+            if len(s) >= 3 and seed_mod._surname_of(s):
+                pid_surfaces.setdefault(sp, set()).add(s)
+
+    lookback_added = 0
+    for pid_, p in list(by_id.items()):
+        js = [j for j in p.get("juans", []) if j in juan_set]
+        surfs = pid_surfaces.get(pid_)
+        if not js or not surfs:
+            continue
+        j0 = min(js)
+        for jb in (j0 - 1, j0 - 2):
+            if jb not in juan_set or jb in p["juans"]:
+                continue
+            txt = _juan_text(jb)
+            for s in surfs:
+                if RULES.get(jb, {}).get(s) is not None:
+                    continue  # claimed by another person here → homograph, skip
+                if s in txt:
+                    RULES.setdefault(jb, {})[s] = pid_
+                    if jb not in p["juans"]:
+                        p["juans"].append(jb)
+                    lookback_added += 1
+
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "mentions").mkdir(parents=True, exist_ok=True)
 
@@ -954,6 +1003,7 @@ def main():
           f"   kinship relations: {len(relations_out)}"
           f"   new cards minted: {gloss_new_cards}")
     print(f"rc4 封号-glue (titleglue) emitted: {feng_emitted}")
+    print(f"lookback 卷 surfaces registered: {lookback_added}")
     print(f"book-enrich 字 briefs: {briefs_enriched}")
     print(f"title-glue aliases bound: {SEED_STATS['glue_bound']}"
           f"   missing canonical (cast to add): {SEED_STATS['glue_missing']}")
