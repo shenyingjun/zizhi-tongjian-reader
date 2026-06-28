@@ -80,6 +80,11 @@ COMMON_WORD_NONPERSON: set[str] = {
     "神武",   # 爵号 (神武公) / 谥 / adjective — too ambiguous as a standalone card
     "魏安",   # 魏安公 place-title fragment (→ 尉迟惇)
     "申公",   # 爵号 fragment (申公·李穆)
+    "卢水胡",  # 匈奴别部 (ethnic group), not a person — 卢(姓)+水胡
+    "杜姥宅",  # 建康地名 (a place), not a person — 杜(姓)-headed glue
+    "魏博留",  # 魏博留后 (藩镇官) truncation, not a person
+    "于智",   # 明于智略 — "明于智(谋)", not the surname 于
+    "公亮",   # 杞公亮 — 爵(公)-glue, the person is 宇文亮
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not
@@ -89,6 +94,10 @@ COMMON_WORD_NONPERSON: set[str] = {
 COMPOUND3: set[str] = {
     "阿史那", "阿史德", "破六韩", "纥豆陵", "费也利", "吐谷浑", "是云", "没鹿回",
 }
+
+# 复姓 that double as offices (大司马, 司空, 司徒, 太史令): the model glues these onto a
+# following 姓名, so a surname-headed tail signals office-glue rather than one person.
+_TITLE_SURNAMES: set[str] = {"司马", "司空", "司徒", "太史"}
 
 
 def bad_auto_surface(s: str) -> bool:
@@ -105,7 +114,17 @@ def bad_auto_surface(s: str) -> bool:
         return True
     if len(s) <= 3 and s.endswith("氏"):  # 王氏 / 窦氏 clan reference
         return True
+    # 姓 + 官/后妃称号: 曹尚书 / 梁贵人 / 赵倢伃 — a person referred to by office or
+    # consort rank, not a fixed personal name (the model glues 姓 onto the title).
+    if len(s) >= 3 and any(s.endswith(suf) for suf in _ROLE_SUFFIX):
+        return True
     return False
+
+
+# 官职 / 后妃称号 that the char-level model glues onto a leading 姓 (曹·尚书, 梁·贵人).
+# None is ever a personal given name, so a 姓-prefixed form ending in one is title-glue.
+_ROLE_SUFFIX = ("尚书", "仆射", "刺史", "将军", "太守", "长史", "贵人", "婕妤", "倢伃",
+                "昭仪", "婉仪", "夫人", "留后", "都督", "中郎", "常侍", "录事")
 
 
 # ── NER-proposal guards (shared by ner_extract.py harvesting AND seed loading,
@@ -149,7 +168,7 @@ COMPOUND = {
     # 贺娄子干, 叱列长义, 斛律光 …). Enables the 复姓+单名 3-char path for jieba.
     "达奚", "乙弗", "豆卢", "贺娄", "叱列", "乌丸", "贺兰", "斛律", "屈突",
     "库狄", "乞伏", "秃发", "沮渠", "出连", "可朱", "叱罗", "叱干", "慕舆",
-    "费连", "莫多", "厍狄",
+    "费连", "莫多", "厍狄", "贺若",
 }
 
 # A name char-2/3 that is a particle / common verb / admin·geographic unit marks
@@ -369,13 +388,39 @@ def load_model_ner_people(hand_people):
             continue
         if len(surf) >= 4 and ("孝" in surf or "睿" in surf or "愍" in surf):
             continue                                     # long posthumous strings
-        if surname_headed(surf):
-            continue
+        # 复姓 (鲜卑/匈奴/胡 compound surnames: 尉迟/达奚/乙弗/豆卢/贺娄/叱列/淳于…) are
+        # structurally invisible to jieba's word segmenter, so 复姓-headed names fall
+        # through the jieba path entirely (尉迟惇/达奚儒/豆卢勣…). The char-level model
+        # keeps the compound intact → recover them HERE. Single-姓-headed names stay
+        # deferred to jieba, which screens 2-char common-word noise via its surname gate.
+        cpfx = surf[:2] if (len(surf) >= 3 and surf[:2] in COMPOUND) else (
+            surf[:3] if (len(surf) >= 4 and surf[:3] in COMPOUND3) else None)
+        is_compound_headed = cpfx is not None
+        is_single_surname = surname_headed(surf) and not is_compound_headed
+        # 司马 / 司空 / 司徒 / 太史 are offices as well as 复姓 (大司马 …), so the model glues
+        # them onto a following full name (司马·刘文静, 司马·杨统). When the tail after such a
+        # title-surname is itself surname-headed, it is office-glue, not one person → drop.
+        if cpfx in _TITLE_SURNAMES:
+            tail = surf[len(cpfx):]
+            if len(tail) >= 2 and tail[0] in CLEAN_SURNAMES:
+                continue
         if surf in tails:
             continue
         if prefix_blocked(surf):
             continue
-        if not (n >= 3 or (len(surf) >= 4 and n >= 2)):
+        # Frequency / eligibility floor by surface class:
+        #  - 复姓-headed: any n — the distinctive compound surname disambiguates.
+        #  - single-姓-headed: len≥3 and n≥2 — 3+char 姓名 the char-level model segments
+        #    correctly where jieba mis-splits (崔弘度/席毗罗); 2-char single-姓 stays jieba's
+        #    job, since its surname gate already screens 2-char common-word noise.
+        #  - non-姓 model surface: original n≥3 or (len≥4 & n≥2).
+        if is_compound_headed:
+            ok = True
+        elif is_single_surname:
+            ok = len(surf) >= 3 and n >= 2
+        else:
+            ok = n >= 3 or (len(surf) >= 4 and n >= 2)
+        if not ok:
             continue
         for jn in info.get("j", []):
             recs[surf].append((jn, None, "", ""))
