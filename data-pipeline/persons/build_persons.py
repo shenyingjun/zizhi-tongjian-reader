@@ -253,6 +253,40 @@ FIXED_NONNAME_TERMS: tuple = (
 )
 
 
+# ── Lifespan gate (Phase 3) ──────────────────────────────────────────────────
+# A bare single-char 省称 (anaphora) refers to someone ACTIVE on stage, so it must
+# fall inside the antecedent's lifetime. When a stale char_anchor carries a
+# homograph given-char across a long 卷, the bare char binds to the wrong-era person
+# (bare 征 in 738 → 魏征 d.643; bare 晏 in 417 → 王晏 active 489+). This gate drops
+# such bindings: precision-first, a missing underline beats a wrong one (no re-bind
+# here — that is rc3 single-surname disambiguation, a later Phase-3 step).
+#
+# NOTE — why this is applied to the `anaphora` kind ONLY. A person legitimately
+# appears OUTSIDE their own lifespan in exactly two ways, and BOTH use full names,
+# not bare 省称, so neither reaches this gate:
+#   (a) someone is talking ABOUT them — a citation / 史论 / quotation (卷018 汉武帝
+#       discussing 李斯·蒙恬·董仲舒). These surface as `alias` full-name matches.
+#   (b) kinship — a descendant carries the name forward, glossed as 「X，<祖>之孙也」
+#       (卷205 …韦孝宽之孙, 113y after 孝宽). These surface as `gloss` mentions.
+# alias/gloss/role are therefore never gated. The corpus probe confirmed all gated
+# rows are genuine stale-anchor errors; the only near-misses (张昭 active 195 but
+# floruit records only 229–236; 段韶) sit at gap≈33 and are spared by the margin.
+_LIFESPAN_MARGIN = 50    # floruit spans record peak years, not birth→death; be generous
+_LIFESPAN_MIN_SPAN = 5   # ignore single-卷-year auto floruit (span 0–4) — not a real life
+
+
+def _lifespan_outside(card, ce):
+    """True when ce is confidently outside card's lifetime → gate the anaphora.
+    False (keep) when the year is inside, the margin covers it, the floruit is too
+    narrow to trust, or either bound / the year is unknown."""
+    if ce is None:
+        return False
+    fl = card.get("floruit") or [None, None]
+    s, e = (fl[0], fl[1]) if isinstance(fl, (list, tuple)) else (fl.get("start"), fl.get("end"))
+    if s is None or e is None or (e - s) < _LIFESPAN_MIN_SPAN:
+        return False
+    return ce < s - _LIFESPAN_MARGIN or ce > e + _LIFESPAN_MARGIN
+
 
 def find_all(hay: str, needle: str):
     i, out = 0, []
@@ -305,7 +339,7 @@ _ANAPHORA_LEFT = set(
     "杀执废立遣召讨击破降诛斩围获擒释赦贬黜任用见责让劝说谓命拜封逐囚弑代")
 
 
-def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events):
+def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events, ce, by_id):
     """Wave 5 P2 — single-char 省称 matches in one main-text blob, each bound to its
     NEAREST preceding full-name antecedent (the person most recently named whose
     given char == this char). Gates:
@@ -358,6 +392,8 @@ def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events):
         if left in _ANAPHORA_MODS:
             continue
         if not (right in _ANAPHORA_RIGHT or left in _ANAPHORA_LEFT):
+            continue
+        if _lifespan_outside(by_id[pid_], ce):  # bare 省称 to a wrong-era antecedent
             continue
         out.append((i, i + 1, pid_, ch))
         char_anchor[ch] = pid_   # a resolved 省称 refreshes recency for this char
@@ -699,7 +735,7 @@ def main():
                         anchor_events.append((e, g, pid_))
                 anchor_events.sort()
                 for (s, e, pid_, surf) in extract_anaphora(
-                        main_text, admitted, consumed, char_anchor, anchor_events):
+                        main_text, admitted, consumed, char_anchor, anchor_events, ce, by_id):
                     mentions.append({"pid": pid, "ce_year": ce, "source": "main",
                                      "start": s, "end": e, "surface": surf,
                                      "person_id": pid_, "kind": "anaphora",
