@@ -18,11 +18,12 @@ and a surface is only applied in the 卷 listed in its person's `juans`.
 Run:  python build_persons.py
 """
 from __future__ import annotations
-import json, datetime
+import json, datetime, hashlib, re
 from pathlib import Path
 
 from cast import PEOPLE
 import seed as seed_mod
+import reigns as reigns_mod
 
 JUANS = list(range(1, 295))  # all 294 卷 (hand 'reviewed' + auto seed layer)
 REPO = Path(__file__).resolve().parents[2]
@@ -34,6 +35,180 @@ OUT = TEXT / "persons"
 # contiguity); RULES is the collision-free {juan: {surface: person_id}} table.
 # ANAPHORA_RULES is the Wave 5 single-char 省称 anchor table {juan: {char: pid}}.
 PEOPLE_MERGED, RULES, ANAPHORA_RULES, SEED_STATS = seed_mod.build_seed(PEOPLE, JUANS)
+
+
+# ── Wave 5 P3 — role appellation resolver (语境称谓) ──────────────────────────
+# Replace the conglomerate role pseudo-cards (one 吴主 card jumbling 孙权…孙皓) with
+# per-year resolution to the actual reigning monarch. Three steps, run once at
+# import so main()'s by_id / surfaces_for see the corrected card set:
+#   1. drop the conglomerate role cards + strip their surfaces from RULES,
+#   2. reuse existing monarch cards / mint book-anchored ones for the absent rulers
+#      (拓跋焘 等几乎只以「魏主」称谓出现，本名罕作干净 token),
+#   3. expose ROLE_NAME_TO_PID so the per-paragraph role pass can bind each role
+#      occurrence (resolved by reigns.resolve_role) to a real monarch person_id.
+ROLE_SURFACES: list[str] = sorted(reigns_mod.ROLE_APPELLATIONS, key=len, reverse=True)
+ROLE_NAME_TO_PID: dict[str, str] = {}
+
+
+def _install_roles():
+    # 1. Drop conglomerate role cards + their surfaces.
+    role_ids = {p["id"] for p in PEOPLE_MERGED
+                if p["canonical_name"] in reigns_mod.ROLE_APPELLATIONS}
+    PEOPLE_MERGED[:] = [p for p in PEOPLE_MERGED if p["id"] not in role_ids]
+    for juan_no, surf_map in RULES.items():
+        for surf in list(surf_map):
+            if surf in reigns_mod.ROLE_APPELLATIONS or surf_map[surf] in role_ids:
+                del surf_map[surf]
+
+    # 2. Map every monarch named in the reign tables to a person_id, reusing an
+    #    existing card when the personal name already ships, minting one otherwise.
+    by_name: dict[str, list] = {}
+    for p in PEOPLE_MERGED:
+        by_name.setdefault(p["canonical_name"], []).append(p)
+    wanted = {nm for table in reigns_mod.REIGNS.values() for (nm, _, _) in table}
+    for nm in sorted(wanted):
+        cards = by_name.get(nm)
+        if cards:
+            # Prefer a reviewed card, else the first window.
+            pick = next((c for c in cards if c.get("confidence") == "reviewed"), cards[0])
+            ROLE_NAME_TO_PID[nm] = pick["id"]
+            continue
+        meta = reigns_mod.MONARCH_META.get(nm)
+        if not meta:
+            # No existing card and no curated identity — cannot mint safely; the
+            # role pass will suppress occurrences that resolve to this name.
+            continue
+        dyn, hao = meta
+        span = reigns_mod.reign_span(nm) or [None, None]
+        s, e = span
+        yr = f"（在位{s}–{e}年）" if s is not None else ""
+        brief = f"{dyn}{hao}{yr}。"
+        pid = "r:" + hashlib.md5(nm.encode("utf-8")).hexdigest()[:8]
+        card = {
+            "id": pid, "canonical_name": nm, "names": [],
+            "dynasty": dyn, "era_hint": hao,
+            "floruit": span, "brief": brief, "identity": brief,
+            "match": [], "juans": [], "confidence": "reviewed",
+        }
+        PEOPLE_MERGED.append(card)
+        by_name.setdefault(nm, []).append(card)
+        ROLE_NAME_TO_PID[nm] = pid
+
+
+_install_roles()
+
+
+def extract_roles(text, ce, consumed, by_id, para_idx=0, cue_idx=None):
+    """Position-aware role pass: each role surface (吴主/魏主…) → the monarch
+    reigning at `ce`. Skips chars already consumed by the alias/anaphora passes
+    (so 魏主嗣→拓跋嗣 title-glue wins over bare 魏主). Suppresses when the year is
+    unknown, falls outside every reign window, or the monarch has no shipped card.
+
+    Title-glue precedence: when a role surface is immediately followed by a monarch's
+    given-name tail (契丹主德光 / 契丹主阿保机), it binds to that NAMED monarch
+    regardless of year — an explicit name always beats year-based resolution.
+
+    Same-year succession (两位君主同年在位) is split by reading position: the
+    paragraph that narrates the handover (`cue_idx[(role, ce)]`) and everything
+    before it bind to the OUTGOING ruler; paragraphs after it bind to the INCOMING
+    one. With no detected cue we fall back to the incoming ruler (latest accession),
+    so resolution is never worse than a plain year lookup.
+    Returns [(start, end, person_id, surface)]."""
+    hits = []
+    for surf in ROLE_SURFACES:  # longest first: 北汉主 before 汉主
+        cand = reigns_mod.role_candidates(surf, ce)
+        if len(cand) == 1:
+            year_nm = cand[0]
+        elif len(cand) >= 2:
+            outgoing, incoming = cand[0], cand[-1]
+            ci = (cue_idx or {}).get((surf, ce))
+            year_nm = outgoing if (ci is not None and para_idx <= ci) else incoming
+        else:
+            year_nm = None
+        tails = reigns_mod.monarch_tails(surf)
+        for start in find_all(text, surf):
+            end = start + len(surf)
+            if any(consumed[start:end]):
+                continue
+            # Title-glue: explicit monarch name immediately after the role surface.
+            glue_nm, glue_len = None, 0
+            for tail, canon in tails:
+                if text[end:end + len(tail)] == tail:
+                    glue_nm, glue_len = canon, len(tail)
+                    break
+            nm = glue_nm or year_nm
+            if not nm:
+                continue
+            pid_ = ROLE_NAME_TO_PID.get(nm)
+            if not pid_ or pid_ not in by_id:
+                continue
+            full_end = end + glue_len
+            if glue_len and any(consumed[end:full_end]):
+                full_end = end  # name already taken by another pass; emit bare role
+                glue_len = 0
+            for k in range(start, full_end):
+                consumed[k] = True
+            hits.append((start, full_end, pid_, surf + (text[end:full_end] if glue_len else "")))
+    hits.sort(key=lambda h: h[0])
+    return hits
+
+
+# Throne-handover cues in the 原文 used to split a same-year succession. A cue is
+# tied to a specific role so it attributes the switch to the right state in a
+# multi-state 卷, not whatever accession happens to occur. We prefer the handover
+# of the OUTGOING ruler (deposition or terminal illness/death) since that is the
+# unambiguous signal; an incoming accession is a tightly-bound fallback. The death
+# marker need only co-occur with the role surface — emperor-grade terms (殂/崩/遗诏/
+# 大渐/得疾…) rarely apply to anyone but the reigning monarch in a 主-paragraph.
+_TERMINAL = ("得疾|寝疾|遇疾|不豫|疾笃|疾甚|疾亟|大渐|属纩|殂|崩|遗诏|遗制|遗令|"
+             "山陵|坠马|落马|坠地|绝肋|视疾|大行")
+_TERMINAL_RE = re.compile(_TERMINAL)
+# Another subject's accession inside a 主-paragraph (契丹主闻帝即位) — never the role's
+# own handover. Used to veto a false accession cue.
+_OTHER_ACC_RE = re.compile("(?:帝|上|太子|太孙|太后|王|公)(?:即位|即皇帝位|即帝位|践阼|践祚)")
+_DEATH = "殂|崩|薨|弑|卒|殒"
+_ACCESSION = ("即皇帝位|即帝位|即位|践阼|践祚|受禅|禅位|传位|嗣位|入纂大统|入承大统|"
+              "纂大统|统兹大宝|统大宝|立.{0,6}为帝|立.{0,6}为皇帝|迎立|自立为帝|自立为王|"
+              "称帝|僭即皇帝位|僭称帝")
+_ACC_RE = re.compile(_ACCESSION)
+
+
+
+def build_role_cue_index(paragraphs):
+    """{(role, ce_year): para_index} — for each same-year succession a role's state
+    goes through inside this 卷, the paragraph that narrates the handover. We take
+    the FIRST (reading order) of: the outgoing ruler being deposed (废{role}), the
+    outgoing ruler's terminal illness/death co-located with the role surface (or the
+    outgoing name), or — as a tightly-bound fallback — the incoming ruler acceding
+    (accession verb adjacent to the role surface or the incoming name, never another
+    subject's 帝/太子即位). Paragraphs at/before it bind to the outgoing ruler, after
+    it to the incoming — so the deposition/death paragraph itself stays outgoing."""
+    out: dict[tuple, int] = {}
+    for idx, para in enumerate(paragraphs):
+        ce = para.get("ce_year")
+        if ce is None:
+            continue
+        txt = para.get("main", "")
+        if not txt:
+            continue
+        for surf in ROLE_SURFACES:
+            if (surf, ce) in out:
+                continue
+            cand = reigns_mod.role_candidates(surf, ce)
+            if len(cand) < 2:
+                continue
+            outgoing, incoming = cand[0], cand[-1]
+            depose = f"废{surf}" in txt
+            death = (surf in txt or outgoing in txt) and _TERMINAL_RE.search(txt)
+            accede = False
+            if _ACC_RE.search(txt) and not _OTHER_ACC_RE.search(txt):
+                in_tail = reigns_mod._given_tail(incoming)
+                accede = (re.search(f"{surf}(?:{_ACCESSION})", txt)
+                          or (in_tail and re.search(f"{re.escape(in_tail)}.{{0,3}}(?:{_ACCESSION})", txt)))
+            if depose or death or accede:
+                out[(surf, ce)] = idx
+    return out
+
 
 # Wave 5 P2 — common-word bigrams that a bare given-char forms in 文言; an anchor
 # char inside one of these is the ordinary word, not a 省称 (坚守/谦让/翻译…). The
@@ -186,6 +361,7 @@ def main():
     appearances: dict[str, dict[tuple, dict]] = {}
     per_juan_counts: dict[int, tuple[int, int]] = {}
     anaphora_emitted = 0
+    role_emitted = 0
 
     for juan_no in JUANS:
         jf = TEXT / f"juan_{juan_no:03d}.json"
@@ -195,26 +371,37 @@ def main():
         surfaces = surfaces_for(juan_no)
         admitted = ANAPHORA_RULES.get(juan_no, set())
         char_anchor: dict[str, str] = {}  # given-char -> nearest antecedent person_id (卷-local)
+        cue_idx = build_role_cue_index(juan["paragraphs"])  # P3 succession split
         mentions = []
-        for para in juan["paragraphs"]:
+        for p_idx, para in enumerate(juan["paragraphs"]):
             pid = para["id"]
             ce = para.get("ce_year")
             main_text = para.get("main", "")
             alias_hits = extract(main_text, surfaces)
+            consumed = [False] * len(main_text)
             for (s, e, pid_, surf) in alias_hits:
+                for k in range(s, e):
+                    consumed[k] = True
                 mentions.append({"pid": pid, "ce_year": ce, "source": "main",
                                  "start": s, "end": e, "surface": surf,
                                  "person_id": pid_, "kind": "alias",
                                  "confidence": by_id[pid_].get("confidence", "reviewed")})
                 seen_ids.add(pid_)
+            # Wave 5 P3 — role appellation (吴主/魏主…) → reigning monarch by ce_year,
+            # same-year successions split by reading position around the accession cue.
+            for (s, e, pid_, surf) in extract_roles(main_text, ce, consumed, by_id,
+                                                    p_idx, cue_idx):
+                mentions.append({"pid": pid, "ce_year": ce, "source": "main",
+                                 "start": s, "end": e, "surface": surf,
+                                 "person_id": pid_, "kind": "role",
+                                 "confidence": by_id[pid_].get("confidence", "reviewed")})
+                seen_ids.add(pid_)
+                role_emitted += 1
             # Wave 5 P2 — single-char 省称 anaphora on the 原文, each bound to its
             # nearest preceding full-name antecedent (disambiguates 元胄 vs 宇文胄).
             if admitted:
-                consumed = [False] * len(main_text)
                 anchor_events = []
                 for (s, e, pid_, surf) in alias_hits:
-                    for k in range(s, e):
-                        consumed[k] = True
                     g = given_of.get(pid_)
                     if g:
                         anchor_events.append((e, g, pid_))
@@ -300,6 +487,8 @@ def main():
     print(f"卷 covered: {len(covered)} / {len(JUANS)}")
     print(f"single-char 省称 anaphora emitted: {anaphora_emitted}"
           f"   (candidate chars admitted: {SEED_STATS['anaphora_char_admitted']})")
+    print(f"role appellation (语境称谓) emitted: {role_emitted}"
+          f"   (monarchs mapped: {len(ROLE_NAME_TO_PID)})")
     print(f"title-glue aliases bound: {SEED_STATS['glue_bound']}"
           f"   missing canonical (cast to add): {SEED_STATS['glue_missing']}")
     hand_ids = {p["id"] for p in PEOPLE_MERGED if p.get("confidence") == "reviewed"}
