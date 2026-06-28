@@ -254,6 +254,32 @@ COMMON_WORD_NONPERSON: set[str] = {
     # real person (卷114 广武将军唐兴) is never captured here, so blacklisting the
     # surface loses no person. Generalises to 汉兴/晋兴/宋兴-type 国名兴 phrases.
     "唐兴",   # 唐兴以来 (phrase) / 唐兴县 (place), never 唐(姓)+兴 as a card
+    # RC-1 (R29 rolling historian audit: 卷080 西晋 / 卷180 隋 / 卷280 五代) — confirmed
+    # non-person surfaces. Each verified to carry ONLY auto "见于卷NNN" briefs spread
+    # across multiple dynasties (the recurring-false-surface signature) with NO 字/dated
+    # bio and NO real-person homograph in 403BC–960AD. Real homographs flagged by the
+    # audit (陈声/樊建/张尚/孙愼/吴平/陈乐/萧琮/张彦 etc.) were DELIBERATELY kept — those are
+    # 卷-local 截断/错链, handled elsewhere, never blacklisted by surface.
+    # — 谥号 / 尊号 / 封爵 片段 —
+    "景献",   # 景献(皇后) 谥号片段 (晋), not a person
+    "章安侯",  # 章安侯 — 封爵号 (孙奋 etc. 封章安侯); the person is named in full elsewhere
+    "德孝",   # 「(高祖圣文章武)明德孝(皇帝)」— 后晋高祖石敬瑭 尊号片段, not a person
+    # — 形容 / 动宾 / 普通词 —
+    "吉祥",   # 祥瑞(adj/noun) — 见于卷077→154 (魏→梁), never one person
+    "费损",   # 费损 — to waste/expend (verb), 见于卷073→159 (魏→梁)
+    "屈膝",   # 屈膝 — to kneel/submit (verb), 宋→陈→后晋
+    "纪功",   # 纪功 = 记功 record-merit (verb), 魏→宋→隋→唐→后晋
+    "徐图",   # 徐图(之) — to plan slowly (verb), 隋→唐→后唐→后汉, no real 徐图 pre-960
+    # — 地名 / 城郭 / 渡口 —
+    "郭内",   # 郭内 — inside the outer wall (城郭+内), not 郭(姓)+内
+    "蒲津",   # 蒲津(关) — a Yellow-River ferry/place, 梁→隋→唐 (×4)
+    # — 部族 / 突厥官号 / 军队 / 府名 —
+    "薛延陀",  # 薛延陀 — a 铁勒 tribe (Xueyantuo), 隋→唐 (×10卷), not a person
+    "仆骨",   # 仆骨 — a 铁勒 部 (Pugu); the surname 仆固 (仆固怀恩) is a different surface
+    "俟斤",   # 俟斤 — a 突厥 title (irkin), not a person; 万俟(复姓) is a different surface
+    "胡寇",   # 胡寇 — "the Hu raiders" (collective enemy), 汉→晋→陈→唐→后晋 (7 cards)
+    "唐府",   # 唐府 — 后唐 的官府/府 (国名+府), not a person
+    "唐骑",   # 唐骑 — 唐军骑兵 (国名+骑), not a person
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not
