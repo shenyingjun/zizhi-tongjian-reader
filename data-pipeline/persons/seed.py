@@ -740,6 +740,11 @@ def _given_tail(full: str):
         return None
     if len(full) == 4 and full[:2] in COMPOUND:
         tail = full[2:]
+    elif len(full) == 3 and full[:2] in COMPOUND:
+        # 复姓 + 单名 (夏侯孜, 诸葛亮, 司马懿): given is ONE char — there is no valid
+        # 2-char tail. Stripping only the first 姓 char would cross the 复姓 boundary
+        # (夏侯孜 → 侯孜). The single given char is handled by _given_single/anaphora.
+        return None
     elif len(full) == 3 and full[0] in CLEAN_SURNAMES:
         tail = full[1:]
     else:

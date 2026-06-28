@@ -916,12 +916,14 @@ def main():
                 pid_surfaces.setdefault(sp, set()).add(s)
 
     lookback_added = 0
+    lookback_rebriefed = 0
     for pid_, p in list(by_id.items()):
         js = [j for j in p.get("juans", []) if j in juan_set]
         surfs = pid_surfaces.get(pid_)
         if not js or not surfs:
             continue
         j0 = min(js)
+        earliest_added = None
         for jb in (j0 - 1, j0 - 2):
             if jb not in juan_set or jb in p["juans"]:
                 continue
@@ -934,6 +936,38 @@ def main():
                     if jb not in p["juans"]:
                         p["juans"].append(jb)
                     lookback_added += 1
+                    if earliest_added is None or jb < earliest_added:
+                        earliest_added = jb
+        # A2: the seed-time brief/floruit anchor to the OLD first 卷 (j0). When lookback
+        # proves an earlier appearance, re-anchor the auto card's 见于卷 locator + floruit
+        # start to that earlier 卷 so the card reports the person's true first appearance
+        # (夏侯孜: 卷250/860 → 卷249/859). Only auto cards whose brief is the program-minted
+        # 见于卷NNN locator are touched — never reviewed/gloss/wiki-enriched briefs.
+        if earliest_added is not None and earliest_added < j0 \
+                and str(pid_).startswith("a:"):
+            jm = gloss_meta.get(earliest_added, {})
+            cs = jm.get("ce_start")
+            m = re.search(r"见于卷(\d{3})", p.get("brief", ""))
+            if m:
+                ystr = ""
+                if cs is not None:
+                    ystr = f"前{-cs}年" if cs < 0 else f"{cs}年"
+                new_loc = f"见于卷{earliest_added:03d}" + (f"（{ystr}）" if ystr else "")
+                old_loc = re.search(r"见于卷\d{3}（[^）]*）|见于卷\d{3}", p["brief"])
+                if old_loc:
+                    p["brief"] = p["brief"].replace(old_loc.group(0), new_loc, 1)
+                    if p.get("identity") and "见于卷" in p["identity"]:
+                        old_loc_i = re.search(
+                            r"见于卷\d{3}（[^）]*）|见于卷\d{3}", p["identity"])
+                        if old_loc_i:
+                            p["identity"] = p["identity"].replace(
+                                old_loc_i.group(0), new_loc, 1)
+                    if cs is not None:
+                        fl = p.get("floruit") or [None, None]
+                        if fl[0] is None or cs < fl[0]:
+                            fl[0] = cs
+                        p["floruit"] = fl
+                    lookback_rebriefed += 1
 
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "mentions").mkdir(parents=True, exist_ok=True)
@@ -1122,6 +1156,7 @@ def main():
     print(f"rc4 封号-glue (titleglue) emitted: {feng_emitted}")
     print(f"rc5 谥号/封号 fragment cards dropped: {_FRAG_DROPPED}")
     print(f"lookback 卷 surfaces registered: {lookback_added}")
+    print(f"lookback brief/floruit re-anchored: {lookback_rebriefed}")
     print(f"book-enrich 字 briefs: {briefs_enriched}")
     print(f"title-glue aliases bound: {SEED_STATS['glue_bound']}"
           f"   missing canonical (cast to add): {SEED_STATS['glue_missing']}")
