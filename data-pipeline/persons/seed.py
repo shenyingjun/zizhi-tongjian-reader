@@ -85,6 +85,28 @@ COMMON_WORD_NONPERSON: set[str] = {
     "魏博留",  # 魏博留后 (藩镇官) truncation, not a person
     "于智",   # 明于智略 — "明于智(谋)", not the surname 于
     "公亮",   # 杞公亮 — 爵(公)-glue, the person is 宇文亮
+    # RC-1 (wave-4 audit) — surname + common char that jieba mislabels nr; each spread
+    # across many 卷 as a junk card. All are idioms / collective titles, never one person.
+    "莫如", "莫知", "莫肯", "莫能",   # 莫 + 助动词: 莫如此 / 莫知其 / 莫能御
+    "伏惟",   # 伏惟 — "I respectfully submit" (memorial formula)
+    "谢恩",   # 谢恩 — to give thanks for imperial grace
+    "蒙恩",   # 蒙恩 — to receive grace
+    "杜绝",   # 杜绝 — to put a stop to
+    "顾望",   # 顾望 — to look about / hold back
+    "殷勤",   # 殷勤 — attentive / earnest
+    "余生",   # 余生 — one's remaining years
+    "苗裔",   # 苗裔 — descendants
+    "胡骑",   # 胡骑 — Hu cavalry (collective), not a person
+    "符瑞",   # 符瑞 — auspicious omen
+    "布陈",   # 布陈 = 布阵 — to deploy in battle array
+    "纪纲",   # 纪纲 — the bonds of governance / discipline
+    "王公", "王侯", "王府",          # collective titles / an institution, not one person
+    # RC-2c (wave-4 tail scan) — bad generated 省称 tails: offices/collectives/mis-strips.
+    "龙骧",   # 龙骧将军 (an office), not a person — 慕容X 为 龙骧(将军)
+    "诸吕",   # 诸吕 — the Lü clan collectively (封诸吕为王)
+    "菩萨",   # 菩萨 — Buddhist term; 尉迟菩萨 amplifies it corpus-wide
+    "王安",   # 韩王安 = 韩王·名安 (封号+单名), tail 王安 is a mis-strip of 韩
+    "王政",   # 秦王政 = 秦王·名政 (嬴政), tail 王政 is a mis-strip of 秦
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not
@@ -507,6 +529,47 @@ def merge_anaphora(people):
     return merged, dropped
 
 
+def _given_tail(full: str):
+    """The bare given-name tail of a full 姓名 after stripping a leading 姓:
+    a 2-char COMPOUND prefix, else a single CLEAN 姓. Returns the tail only when it
+    is exactly 2 Han chars (single-char tails are validator-banned as too ambiguous;
+    3-char tails are rare and risky). Ambiguous surnames (于/方/白…) are deliberately
+    NOT stripped here — only their pre-existing fragments are folded by merge_anaphora."""
+    if not _HAN_ONLY.match(full):
+        return None
+    if len(full) == 4 and full[:2] in COMPOUND:
+        tail = full[2:]
+    elif len(full) == 3 and full[0] in CLEAN_SURNAMES:
+        tail = full[1:]
+    else:
+        return None
+    return tail if len(tail) == 2 else None
+
+
+def generate_anaphora_tails(people):
+    """RC-2c (generative 省称) — propose each full 姓名's bare 2-char given-name tail
+    (韦孝宽→孝宽, 李德林→德林, 司马消难→消难) as a 卷-local match surface, EVEN when no
+    NER candidate for the bare form exists (the gap merge_anaphora cannot fill).
+
+    Disambiguation is delegated to the per-卷 collision step: a generated tail is kept
+    only where exactly ONE person in the 卷 owns it, and dropped wherever two or more do
+    — so a short form shared by two actors in a 卷 (the case the audit flagged) is never
+    mislinked, it is simply left un-underlined. Common words/titles are screened by
+    bad_auto_surface. Conservative: 2-char tails only, never single-char."""
+    added = 0
+    for p in people:
+        tail = _given_tail(p["canonical_name"])
+        if not tail or bad_auto_surface(tail):
+            continue
+        if tail in p["match"]:
+            continue
+        p["match"].append(tail)
+        if tail not in p.setdefault("names", []):
+            p["names"].append(tail)
+        added += 1
+    return added
+
+
 def merge_people_sources(*sources):
     """Union several {name: [recs]} maps into one."""
     out: dict[str, list] = collections.defaultdict(list)
@@ -887,6 +950,11 @@ def build_seed(hand_people, juans_allowed):
     #     fragments into the full 姓名 they belong to, per 卷 (see merge_anaphora).
     anaphora_merged, anaphora_dropped = merge_anaphora(people)
 
+    # 2d. RC-2c generative 省称 — propose each full 姓名's 2-char given-name tail as a
+    #     match surface (recall for short forms no NER candidate proposed). The collision
+    #     step below is the disambiguator: ambiguous tails (≥2 owners in a 卷) are dropped.
+    anaphora_generated = generate_anaphora_tails(people)
+
     # 3. Per-卷 collision resolution. A surface owned by >1 person in a 卷 is
     #    ambiguous there and dropped from the rule table for that 卷.
     owners: dict[int, dict[str, set]] = collections.defaultdict(lambda: collections.defaultdict(set))
@@ -910,4 +978,5 @@ def build_seed(hand_people, juans_allowed):
                                  "glue_bound": glue_bound,
                                  "glue_missing": glue_missing,
                                  "anaphora_merged": anaphora_merged,
-                                 "anaphora_dropped": anaphora_dropped}
+                                 "anaphora_dropped": anaphora_dropped,
+                                 "anaphora_generated": anaphora_generated}
