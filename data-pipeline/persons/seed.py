@@ -122,6 +122,18 @@ COMMON_WORD_NONPERSON: set[str] = {
     "莫能明",   # 莫能明 — "none could understand it"
     "费巨万",   # 费巨万 — 费(spend)+巨万 (a vast sum)
     "马大呼",   # 马大呼 — 马+大呼
+    # RC-1 (R22 卷200 historian audit) — confirmed non-person surfaces (no 字/bio,
+    # same false surface recurs across 卷). NB: 王弘(刘宋 字休元)/王郎(汉 王昌)/李崇(北魏)
+    # are REAL — their 卷200 issues are 卷-local 封号/截断, handled elsewhere, NOT here.
+    "温恭",   # 容貌温恭 — adjective (gentle & respectful)
+    "班赐",   # 班赐有差 — to distribute/bestow (verb)
+    "黎明",   # 黎明遂倾隋室 — daybreak (time word)
+    "马尽",   # 马尽，人自相食 — "the horses ran out"
+    "马韦",   # 太子洗马韦季方 — 洗马(官)+韦(姓) mis-glue
+    "殷国",   # 微子去而殷国以亡 — the Yin state, not a person
+    "鼠尼施",  # 别部鼠尼施 — a 突厥 sub-tribe, not an individual
+    "熊津",   # 熊津江口/都督/城 — a 百济 place (Korean Ungjin)
+    "陆浑",   # 上畋于陆浑 — a place (陆浑县/戎)
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not
