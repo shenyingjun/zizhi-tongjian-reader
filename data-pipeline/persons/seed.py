@@ -134,6 +134,45 @@ COMMON_WORD_NONPERSON: set[str] = {
     "鼠尼施",  # 别部鼠尼施 — a 突厥 sub-tribe, not an individual
     "熊津",   # 熊津江口/都督/城 — a 百济 place (Korean Ungjin)
     "陆浑",   # 上畋于陆浑 — a place (陆浑县/戎)
+    # RC-1 (R23 multi-卷 historian audit: 卷20/110/220) — confirmed non-person surfaces
+    # with NO real homograph anywhere in the 403BC–959AD corpus. NB: 王足(北魏将)/司马尚
+    # (战国赵将)/王崇(汉)/王乌(汉使)/王德(晋太守)/王尚 ARE real — deferred as 卷-local 封号/截断.
+    # — 官号/将军号/侯号 fragments —
+    "五利",   # 五利将军 (栾大的封号), not a name
+    "伏波",   # 伏波将军 (office), 路博德/马援 are the persons
+    "楼船",   # 楼船将军 (office) / 水军部队
+    "梁侯",   # 将梁侯 — 侯号 fragment
+    "蔡侯",   # 临蔡侯 — 侯号 fragment
+    "胡帅",   # 离石胡帅/西河胡帅 — "胡人首领" (a title), 呼延铁/张崇 are the persons
+    # — 部族 / 地名 / 国名 —
+    "同罗",   # 曳落河、同罗 — a 突厥 tribe / war-band
+    "库莫奚",  # 袭库莫奚 — a 部族 (the Kumo Xi)
+    "郁林",   # 郁林郡 — a commandery
+    "梅岭",   # 屯豫章、梅岭 — a mountain/place
+    "倪塘",   # 斩于倪塘 — an execution ground (place)
+    "杨口",   # 至杨口 — a place
+    "蔡洲",   # 回军蔡洲 — a place / garrison
+    "钱唐",   # 钱唐杜子恭 — a place (钱塘), 杜子恭 is the person
+    # — 谥号 / 称号 fragments —
+    "忠节",   # 谥曰忠节 — a posthumous name (颜杲卿's 谥)
+    "献哀",   # 献哀太子策 — 谥号 modifier, 慕容策 is the person
+    # — 礼服 / 典籍 / 财物 —
+    "皮弁",   # 侍中儒者皮弁、搢绅 — ceremonial cap (attire)
+    "王制",   # 《王制》— a 礼记 chapter title
+    "罗锦",   # 率罗锦万匹 — silk goods
+    "贺表",   # 更为群臣贺表 — a congratulatory memorial (document)
+    # — 跨词误切 / common phrases —
+    "王至",   # 广平王至 / 王...至 — 王(爵)+至(arrive), never a name
+    "王素",   # 赵王素怨 / 王素无意 — 王+素(always), cross-word
+    "钱益",   # 铸钱益少 — 钱+益(more), cross-word
+    "陈东",   # 伏精骑于陈东 — 阵(陈)东, battlefield bearing
+    "陈前",   # 立于陈前 — 阵(陈)前, battlefield bearing
+    "陈力",   # 为之陈力 — to exert effort (verb)
+    "顾恋",   # 顾恋妻子 — to be attached to (verb)
+    "马少",   # 军中马少 — "horses are few"
+    "胡虏",   # 与胡虏战 — collective term for the enemy/Hu
+    "廉直",   # 以廉直稍迁 — upright (adjective)
+    "莫应",   # 天下莫应 — "none responded"
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not
