@@ -10,37 +10,51 @@ export interface Segment {
   mainEnd?: number;
 }
 
+// All offsets emitted by the Python data pipeline (mention start/end, note.after)
+// are Unicode CODE POINT indices. JS strings are UTF-16, so a non-BMP character
+// (e.g. CJK Ext-B 𨁂 U+28042) is a 2-unit surrogate pair and would desync every
+// offset after it by +1 if we sliced with String.prototype.slice. We therefore
+// index every paragraph by code point. `cpSlice`/`cpLen` make that explicit and
+// are a no-op for the (vast majority of) paragraphs with no astral characters.
+const cpLen = (s: string): number => Array.from(s).length;
+
 /** Split a paragraph into interleaved main-text and 胡注 segments in reading order. */
 export function splitParagraph(p: Paragraph): Segment[] {
+  const mainLen = cpLen(p.main);
   if (!p.notes.length) {
-    return [{ kind: 'text', text: p.main, mainStart: 0, mainEnd: p.main.length }];
+    return [{ kind: 'text', text: p.main, mainStart: 0, mainEnd: mainLen }];
   }
+  const cps = Array.from(p.main);
   const segs: Segment[] = [];
   let cursor = 0;
   p.notes.forEach((n, i) => {
-    const at = Math.min(n.after, p.main.length);
-    if (at > cursor) segs.push({ kind: 'text', text: p.main.slice(cursor, at), mainStart: cursor, mainEnd: at });
+    const at = Math.min(n.after, mainLen);
+    if (at > cursor) segs.push({ kind: 'text', text: cps.slice(cursor, at).join(''), mainStart: cursor, mainEnd: at });
     segs.push({ kind: 'note', text: n.text, noteIdx: i });
     cursor = at;
   });
-  if (cursor < p.main.length) segs.push({ kind: 'text', text: p.main.slice(cursor), mainStart: cursor, mainEnd: p.main.length });
+  if (cursor < mainLen) segs.push({ kind: 'text', text: cps.slice(cursor).join(''), mainStart: cursor, mainEnd: mainLen });
   return segs;
 }
 
-/** Return all [start, end) ranges where `q` matches in `text`. */
+/** Return all [start, end) ranges (in CODE POINTS) where `q` matches in `text`. */
 export function findMatches(text: string, q: string | string[]): Array<[number, number]> {
   const needles = Array.from(
     new Set((Array.isArray(q) ? q : [q]).map(s => s.trim()).filter(Boolean)),
-  ).sort((a, b) => b.length - a.length);
+  );
   if (needles.length === 0) return [];
+  const cps = Array.from(text);
+  // Code-point arrays, longest needle first (so a longer needle is preferred
+  // over a shorter overlapping one — e.g. 王翦 over 翦).
+  const ndArr = needles.map(n => Array.from(n)).sort((a, b) => b.length - a.length);
   const raw: Array<[number, number]> = [];
-  for (const nd of needles) {
-    let from = 0;
-    while (true) {
-      const idx = text.indexOf(nd, from);
-      if (idx < 0) break;
-      raw.push([idx, idx + nd.length]);
-      from = idx + nd.length;
+  for (const nd of ndArr) {
+    const L = nd.length;
+    if (!L) continue;
+    for (let i = 0; i + L <= cps.length; i++) {
+      let ok = true;
+      for (let j = 0; j < L; j++) { if (cps[i + j] !== nd[j]) { ok = false; break; } }
+      if (ok) { raw.push([i, i + L]); i += L - 1; }
     }
   }
   // Drop overlaps (longer needle already preferred via sort) so multi-needle
@@ -66,7 +80,8 @@ export function highlightWithRanges(
   mainMatches: Array<[number, number]>,
 ): React.ReactNode {
   if (!mainMatches.length) return text;
-  const mainEnd = mainStart + text.length;
+  const cps = Array.from(text);
+  const mainEnd = mainStart + cps.length;
   const parts: React.ReactNode[] = [];
   let cursor = mainStart;
   let k = 0;
@@ -75,15 +90,15 @@ export function highlightWithRanges(
     if (ms >= mainEnd) break;
     const segStart = Math.max(ms, mainStart);
     const segEnd = Math.min(me, mainEnd);
-    if (segStart > cursor) parts.push(text.slice(cursor - mainStart, segStart - mainStart));
+    if (segStart > cursor) parts.push(cps.slice(cursor - mainStart, segStart - mainStart).join(''));
     parts.push(
       <mark key={k++} className="search-hit">
-        {text.slice(segStart - mainStart, segEnd - mainStart)}
+        {cps.slice(segStart - mainStart, segEnd - mainStart).join('')}
       </mark>,
     );
     cursor = segEnd;
   }
-  if (cursor < mainEnd) parts.push(text.slice(cursor - mainStart));
+  if (cursor < mainEnd) parts.push(cps.slice(cursor - mainStart).join(''));
   return parts.length ? parts : text;
 }
 
@@ -114,7 +129,8 @@ export function renderTextSegment(
   pid: number,
   activePersonId?: string | null,
 ): React.ReactNode {
-  const mainEnd = mainStart + text.length;
+  const mainEnd = mainStart + cpLen(text);
+  const cps = Array.from(text);
   const spans = personSpans
     .filter(s => s.end > mainStart && s.start < mainEnd)
     .sort((a, b) => a.start - b.start);
@@ -129,11 +145,11 @@ export function renderTextSegment(
     if (segStart > cursor) {
       out.push(
         <Fragment key={'t' + k++}>
-          {highlightWithRanges(text.slice(cursor - mainStart, segStart - mainStart), cursor, mainMatches)}
+          {highlightWithRanges(cps.slice(cursor - mainStart, segStart - mainStart).join(''), cursor, mainMatches)}
         </Fragment>,
       );
     }
-    const label = text.slice(segStart - mainStart, segEnd - mainStart);
+    const label = cps.slice(segStart - mainStart, segEnd - mainStart).join('');
     const isActive = !!activePersonId && s.personId === activePersonId;
     out.push(
       <button
@@ -166,7 +182,7 @@ export function renderTextSegment(
   if (cursor < mainEnd) {
     out.push(
       <Fragment key={'t' + k++}>
-        {highlightWithRanges(text.slice(cursor - mainStart), cursor, mainMatches)}
+        {highlightWithRanges(cps.slice(cursor - mainStart).join(''), cursor, mainMatches)}
       </Fragment>,
     );
   }
@@ -177,14 +193,15 @@ export function renderTextSegment(
 export function highlight(text: string, q: string | string[]): React.ReactNode {
   const ranges = findMatches(text, q);
   if (!ranges.length) return text;
+  const cps = Array.from(text);
   const parts: React.ReactNode[] = [];
   let from = 0;
   let k = 0;
   for (const [s, e] of ranges) {
-    if (s > from) parts.push(text.slice(from, s));
-    parts.push(<mark key={k++} className="search-hit">{text.slice(s, e)}</mark>);
+    if (s > from) parts.push(cps.slice(from, s).join(''));
+    parts.push(<mark key={k++} className="search-hit">{cps.slice(s, e).join('')}</mark>);
     from = e;
   }
-  if (from < text.length) parts.push(text.slice(from));
+  if (from < cps.length) parts.push(cps.slice(from).join(''));
   return parts;
 }
