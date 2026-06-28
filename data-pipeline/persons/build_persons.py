@@ -98,6 +98,58 @@ def _install_roles():
 _install_roles()
 
 
+# RC-5 precision slice — drop 谥号/封号/官名 truncation FRAGMENT cards. NER sometimes
+# emits a 2-char auto card that is really the first two chars of a longer title term
+# (武灵<赵武灵王, 悼惠<齐悼惠王, 衞思<衞思后, 葛仆<葛…仆射). The principled, homograph-safe
+# signal: scan the whole corpus and drop a 2-char AUTO card only when EVERY occurrence
+# of its surface is immediately glued to a 封号/谥号/官名 tail char AND it NEVER stands
+# alone. This spares real persons that share the prefix (曹参→曹参曰, 魏尚→魏尚书 but also
+# 魏尚 standalone) because they have ≥1 standalone occurrence. Pure data-driven; no
+# hand-list, so it self-adjusts if the seed/NER layer changes.
+_FRAG_TAIL = set("王公侯君妃主后帝太嫔军书射同丽")
+
+
+def _drop_fragment_cards():
+    cand = {p["canonical_name"]: p["id"] for p in PEOPLE_MERGED
+            if len(p["canonical_name"]) == 2 and str(p["id"]).startswith("a:")}
+    if not cand:
+        return 0
+    glued = {s: 0 for s in cand}
+    standalone = {s: 0 for s in cand}
+    for j in JUANS:
+        jf = TEXT / f"juan_{j:03d}.json"
+        if not jf.exists():
+            continue
+        juan = json.loads(jf.read_text(encoding="utf-8"))
+        for para in juan["paragraphs"]:
+            chunks = [para.get("main", "")]
+            chunks += [n.get("text", "") for n in para.get("notes", [])]
+            for t in chunks:
+                n = len(t)
+                for i in range(n - 1):
+                    s = t[i:i + 2]
+                    if s in cand:
+                        nxt = t[i + 2] if i + 2 < n else "。"
+                        if nxt in _FRAG_TAIL:
+                            glued[s] += 1
+                        else:
+                            standalone[s] += 1
+    drop_surf = {s for s in cand
+                 if glued[s] > 0 and standalone[s] == 0}
+    drop_ids = {cand[s] for s in drop_surf}
+    if not drop_ids:
+        return 0
+    PEOPLE_MERGED[:] = [p for p in PEOPLE_MERGED if p["id"] not in drop_ids]
+    for surf_map in RULES.values():
+        for surf in list(surf_map):
+            if surf in drop_surf or surf_map[surf] in drop_ids:
+                del surf_map[surf]
+    return len(drop_ids)
+
+
+_FRAG_DROPPED = _drop_fragment_cards()
+
+
 def extract_roles(text, ce, consumed, by_id, para_idx=0, cue_idx=None):
     """Position-aware role pass: each role surface (吴主/魏主…) → the monarch
     reigning at `ce`. Skips chars already consumed by the alias/anaphora passes
@@ -1068,6 +1120,7 @@ def main():
           f"   kinship relations: {len(relations_out)}"
           f"   new cards minted: {gloss_new_cards}")
     print(f"rc4 封号-glue (titleglue) emitted: {feng_emitted}")
+    print(f"rc5 谥号/封号 fragment cards dropped: {_FRAG_DROPPED}")
     print(f"lookback 卷 surfaces registered: {lookback_added}")
     print(f"book-enrich 字 briefs: {briefs_enriched}")
     print(f"title-glue aliases bound: {SEED_STATS['glue_bound']}"
