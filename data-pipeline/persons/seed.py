@@ -109,6 +109,19 @@ COMMON_WORD_NONPERSON: set[str] = {
     "王政",   # 秦王政 = 秦王·名政 (嬴政), tail 王政 is a mis-strip of 秦
     "吕王嘉",  # 封号 glue: 吕王(吕氏封王)+名嘉 mis-segmentation (卷013); the real 吕嘉
               # (南越相) and 王嘉 (汉相) both already have their own cards.
+    # RC-1 (R21 dup-card audit) — 姓/伪姓 + verb/quantifier/role-title phrase that jieba's
+    # nr tagger mislabels as a name; each shipped as junk cards spread across many 卷.
+    # NB: 徐有功 (唐 法官, 有功 = given name) is a REAL person — do NOT blacklist by tail.
+    "于公有",   # 于公有… — 于公(廷尉)+有 (had…)
+    "伏精骑",   # 伏精骑 — 伏(set ambush)+精骑 (elite cavalry)
+    "周天子", "唐天子", "戴天子",   # 天子 role-title glued to a dynasty/surname char
+    "布大喜",   # 布大喜 — 布(吕布)+大喜
+    "王大夫",   # 王大夫 — 王+大夫 (官名), not a person
+    "王大怒",   # 王大怒 — 王+大怒
+    "王诸子",   # 王诸子 — 王+诸子 (the king's sons, collective)
+    "莫能明",   # 莫能明 — "none could understand it"
+    "费巨万",   # 费巨万 — 费(spend)+巨万 (a vast sum)
+    "马大呼",   # 马大呼 — 马+大呼
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not
