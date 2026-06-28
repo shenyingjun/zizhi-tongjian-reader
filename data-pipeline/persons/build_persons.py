@@ -234,6 +234,25 @@ COMMON_BIGRAMS = {
 # (不坚 / 愈坚 / 自谦), never a name.
 _ANAPHORA_MODS = set("不无甚愈益弥颇至自相見见尤极最稍渐")
 
+# Fixed specialized terms (官名/官署) whose INTERNAL characters are split-prone: a bare
+# given-char anaphora that lands inside one of these is the title fragment, not a 省称.
+# The dominant case is the 唐五代 使职 family — e.g. 节度使 made bare 度 (裴度) fire 302×
+# corpus-wide. A position covered by any of these terms is suppressed in extract_anaphora.
+# These are all unambiguous offices (none doubles as a surname); the broader 官名/复姓
+# reference list lives in the Phase-2 research notes and can be extended here as needed.
+FIXED_NONNAME_TERMS: tuple = (
+    # 地方军政使职 (highest split-risk — 内含 度/察/略/抚/运/练/御/讨/田/访)
+    "节度副使", "节度判官", "节度留后", "节度使", "观察使", "经略使", "安抚使",
+    "转运使", "团练使", "防御使", "招讨使", "营田使", "按察使", "采访使",
+    "度支使", "支度使", "宣慰使", "宣抚使", "黜陟使",
+    # 中枢使职
+    "枢密副使", "枢密使", "三司使", "都指挥使",
+    # 近侍/台省官 with name-like internal chars
+    "散骑常侍", "御史中丞", "御史大夫", "监察御史", "殿中侍御史", "侍御史",
+    "司隶校尉", "给事中", "光禄大夫", "太中大夫", "谏议大夫",
+)
+
+
 
 def find_all(hay: str, needle: str):
     i, out = 0, []
@@ -303,6 +322,15 @@ def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events):
     is visible to a later bare char. Returns [(start, end, person_id, surface)]."""
     out = []
     n = len(text)
+    # Mask positions covered by a fixed specialized term (节度使 → 节/度/使 are the title,
+    # never a 省称). Overlapping search so adjacent terms are all covered.
+    fixed_mask = bytearray(n)
+    for term in FIXED_NONNAME_TERMS:
+        start = text.find(term)
+        while start >= 0:
+            for k in range(start, start + len(term)):
+                fixed_mask[k] = 1
+            start = text.find(term, start + 1)
     ev_i, nev = 0, len(anchor_events)
     for i, ch in enumerate(text):
         # establish every full-name antecedent that ends at or before this char
@@ -311,6 +339,8 @@ def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events):
             char_anchor[gc] = pidp
             ev_i += 1
         if ch not in admitted or consumed[i]:
+            continue
+        if fixed_mask[i]:       # inside a fixed 官名 (节度使…) → title fragment, not a 省称
             continue
         pid_ = char_anchor.get(ch)
         if pid_ is None:        # no antecedent seen yet → suppress
