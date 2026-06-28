@@ -546,6 +546,66 @@ def _given_tail(full: str):
     return tail if len(tail) == 2 else None
 
 
+# Wave 5 P2 — single given-chars too common as ordinary 文言 words/verbs to ever
+# resolve as a bare 省称, even behind the anchor + bigram guards. Their full-name
+# forms still match as aliases; only the single-char anaphora is withheld.
+ANAPHORA_CHAR_EXCLUDE = set(
+    "信温安明进通顺和良善真立成道德文武政平正定大小公侯王主君臣民贤忠孝义礼智素")
+
+
+def _given_single(full: str):
+    """The single-char given name of a 姓+名 (杨坚→坚, 尉迟迥→迥, 宇文招→招), used for
+    Wave 5 single-char 省称回指. Returns the char ONLY when the given name is exactly
+    one Han char after stripping a CLEAN single 姓 or a 2-char COMPOUND 复姓; ambiguous
+    surnames (于/方/白…) are excluded (their leading char is too often a common word)."""
+    if not _HAN_ONLY.match(full):
+        return None
+    if len(full) == 3 and full[:2] in COMPOUND:
+        g = full[2:]
+    elif len(full) == 2 and full[0] in CLEAN_SURNAMES:
+        g = full[1:]
+    else:
+        return None
+    return g if len(g) == 1 else None
+
+
+def build_anaphora_rules(people, allowed):
+    """Wave 5 P2 — per-卷 set of single-char 省称 CANDIDATE given-chars
+    {juan: {char, ...}}.
+
+    A given-char is a candidate for a 卷 when at least one person whose full name
+    appears there owns it via _given_single (杨坚→坚), minus the common-word exclude
+    list. WHICH person a bare char resolves to is decided at build time by the
+    nearest preceding full-name antecedent (build_persons.extract_anaphora).
+
+    COLLISION GUARD: a char is suppressed for a 卷 when ≥2 DISTINCT people there have
+    a canonical name ending in that char — detected by endswith, NOT by _given_single,
+    so it catches collisions even when one party's surname is outside our list (元胄 &
+    宇文胄 both end 胄 → 胄 suppressed in that 卷, never mis-bound to the recognised one).
+    Precision-first: an ambiguous given-char is dropped rather than guessed."""
+    cand: dict[int, set] = collections.defaultdict(set)
+    endswith: dict[int, dict] = collections.defaultdict(lambda: collections.defaultdict(set))
+    for p in people:
+        cn = p["canonical_name"]
+        g = _given_single(cn)
+        last = cn[-1] if (len(cn) >= 2 and _HAN_ONLY.match(cn)) else None
+        for j in p["juans"]:
+            if j not in allowed:
+                continue
+            if g and g not in ANAPHORA_CHAR_EXCLUDE:
+                cand[j].add(g)
+            if last:
+                endswith[j][last].add(p["id"])
+    out: dict[int, set] = {}
+    n_admitted = 0
+    for j, chars in cand.items():
+        keep = {c for c in chars if len(endswith[j].get(c, ())) < 2}
+        if keep:
+            out[j] = keep
+            n_admitted += len(keep)
+    return out, n_admitted
+
+
 def generate_anaphora_tails(people):
     """RC-2c (generative 省称) — propose each full 姓名's bare 2-char given-name tail
     (韦孝宽→孝宽, 李德林→德林, 司马消难→消难) as a 卷-local match surface, EVEN when no
@@ -974,9 +1034,14 @@ def build_seed(hand_people, juans_allowed):
             else:
                 dropped += 1
 
-    return people, dict(rules), {"ambiguous_dropped": dropped,
+    # Wave 5 P2 — single-char 省称 candidate-char set per 卷 (consumed by
+    # build_persons; the bare char resolves to its nearest full-name antecedent).
+    anaphora_rules, anaphora_admitted = build_anaphora_rules(people, allowed)
+
+    return people, dict(rules), anaphora_rules, {"ambiguous_dropped": dropped,
                                  "glue_bound": glue_bound,
                                  "glue_missing": glue_missing,
                                  "anaphora_merged": anaphora_merged,
                                  "anaphora_dropped": anaphora_dropped,
-                                 "anaphora_generated": anaphora_generated}
+                                 "anaphora_generated": anaphora_generated,
+                                 "anaphora_char_admitted": anaphora_admitted}

@@ -191,6 +191,12 @@ export interface PersonMention {
   surface: string;        // matched surface form
   person_id?: string;
   candidate_ids?: string[];
+  // How the surface binds to a person:
+  //   'alias'    surface -> exactly one person, valid anywhere (1:1, the default)
+  //   'anaphora' 省称 short form resolved by position to the nearest full-name anchor
+  //   'role'     称谓 (吴主/魏主/帝/上) resolved to the reigning holder at this point
+  // Absent is treated as 'alias' for backward compatibility.
+  kind?: 'alias' | 'anaphora' | 'role';
   confidence: PersonConfidence;
 }
 

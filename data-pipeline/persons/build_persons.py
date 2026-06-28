@@ -32,7 +32,32 @@ OUT = TEXT / "persons"
 # Merge the hand-curated cast with the deterministic auto-seed layer. PEOPLE is
 # the combined people list (hand juans grown across batches, auto names split by
 # contiguity); RULES is the collision-free {juan: {surface: person_id}} table.
-PEOPLE_MERGED, RULES, SEED_STATS = seed_mod.build_seed(PEOPLE, JUANS)
+# ANAPHORA_RULES is the Wave 5 single-char 省称 anchor table {juan: {char: pid}}.
+PEOPLE_MERGED, RULES, ANAPHORA_RULES, SEED_STATS = seed_mod.build_seed(PEOPLE, JUANS)
+
+# Wave 5 P2 — common-word bigrams that a bare given-char forms in 文言; an anchor
+# char inside one of these is the ordinary word, not a 省称 (坚守/谦让/翻译…). The
+# guard rejects a single-char match whose left or right neighbor completes such a
+# word. Kept curated + conservative; the audit prunes/extends it.
+COMMON_BIGRAMS = {
+    # 坚 (杨坚)
+    "坚守", "坚壁", "坚固", "坚请", "坚执", "坚卧", "坚城", "坚甲", "坚锐",
+    "坚冰", "坚营", "坚陈", "坚距", "坚白", "坚劲", "坚厚", "坚密", "深坚",
+    # 谦 (王谦)
+    "谦恭", "谦让", "谦虚", "谦逊", "谦谨", "谦冲", "谦退", "谦下", "谦谦",
+    # 译 (郑译)
+    "译语", "翻译", "译者", "重译", "译人", "译鞮", "译史",
+    # 招 (宇文招)
+    "招募", "招降", "招纳", "招集", "招抚", "招诱", "招怀", "招还", "招致",
+    "招延", "招携", "招谕", "招辑", "招引", "招军",
+    # 赞 / misc common
+    "赞拜", "赞成", "称赞", "赞礼", "赞导", "赞曰",
+    "邕邕",
+}
+
+# Preceding chars that turn a following anchor char into an adjective/verb reading
+# (不坚 / 愈坚 / 自谦), never a name.
+_ANAPHORA_MODS = set("不无甚愈益弥颇至自相見见尤极最稍渐")
 
 
 def find_all(hay: str, needle: str):
@@ -72,6 +97,68 @@ def extract(text: str, surfaces):
     return hits
 
 
+def _han(ch: str) -> bool:
+    return "\u4e00" <= ch <= "\u9fff"
+
+
+# Wave 5 P2 — context that marks a bare given-char as a person, not a word.
+# RIGHT: the char is an agent/subject followed by a verb/particle (坚遣, 迥据, 谦薨).
+_ANAPHORA_RIGHT = set(
+    "遣将帅率曰谓言以据举攻击伐讨破降奔走卒薨死请欲乃遂使命还入出收"
+    "徇略守拔围斩杀立得至引进退知闻怒喜患惧及等之也矣与为不复既又亦即因故大兵兼)")
+# LEFT: the char is the object of a verb that takes a person (杀坚, 废坚, 立谦).
+_ANAPHORA_LEFT = set(
+    "杀执废立遣召讨击破降诛斩围获擒释赦贬黜任用见责让劝说谓命拜封逐囚弑代")
+
+
+def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events):
+    """Wave 5 P2 — single-char 省称 matches in one main-text blob, each bound to its
+    NEAREST preceding full-name antecedent (the person most recently named whose
+    given char == this char). Gates:
+      * the char is an admitted candidate for this 卷 (admitted set),
+      * an antecedent for that char already exists in char_anchor (else suppress —
+        precision-first, never guess without an anchor),
+      * the position is not consumed by a longer alias match,
+      * a common-word bigram / modifier / clean-surname guard (坚守, 不坚, 杨惠 …),
+      * a positive person-context gate (agent before a verb, or object after a
+        person-taking verb).
+    char_anchor is mutated in place (carried across paragraphs within a 卷);
+    anchor_events is [(end_pos, given_char, person_id)] for this para's full-name
+    hits, applied in reading order so an antecedent earlier in the SAME paragraph
+    is visible to a later bare char. Returns [(start, end, person_id, surface)]."""
+    out = []
+    n = len(text)
+    ev_i, nev = 0, len(anchor_events)
+    for i, ch in enumerate(text):
+        # establish every full-name antecedent that ends at or before this char
+        while ev_i < nev and anchor_events[ev_i][0] <= i:
+            _, gc, pidp = anchor_events[ev_i]
+            char_anchor[gc] = pidp
+            ev_i += 1
+        if ch not in admitted or consumed[i]:
+            continue
+        pid_ = char_anchor.get(ch)
+        if pid_ is None:        # no antecedent seen yet → suppress
+            continue
+        left = text[i - 1] if i > 0 else ""
+        right = text[i + 1] if i + 1 < n else ""
+        # a bare 省称 drops the surname — if the left neighbor IS a clean surname
+        # char, this is a surname+given full name the alias pass missed (杨惠, 窦毅),
+        # not an anaphor. CLEAN_SURNAMES excludes 于/方/白… which double as common
+        # words/prepositions (私于译曰 — 于 is "to", not the 于 surname).
+        if left in seed_mod.CLEAN_SURNAMES:
+            continue
+        if (left and left + ch in COMMON_BIGRAMS) or (right and ch + right in COMMON_BIGRAMS):
+            continue
+        if left in _ANAPHORA_MODS:
+            continue
+        if not (right in _ANAPHORA_RIGHT or left in _ANAPHORA_LEFT):
+            continue
+        out.append((i, i + 1, pid_, ch))
+        char_anchor[ch] = pid_   # a resolved 省称 refreshes recency for this char
+    return out
+
+
 def main():
     by_id = {p["id"]: p for p in PEOPLE_MERGED}
     # Duplicate-id guard — a copy/paste slip would silently drop a person.
@@ -83,6 +170,14 @@ def main():
             seen.add(p["id"])
         raise SystemExit(f"duplicate person ids: {sorted(dups)}")
 
+    # Wave 5 P2 — each person's single-char given name (元胄→胄, 杨坚→坚), used to
+    # build per-paragraph anaphora antecedents from full-name alias hits.
+    given_of = {}
+    for pid_, p in by_id.items():
+        g = seed_mod._given_single(p["canonical_name"])
+        if g and g not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
+            given_of[pid_] = g
+
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "mentions").mkdir(parents=True, exist_ok=True)
 
@@ -90,6 +185,7 @@ def main():
     # appearances[pid] = { (juan, pid_para): {juan, pid, ce_year, source} }
     appearances: dict[str, dict[tuple, dict]] = {}
     per_juan_counts: dict[int, tuple[int, int]] = {}
+    anaphora_emitted = 0
 
     for juan_no in JUANS:
         jf = TEXT / f"juan_{juan_no:03d}.json"
@@ -97,21 +193,45 @@ def main():
             continue
         juan = json.loads(jf.read_text(encoding="utf-8"))
         surfaces = surfaces_for(juan_no)
+        admitted = ANAPHORA_RULES.get(juan_no, set())
+        char_anchor: dict[str, str] = {}  # given-char -> nearest antecedent person_id (卷-local)
         mentions = []
         for para in juan["paragraphs"]:
             pid = para["id"]
             ce = para.get("ce_year")
-            for (s, e, pid_, surf) in extract(para.get("main", ""), surfaces):
+            main_text = para.get("main", "")
+            alias_hits = extract(main_text, surfaces)
+            for (s, e, pid_, surf) in alias_hits:
                 mentions.append({"pid": pid, "ce_year": ce, "source": "main",
                                  "start": s, "end": e, "surface": surf,
-                                 "person_id": pid_,
+                                 "person_id": pid_, "kind": "alias",
                                  "confidence": by_id[pid_].get("confidence", "reviewed")})
                 seen_ids.add(pid_)
+            # Wave 5 P2 — single-char 省称 anaphora on the 原文, each bound to its
+            # nearest preceding full-name antecedent (disambiguates 元胄 vs 宇文胄).
+            if admitted:
+                consumed = [False] * len(main_text)
+                anchor_events = []
+                for (s, e, pid_, surf) in alias_hits:
+                    for k in range(s, e):
+                        consumed[k] = True
+                    g = given_of.get(pid_)
+                    if g:
+                        anchor_events.append((e, g, pid_))
+                anchor_events.sort()
+                for (s, e, pid_, surf) in extract_anaphora(
+                        main_text, admitted, consumed, char_anchor, anchor_events):
+                    mentions.append({"pid": pid, "ce_year": ce, "source": "main",
+                                     "start": s, "end": e, "surface": surf,
+                                     "person_id": pid_, "kind": "anaphora",
+                                     "confidence": by_id[pid_].get("confidence", "reviewed")})
+                    seen_ids.add(pid_)
+                    anaphora_emitted += 1
             for ni, note in enumerate(para.get("notes", [])):
                 for (s, e, pid_, surf) in extract(note.get("text", ""), surfaces):
                     mentions.append({"pid": pid, "ce_year": ce, "source": "hu",
                                      "note_index": ni, "start": s, "end": e,
-                                     "surface": surf, "person_id": pid_,
+                                     "surface": surf, "person_id": pid_, "kind": "alias",
                                      "confidence": by_id[pid_].get("confidence", "reviewed")})
                     seen_ids.add(pid_)
 
@@ -178,6 +298,8 @@ def main():
     print(f"people shipped: {len(people_out)} (reviewed {n_reviewed} / auto {n_auto})"
           f"   total mentions: {total_mentions}   ambiguous surfaces dropped: {SEED_STATS['ambiguous_dropped']}")
     print(f"卷 covered: {len(covered)} / {len(JUANS)}")
+    print(f"single-char 省称 anaphora emitted: {anaphora_emitted}"
+          f"   (candidate chars admitted: {SEED_STATS['anaphora_char_admitted']})")
     print(f"title-glue aliases bound: {SEED_STATS['glue_bound']}"
           f"   missing canonical (cast to add): {SEED_STATS['glue_missing']}")
     hand_ids = {p["id"] for p in PEOPLE_MERGED if p.get("confidence") == "reviewed"}

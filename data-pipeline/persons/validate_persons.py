@@ -90,9 +90,15 @@ def main() -> int:
         for m in mdata["mentions"]:
             total_mentions += 1
             surf = m["surface"]
-            if len(surf) <= 1:
+            kind = m.get("kind", "alias")
+            # Single-char surfaces are only permitted for position-resolved
+            # anaphora (省称回指), where the offset pins one specific person; a
+            # single-char *alias* would be a corpus-wide false-match storm.
+            if len(surf) <= 1 and kind != "anaphora":
                 err(f"juan{juan_no:03d} pid{m['pid']}: single-char surface '{surf}'")
-            if surf in BANNED:
+            # Bare/ambiguous appellations are only permitted as 'role' mentions,
+            # where the reigns resolver has bound them to one monarch by year.
+            if surf in BANNED and kind != "role":
                 err(f"juan{juan_no:03d} pid{m['pid']}: banned ambiguous surface '{surf}'")
             pid = m.get("person_id")
             if pid not in people:
@@ -112,7 +118,12 @@ def main() -> int:
                     f"!= surface '{surf}' (text mismatch)")
             if pid:
                 rebuilt.setdefault(pid, set()).add((juan_no, m["pid"]))
-                surf_owners.setdefault((juan_no, surf), set()).add(pid)
+                # Only 'alias' mentions are held to the 1:1 surface invariant.
+                # 'anaphora'/'role' mentions are position-resolved, so the same
+                # surface legitimately maps to different people at different
+                # offsets within one 卷 (that is the whole point of Wave 5).
+                if kind == "alias":
+                    surf_owners.setdefault((juan_no, surf), set()).add(pid)
 
     # 0: surface collision report (after walking every 卷's mentions).
     for (juan_no, surf), ids in surf_owners.items():
