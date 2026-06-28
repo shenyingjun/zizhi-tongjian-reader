@@ -427,6 +427,96 @@ def _juan_gap(juans, j):
     return min((abs(a - j) for a in juans), default=10 ** 6)
 
 
+# ── rc4 封号-glue (Phase 3) ───────────────────────────────────────────────────
+# 北朝/南朝 宗室 are named 「(封号地名)(爵)(given)」: 任城王澄=元澄, 咸阳王禧=元禧,
+# 高阳王雍=元雍, 湘东王宝晊=萧宝晊. The alias matcher glues 爵+given into a false
+# 王-surname surface (王澄/王禧/王雍/王宝). rc4 reads the 封号 frame and binds the given
+# to the reigning clan (国姓), then suppresses the overlapping false glue. A precision
+# fix (kills 王X) AND recall (adds 元X). Tight gates keep it safe:
+#   * clan candidates come from the 国姓 of dynasties whose reign covers the para year
+#     (a textbook dynasty-surname table, NOT person data) — never a free guess,
+#   * 姓+given must already be a known card reachable near this 卷 (existence gate),
+#   * exactly one clan may resolve, else ambiguous → skip,
+#   * lifespan-gate on the resolved person,
+#   * the 爵 must follow a real 2-char place whose tail is not an office cue — excludes
+#     郡望「太原王神念」 and 官名「尚书令王亮 / 中书监王莹」 (which also fail existence).
+# 国姓 table: (clan, start, end). Overlaps (南北朝) are resolved by the unique gate.
+_DYNASTY_CLANS = [
+    ("刘", -206, 9), ("刘", 25, 220),                       # 两汉
+    ("曹", 196, 265), ("刘", 221, 263), ("孙", 222, 280),     # 三国
+    ("司马", 265, 420),                                      # 两晋
+    ("刘", 420, 479), ("萧", 479, 502), ("萧", 502, 557), ("陈", 557, 589),  # 南朝
+    ("拓跋", 386, 499), ("元", 471, 557), ("高", 534, 577), ("宇文", 535, 581),  # 北朝
+    ("杨", 581, 618), ("李", 618, 907),                      # 隋唐
+    ("朱", 907, 923), ("李", 923, 936), ("石", 936, 947), ("刘", 947, 951), ("郭", 951, 960),  # 五代
+    ("慕容", 337, 410), ("苻", 351, 394), ("姚", 384, 417), ("赫连", 407, 431),  # 主要十六国
+]
+_FENG_RANKS = "王公"
+_FENG_OFFICE_CUE = set("令监军尉史书丞卿傅师保都督刺守内将使后")  # place tail that is really an 官名
+_FENG_GIVEN_BLOCK = set("公王侯主子后帝氏第官人臣")  # 王公/侯王… → a title/common word, not a given
+# leading verb/particle wrongly captured as the place's 1st char — trim from the span.
+_FENG_TRIM = set("讨遣为以与命于须诏诣从闻进牧尹瘗逼随乘数使立故封拜征诛杀废黜遂及又置"
+                 "军是附让告助迎畏葬约见请史今知据兼率收徙拒留唯谓谮恶受皆次遣")
+_FENG_RE = re.compile(r"([\u4e00-\u9fff]{2})([王公])([\u4e00-\u9fff]{1,2})")
+
+
+def _clans_at(ce):
+    if ce is None:
+        return ()
+    return tuple({c for (c, s, e) in _DYNASTY_CLANS if s <= ce <= e})
+
+
+def extract_titleglue(text, ce, consumed, rule_map, by_id):
+    """rc4. Bind 「封号+given」 to its 宗室 person and mark the 封号 span consumed so the
+    caller can drop the false 王X alias glue. Returns [(start, end, pid, surface)] with
+    the WHOLE appellation (任城王澄) as the surface, mapped to the clan person (元澄).
+
+    Precision anchor: the clan+given must be a surface in THIS 卷's collision-free map
+    (rule_map) — i.e. the person is co-referenced by full name somewhere in the same 卷.
+    That ties the 封号 to a real local person and kills cross-dynasty homograph picks
+    (会稽王昱 is 司马昱, never 后燕 慕容昱; the latter is absent from a 东晋 卷's map)."""
+    clans = _clans_at(ce)
+    if not clans or not rule_map:
+        return []
+    out = []
+    for m in _FENG_RE.finditer(text):
+        place, given = m.group(1), m.group(3)
+        if place[-1] in _FENG_OFFICE_CUE:        # 节度使王重 / 节度留后王重 → not a 封号
+            continue
+        rank_pos = m.start(2)
+        # if 爵+2~3 chars is itself a recognized name (王重荣 / 王神念), the 爵 is a real
+        # surname here, not a 封号 鞍 — leave it for the alias pass. (A single-char 王雍-type
+        # glue is NOT a name and stays overridable below.)
+        if any(text[rank_pos:rank_pos + L] in rule_map for L in (4, 3)):
+            continue
+        gs = m.start(3)
+        bound = None
+        for glen in (2, 1):                       # longer given first: 萧宝晊 before 萧宝
+            if glen > len(given):
+                continue
+            g = given[:glen]
+            if g in _FENG_GIVEN_BLOCK:            # 王公 / 侯王 → noble title, not a person
+                continue
+            hits = {rule_map.get(clan + g) for clan in clans}
+            hits.discard(None)
+            hits = {pid_c for pid_c in hits if not _lifespan_outside(by_id[pid_c], ce)}
+            if len(hits) == 1:
+                bound = (gs + glen, next(iter(hits)))
+                break
+        if not bound:
+            continue
+        ge, pid_c = bound
+        start = m.start(1)
+        if text[start] in _FENG_TRIM:            # drop a leading verb/particle (讨赵王伦→赵王伦)
+            start += 1
+        if any(consumed[start:ge]):              # never override a longer real match
+            continue
+        for k in range(start, ge):
+            consumed[k] = True
+        out.append((start, ge, pid_c, text[start:ge]))
+    return out
+
+
 def extract_gloss(text, rule_map, canon_to_pids, juan_no, by_id, consumed):
     """RC-2b. Return (mentions, relations) for one main-text blob:
       mentions = [(start, end, person_id, surface)] — Y bound to its full 姓名 card,
@@ -689,6 +779,7 @@ def main():
     anaphora_emitted = 0
     role_emitted = 0
     gloss_emitted = 0
+    feng_emitted = 0
     relations_all: list = []
 
     for juan_no in JUANS:
@@ -705,8 +796,21 @@ def main():
             pid = para["id"]
             ce = para.get("ce_year")
             main_text = para.get("main", "")
-            alias_hits = extract(main_text, surfaces)
             consumed = [False] * len(main_text)
+            # rc4 封号-glue runs FIRST: reserve 「封号+given」 spans (任城王澄→元澄) so the
+            # alias matcher cannot form the false 王X glue over the same characters.
+            feng_hits = extract_titleglue(main_text, ce, consumed,
+                                          RULES.get(juan_no, {}), by_id)
+            for (s, e, pid_, surf) in feng_hits:
+                mentions.append({"pid": pid, "ce_year": ce, "source": "main",
+                                 "start": s, "end": e, "surface": surf,
+                                 "person_id": pid_, "kind": "feng",
+                                 "confidence": by_id[pid_].get("confidence", "reviewed")})
+                seen_ids.add(pid_)
+                feng_emitted += 1
+            # alias matches that overlap a reserved 封号 span are the suppressed glue.
+            alias_hits = [h for h in extract(main_text, surfaces)
+                          if not any(consumed[h[0]:h[1]])]
             for (s, e, pid_, surf) in alias_hits:
                 for k in range(s, e):
                     consumed[k] = True
@@ -730,6 +834,10 @@ def main():
             if admitted:
                 anchor_events = []
                 for (s, e, pid_, surf) in alias_hits:
+                    g = given_of.get(pid_)
+                    if g:
+                        anchor_events.append((e, g, pid_))
+                for (s, e, pid_, surf) in feng_hits:   # 任城王澄 anchors 澄→元澄
                     g = given_of.get(pid_)
                     if g:
                         anchor_events.append((e, g, pid_))
@@ -845,6 +953,7 @@ def main():
     print(f"RC-2b gloss recall emitted: {gloss_emitted}"
           f"   kinship relations: {len(relations_out)}"
           f"   new cards minted: {gloss_new_cards}")
+    print(f"rc4 封号-glue (titleglue) emitted: {feng_emitted}")
     print(f"book-enrich 字 briefs: {briefs_enriched}")
     print(f"title-glue aliases bound: {SEED_STATS['glue_bound']}"
           f"   missing canonical (cast to add): {SEED_STATS['glue_missing']}")
