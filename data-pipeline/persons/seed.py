@@ -713,13 +713,14 @@ def _load_wiki_nonperson():
 WIKI_NONPERSON = _load_wiki_nonperson()
 
 
-# ── Wikipedia/Wikidata biographical enrichment (wiki_enrich.py) ──────────────
+# ── Wikipedia/Wikidata period VERIFICATION (wiki_enrich.py) ──────────────────
 # wiki_person_info.json maps a verified-person surface to {qid, title, desc,
-# extract}. We turn that into an informative `brief` (one-line identity) and a
-# fuller `identity` (lead-paragraph bio behind the spoiler toggle), replacing
-# the uninformative "见于卷216（748年）" template for ~2,500 auto people. A period
-# gate drops modern / post-959 namesakes (资治通鉴 ends 959 CE), so a name that
-# happens to match a 1980s actor's article is left with the generic brief.
+# extract}. Wikipedia is used ONLY to verify/disambiguate a surface — never as
+# card CONTENT (card brief/identity is book-derived; see assembly §2a). The
+# biographical-brief generators were retired with the dewiki-content cleanup;
+# what remains is the period gate (_wiki_year/_wiki_out_of_period) that flags
+# post-959 / modern namesakes (资治通鉴 ends 959 CE) for the lifespan-gate
+# disambiguation layer.
 def _load_wiki_info():
     f = Path(__file__).resolve().parent / "wiki_person_info.json"
     if not f.exists():
@@ -732,22 +733,6 @@ def _load_wiki_info():
 
 WIKI_INFO = _load_wiki_info()
 
-_DYN_PREFIXES = (
-    "汉", "漢", "東漢", "东汉", "西漢", "西汉", "蜀漢", "蜀汉", "唐", "隋", "宋", "梁",
-    "陈", "陳", "齐", "齊", "周", "秦", "晋", "晉", "魏", "三國", "三国", "南朝", "北朝",
-    "五代", "新", "後", "后", "東晉", "东晋", "西晉", "西晋", "曹魏", "孫吳", "孙吴",
-    "東吳", "东吴", "北魏", "東魏", "东魏", "西魏", "北齊", "北齐", "北周", "南齊",
-    "南齐", "劉宋", "刘宋", "隋朝", "唐朝", "唐代", "明", "清", "元", "金", "遼", "辽",
-    "五胡", "十六國", "十六国",
-)
-_ID_KW = (
-    "政治家", "軍事家", "军事家", "思想家", "文学家", "文學家", "詩人", "诗人", "宰相",
-    "丞相", "皇帝", "皇后", "太后", "公主", "将领", "將領", "名将", "名將", "大臣",
-    "官员", "官員", "人物", "节度使", "節度使", "刺史", "太守", "将军", "將軍", "君主",
-    "国君", "國君", "权臣", "權臣", "外戚", "宦官", "領袖", "领袖", "开国", "開國",
-    "史学家", "史學家", "经学家", "經學家", "僧人", "道士", "画家", "畫家", "书法家",
-    "書法家", "起义", "起義", "皇子", "王", "帝", "侯", "公",
-)
 _LATE_TOKENS = (
     "明朝", "明代", "清朝", "清代", "元朝", "元代", "宋朝", "北宋", "南宋", "宋代",
     "金朝", "民國", "民国", "中华民国", "中華民國", "中华人民共和国", "中国大陆",
@@ -757,36 +742,6 @@ _LATE_TOKENS = (
 
 def _cjk_len(s):
     return sum(1 for ch in s if '\u3400' <= ch <= '\u9fff')
-
-
-def _strip_lifespan(s):
-    return re.sub(r'（[^）]*?[\d?？][^）]*?）', '', s).strip()
-
-
-def _cap_cjk(s, limit):
-    if _cjk_len(s) <= limit:
-        return s
-    out, c, brk = '', 0, -1
-    for ch in s:
-        if '\u3400' <= ch <= '\u9fff':
-            c += 1
-        out += ch
-        if ch in '、，':
-            brk = len(out) - 1
-        if c >= limit:
-            break
-    if brk > 0:
-        out = out[:brk]
-    return out.rstrip('、，·')
-
-
-def _head_strip(name, extract):
-    e = (extract or '').strip()
-    if name and e.startswith(name):
-        e = e[len(name):]
-        if e[:1] == '，':
-            e = e[1:]
-    return e.strip()
 
 
 def _wiki_year(extract):
@@ -814,78 +769,6 @@ def _wiki_out_of_period(info):
         return y > 1000
     text = (info.get('desc') or '') + (info.get('extract') or '')[:80]
     return any(t in text for t in _LATE_TOKENS)
-
-
-def _wiki_clean_desc(desc):
-    if not desc:
-        return None
-    d = _strip_lifespan(desc.strip())
-    d = re.sub(r'\s+', '', d).rstrip('，、。；')
-    return d or None
-
-
-def _wiki_brief_from_extract(name, extract):
-    e = _head_strip(name, extract)
-    if not e:
-        return None
-    para = e.split('\n')[0]
-    m = re.search(r'人[，。、]', para)
-    cand = para[m.end():] if m else para
-    cand = _strip_lifespan(cand.split('。')[0]).strip('，、 ')
-    if cand and not any(k in cand for k in _ID_KW):
-        for sent in para.split('。'):
-            if any(k in sent for k in _ID_KW):
-                cand = _strip_lifespan(sent).strip('，、 ')
-                break
-    if not cand:
-        return None
-    return _cap_cjk(cand, 40)
-
-
-def wiki_brief(name, dyn, info):
-    """One-line identity brief from wiki info; dynasty-prefixed when the source
-    doesn't already lead with an era. None when nothing usable can be derived."""
-    src = _wiki_clean_desc(info.get('desc')) or _wiki_brief_from_extract(name, info.get('extract'))
-    if not src:
-        return None
-    src = re.sub(r'^(中國|中国)', '', src)
-    if not src.startswith(_DYN_PREFIXES) and dyn and dyn != '—':
-        src = f"{dyn}·{src}"
-    return src
-
-
-def wiki_identity(name, info):
-    """Fuller lead-paragraph bio (≤120 漢字 / ≤2 sentences, whichever yields more
-    complete sentences; name head stripped, dates kept). For the spoiler toggle."""
-    e = _head_strip(name, info.get('extract')).replace('\n', '')
-    if not e:
-        return None
-    sents = [s for s in re.findall(r'[^。]*。|[^。]+$', e) if s.strip()]
-    if not sents:
-        return None
-    a, tot = [], 0
-    for s in sents:
-        l = _cjk_len(s)
-        if a and tot + l > 120:
-            break
-        a.append(s); tot += l
-    if not a:
-        a = sents[:1]
-    b = sents[:2]
-    chosen = a if len(a) >= len(b) else b
-    out = ''.join(chosen).strip()
-    if len(chosen) < len(sents):
-        out = out.rstrip() + '…'
-    return out or None
-
-
-def wiki_enrich(name, dyn):
-    """(brief, identity) from Wikipedia for an auto person, or (None, None) when
-    there's no usable / period-consistent match."""
-    info = WIKI_INFO.get(name)
-    if not info or _wiki_out_of_period(info):
-        return None, None
-    return wiki_brief(name, dyn, info), wiki_identity(name, info)
 
 
 def juan_meta():
