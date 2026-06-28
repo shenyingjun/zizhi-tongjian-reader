@@ -280,6 +280,30 @@ COMMON_WORD_NONPERSON: set[str] = {
     "胡寇",   # 胡寇 — "the Hu raiders" (collective enemy), 汉→晋→陈→唐→后晋 (7 cards)
     "唐府",   # 唐府 — 后唐 的官府/府 (国名+府), not a person
     "唐骑",   # 唐骑 — 唐军骑兵 (国名+骑), not a person
+    # R29 round 2 (卷030 西汉 / 卷120 南朝宋-北魏 / 卷230 唐德宗) — same discipline.
+    # Real homographs kept: 李实/赵有/武安/王梁/马周/发(姬发)/梁/权 — 卷-local 截断/单名.
+    # — 谥号 / 时代 / 城名 片段 —
+    "忠烈",   # 忠烈 — 谥号 (颜杲卿/张巡 谥), 唐→宋→梁, not one person
+    "惠文",   # 惠文 — 谥号 (秦惠文王/赵惠文王), 周→唐→宋
+    "魏初",   # 魏初 — "early 魏" 时代短语 (国名+初), not a person
+    "统万",   # 统万(城) — 赫连勃勃 的都城 (a place), not a person
+    # — 官名 / 官署 / 藩镇 / 亲属称谓 —
+    "莫府",   # 莫府 = 幕府 (military HQ), 汉→秦, not 莫(姓)+府
+    "昭义",   # 昭义(军) — a 唐 藩镇, not a person
+    "傅相",   # 傅相 — 太傅/丞相 (官), 宋→汉→魏, not 傅(姓)+相
+    "顾命",   # 顾命(大臣) — deathbed-charge (官义名词), 宋→晋→隋→魏
+    "尹李齐",  # 尹李齐 — 京兆尹(官)+李齐 误连; the person 李齐 has his own surface
+    "王舅",   # 王舅 — "the king's maternal uncle" (亲属称谓), not a person
+    # — 军器 / 形容 / 动宾 / 成语 —
+    "刁斗",   # 刁斗 — a night-watch clapper (军中器具), not 刁(姓)+斗
+    "赫赫",   # 赫赫 — grand/illustrious (叠词形容), never a name
+    "章奏",   # 章奏 — to submit a memorial (上章奏), 唐→汉, not 章(姓)+奏
+    "蒙尘",   # 蒙尘 — (天子)蒙尘 = the sovereign flees (成语), 汉→晋→梁→唐 (6 cards)
+    "屈卿",   # 屈卿 — "to condescend to you" (动宾), not 屈(姓)+卿
+    "石柱",   # 石柱 — a stone pillar / place, 唐→宋, not 石(姓)+柱
+    # — 国名/朝代字 + 后字 跨词误切 (cf. 王至/王素/王苟) —
+    "王欲",   # 王欲… — 王(爵/姓)+欲 (wishes to), 周→梁→宋→后梁, never a name
+    "王发",   # 王发… — 王(爵/姓)+发 (dispatches), 汉→宋, cross-word (发=姬发 is single-char)
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not
