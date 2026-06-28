@@ -529,6 +529,55 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
     return len(created)
 
 
+# RC book-enrich — first-mention courtesy-name apposition 「{姓名}，字{X}」. The 字
+# (表字) is the single most reliable book-derived identity fact: it follows a rigid
+# punctuation-bounded form and uniquely tags the biographical subject. We mine it
+# corpus-wide and attach by 卷-proximity so a same-name figure from another era never
+# inherits the wrong 字 (汉 张温 字惠恕 ≠ 陈 张温). Book-derived only — never Wikipedia.
+_ZI_PAIR_RE = re.compile(
+    r"([\u4e00-\u9fff]{2,4})，字([\u4e00-\u9fff]{1,2})(?=[，。、；！？])")
+
+
+def enrich_briefs(juans, text_dir, people_merged):
+    """Prepend 「字X。」 to the brief/identity of auto/gloss cards whose canonical name
+    is introduced with a courtesy name in the text. Returns count enriched."""
+    by_name: dict[str, list] = {}
+    for p in people_merged:
+        if p.get("confidence") == "reviewed":
+            continue  # never touch hand-curated cards
+        by_name.setdefault(p["canonical_name"], []).append(p)
+    if not by_name:
+        return 0
+    found: list[tuple[str, str, int]] = []  # (name, zi, juan) in reading order
+    for juan_no in juans:
+        jf = text_dir / f"juan_{juan_no:03d}.json"
+        if not jf.exists():
+            continue
+        juan = json.loads(jf.read_text(encoding="utf-8"))
+        for para in juan["paragraphs"]:
+            chunks = [para.get("main", "")]
+            chunks += [n.get("text", "") for n in (para.get("notes") or [])]
+            for ch in chunks:
+                for m in _ZI_PAIR_RE.finditer(ch):
+                    if m.group(1) in by_name:
+                        found.append((m.group(1), m.group(2), juan_no))
+    enriched: set[str] = set()
+    for nm, zi, juan_no in found:
+        cands = by_name[nm]
+        best = next((p for p in cands if juan_no in (p.get("juans") or [])), None)
+        if best is None:
+            best = min(cands, key=lambda p: _juan_gap(p.get("juans") or [10 ** 6], juan_no))
+        if best["id"] in enriched:
+            continue
+        clause = f"字{zi}。"
+        if not best["brief"].startswith("字"):
+            best["brief"] = clause + best["brief"]
+        if not best["identity"].startswith("字"):
+            best["identity"] = clause + best["identity"]
+        enriched.add(best["id"])
+    return len(enriched)
+
+
 def main():
     by_id = {p["id"]: p for p in PEOPLE_MERGED}
     # Duplicate-id guard — a copy/paste slip would silently drop a person.
@@ -559,6 +608,10 @@ def main():
     gloss_meta = seed_mod.juan_meta()
     gloss_new_cards = build_gloss_cards(JUANS, TEXT, RULES, canon_to_pids, by_id,
                                         PEOPLE_MERGED, gloss_meta, set(JUANS))
+
+    # book-enrich — courtesy-name apposition into briefs (after gloss cards exist so
+    # newly-minted 家世 cards also get their 字 when the text introduces one).
+    briefs_enriched = enrich_briefs(JUANS, TEXT, PEOPLE_MERGED)
 
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "mentions").mkdir(parents=True, exist_ok=True)
@@ -726,6 +779,7 @@ def main():
     print(f"RC-2b gloss recall emitted: {gloss_emitted}"
           f"   kinship relations: {len(relations_out)}"
           f"   new cards minted: {gloss_new_cards}")
+    print(f"book-enrich 字 briefs: {briefs_enriched}")
     print(f"title-glue aliases bound: {SEED_STATS['glue_bound']}"
           f"   missing canonical (cast to add): {SEED_STATS['glue_missing']}")
     hand_ids = {p["id"] for p in PEOPLE_MERGED if p.get("confidence") == "reviewed"}
