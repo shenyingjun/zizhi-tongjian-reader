@@ -173,6 +173,28 @@ COMMON_WORD_NONPERSON: set[str] = {
     "胡虏",   # 与胡虏战 — collective term for the enemy/Hu
     "廉直",   # 以廉直稍迁 — upright (adjective)
     "莫应",   # 天下莫应 — "none responded"
+    # RC-1 (R25 name-boundary audit) — 2-char surfaces surfaced by the 单姓双名
+    # truncation scan that are actually place / 官号 / 藩镇 / 国名 / verb phrases jieba
+    # mislabels nr; each a junk card across several 卷. Verified: NONE has a dated/字
+    # brief (no real homograph). NB: 魏相(汉丞相)/王乌(汉使)/魏公·景穆·闵孝(封号/谥号) were
+    # checked and DELIBERATELY kept — real persons or 尊号 handled by rc4/rc5.
+    # — 地名 / 郡名 —
+    "陈留",   # 陈留郡 / 陈留太守 — a commandery (place)
+    "魏兴",   # 魏兴郡 / 魏兴太守 — a commandery (place)
+    "魏东",   # 魏东徐州 / 魏东豫州 / 魏东荆州 — 魏(国)+东(方位)+州, not a person
+    # — 官号 / 藩镇 / 禁军号 —
+    "魏仪",   # 魏仪同三司 — 魏(国)+仪同三司 (官名)
+    "夏绥",   # 夏绥(银)节度使 — a 藩镇, not a person
+    "陈许",   # 陈许(蔡)节度使 — a 藩镇, not a person
+    "龙虎",   # 左/右龙虎统军 — 禁军号, not a person
+    "龙武",   # 左/右龙武统军 — 禁军号, not a person
+    "莫离",   # 莫离支 (高句丽 막리지, 官名) truncation — not a person
+    # — 国名 / 跨词误切 —
+    "吴越",   # 吴越国 / 吴越王 (钱镠) — a state, not a person
+    "吴大",   # 吴大赦 — 吴(国)+大赦, never a person
+    "钱万",   # 钱万缗 — 一万钱 (money amount), not the surname 钱
+    "寇魏",   # 寇魏边 — 寇(raid)+魏(国)边, a verb phrase
+    "布满",   # 布满山谷 — "spread over" (verb), not a person
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not
