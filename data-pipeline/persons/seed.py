@@ -64,11 +64,40 @@ BANNED_SURF: set[str] = {
 }
 
 
+# RC-1/RC-3a — common 文言 words, idioms, objects and 爵号 fragments whose first
+# char is ALSO a 姓 (黄/雷/徐/符/顾/陈/神…), so the surname-prefix gate wrongly
+# admits them as a 2-char 姓+名. These are never a person card. Seeded from the
+# 卷174 historian audit; extend as new false positives surface.
+COMMON_WORD_NONPERSON: set[str] = {
+    "雷霆",   # 声如雷霆 — thunder
+    "符玺",   # 天子符玺 — the imperial seal
+    "黄钺",   # 假黄钺 — a ceremonial axe / mark of authority
+    "徐行",   # 称疾徐行 — to walk slowly
+    "顾托",   # 猥蒙顾托 — to entrust
+    "陈谢",   # 陈情谢罪 — to apologise
+    "黄龙",   # 黄龙兵 / 年号 / 地名 — never a person here
+    "阿衡",   # 伊尹's office, used allusively (阿衡之任)
+    "神武",   # 爵号 (神武公) / 谥 / adjective — too ambiguous as a standalone card
+    "魏安",   # 魏安公 place-title fragment (→ 尉迟惇)
+    "申公",   # 爵号 fragment (申公·李穆)
+}
+
+# RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not
+# a person (阿史那 = the Türk royal house), so a bare occurrence is dropped; but as
+# the head of a longer name (阿史那社尔) the model SHOULD keep them — handled in
+# load_model_ner_people (bare-clan drop only).
+COMPOUND3: set[str] = {
+    "阿史那", "阿史德", "破六韩", "纥豆陵", "费也利", "吐谷浑", "是云", "没鹿回",
+}
+
+
 def bad_auto_surface(s: str) -> bool:
     """A surface unsafe to auto-match: too short, an explicit banned form, or a
     generic title / honorific / clan pattern (X王, X后, X帝, X太子, X氏, …) that
     denotes a rotating role rather than one fixed referent."""
     if len(s) < 2 or s in BANNED_SURF:
+        return True
+    if s in COMMON_WORD_NONPERSON or s in COMPOUND3:   # RC-1/RC-3: common words & bare 胡 clans
         return True
     if s[-1] in "王后妃帝":            # 赵王 / 窦太后 / 许皇后 / 魏文帝 …
         return True
@@ -116,6 +145,11 @@ COMPOUND = {
     # 公-prefixed / place-ambiguous forms are deliberately excluded.
     "呼延", "淳于", "太叔", "仲孙", "轩辕", "段干", "百里", "羊舌", "微生",
     "梁丘", "澹台", "宗政",
+    # RC-6 — 鲜卑 / 十六国 / 胡 复姓 attested in 资治通鉴 (达奚儒, 乙弗虔, 豆卢勣,
+    # 贺娄子干, 叱列长义, 斛律光 …). Enables the 复姓+单名 3-char path for jieba.
+    "达奚", "乙弗", "豆卢", "贺娄", "叱列", "乌丸", "贺兰", "斛律", "屈突",
+    "库狄", "乞伏", "秃发", "沮渠", "出连", "可朱", "叱罗", "叱干", "慕舆",
+    "费连", "莫多", "厍狄",
 }
 
 # A name char-2/3 that is a particle / common verb / admin·geographic unit marks
@@ -329,6 +363,8 @@ def load_model_ner_people(hand_people):
             continue
         if surf in COMPOUND or surf in _MODEL_TITLE_BLOCK:
             continue
+        if surf in COMPOUND3:                            # bare 胡 clan (阿史那)
+            continue
         if len(surf) == 2 and surf[0] == "孝":          # 孝武/孝文/孝宣… posthumous
             continue
         if len(surf) >= 4 and ("孝" in surf or "睿" in surf or "愍" in surf):
@@ -344,6 +380,86 @@ def load_model_ner_people(hand_people):
         for jn in info.get("j", []):
             recs[surf].append((jn, None, "", ""))
     return recs
+
+
+def _surname_of(full: str):
+    """Leading 姓 of a full 姓名: a 2-char COMPOUND prefix, else a single clean 姓."""
+    if len(full) >= 3 and full[:2] in COMPOUND:
+        return full[:2]
+    if full and full[0] in CLEAN_SURNAMES:
+        return full[0]
+    return None
+
+
+# RC-2 — 省姓回指 (surname-elided anaphora). On second mention 资治通鉴 routinely drops
+# the surname — 「于仲文…仲文」, 「庾季才…季才」, 「崔仲方…仲方」 — so the bare given name
+# splits off as its own spurious 2-char card. Fix: within a single 卷, if a 2-char auto
+# surface S equals a full 姓名 F (also present in that 卷) with its leading 姓 removed —
+# i.e. F = 〔姓〕+ S where 姓 is a real surname (1-char clean/ambiguous or 2-char compound)
+# — bind S to F as a 卷-local alias and drop its standalone presence in that 卷.
+#
+# Deliberately SUFFIX-only (省姓回指), never prefix: a prefix match like 李广 ⊂ 李广利 or
+# 张昌 ⊂ 张昌宗 would silently fold one famous person into another. jieba head-truncations
+# (辛彦之→辛彦, 李圆通→李圆) are therefore left to recall fixes, not merged here.
+def _elided_surname(full: str, given: str):
+    """If `full` == 〔姓〕+ `given` and the removed head is a real surname, return that
+    surname; else None. Models 省姓回指 surname elision precisely."""
+    if not full.endswith(given) or len(full) <= len(given):
+        return None
+    head = full[:len(full) - len(given)]
+    if len(head) == 2 and head in COMPOUND:
+        return head
+    if len(head) == 1 and head in (CLEAN_SURNAMES | AMBIGUOUS_SURNAMES):
+        return head
+    return None
+
+
+def merge_anaphora(people):
+    """Fold 省姓回指 surname-elided 2-char fragments into the full 姓名 they belong to,
+    within each 卷. Mutates `people` in place; returns (merged, dropped) counts."""
+    by_juan_full: dict[int, list] = collections.defaultdict(list)
+    for p in people:
+        cn = p["canonical_name"]
+        if 3 <= len(cn) <= 5 and _HAN_ONLY.match(cn):
+            for j in p["juans"]:
+                by_juan_full[j].append(p)
+
+    merged = 0
+    dropped_juans = collections.defaultdict(set)  # frag_id -> {juan,...}
+    for p in people:
+        cn = p["canonical_name"]
+        if len(cn) != 2 or p["confidence"] != "high" or not _HAN_ONLY.match(cn):
+            continue
+        for j in list(p["juans"]):
+            host = None
+            for F in by_juan_full.get(j, ()):
+                fn = F["canonical_name"]
+                if fn == cn or not _elided_surname(fn, cn):
+                    continue
+                if host is not None and host["canonical_name"] != fn:
+                    host = "AMBIG"
+                    break
+                host = F
+            if host and host != "AMBIG":
+                if cn not in host["match"]:
+                    host["match"].append(cn)
+                if cn not in host.get("names", []):
+                    host.setdefault("names", []).append(cn)
+                dropped_juans[p["id"]].add(j)
+                merged += 1
+
+    dropped = 0
+    survivors = []
+    for p in people:
+        rm = dropped_juans.get(p["id"])
+        if rm:
+            p["juans"] = sorted(set(p["juans"]) - rm)
+            if not p["juans"]:
+                dropped += 1
+                continue
+        survivors.append(p)
+    people[:] = survivors
+    return merged, dropped
 
 
 def merge_people_sources(*sources):
@@ -722,6 +838,10 @@ def build_seed(hand_people, juans_allowed):
     if remove_ids:
         people = [p for p in people if p["id"] not in remove_ids]
 
+    # 2c. RC-2 anaphora / truncation merge — fold 省姓回指 + jieba-truncated 2-char
+    #     fragments into the full 姓名 they belong to, per 卷 (see merge_anaphora).
+    anaphora_merged, anaphora_dropped = merge_anaphora(people)
+
     # 3. Per-卷 collision resolution. A surface owned by >1 person in a 卷 is
     #    ambiguous there and dropped from the rule table for that 卷.
     owners: dict[int, dict[str, set]] = collections.defaultdict(lambda: collections.defaultdict(set))
@@ -743,4 +863,6 @@ def build_seed(hand_people, juans_allowed):
 
     return people, dict(rules), {"ambiguous_dropped": dropped,
                                  "glue_bound": glue_bound,
-                                 "glue_missing": glue_missing}
+                                 "glue_missing": glue_missing,
+                                 "anaphora_merged": anaphora_merged,
+                                 "anaphora_dropped": anaphora_dropped}
