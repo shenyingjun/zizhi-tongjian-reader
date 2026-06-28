@@ -195,6 +195,52 @@ COMMON_WORD_NONPERSON: set[str] = {
     "钱万",   # 钱万缗 — 一万钱 (money amount), not the surname 钱
     "寇魏",   # 寇魏边 — 寇(raid)+魏(国)边, a verb phrase
     "布满",   # 布满山谷 — "spread over" (verb), not a person
+    # RC-1 (R26 Phase-2 historian audit: 卷050 东汉 / 卷145 南齐-北魏 / 卷265 唐末) —
+    # confirmed non-person surfaces. Each: (a) flagged by the historian audit with text
+    # evidence AND (b) verified to carry ONLY auto-minted "见于卷NNN" briefs spread across
+    # many dynasties (汉→唐→后晋) — the signature of a recurring false surface, never one
+    # dated/字 person. NB single-char anaphora junk (见/诏/诸/律/废/怒/勇/监) and real
+    # homographs (王平 三国蜀汉) deliberately excluded; 封号+名/谥号/错链 → findings (rc4/rc5).
+    # — 地名 —
+    "霍丘",   # 军于霍丘 — a county (place)
+    "狄道",   # 陇西郡始还狄道 — a place
+    "温宿",   # 姑墨、温宿 — 西域国名 (place)
+    "蒋桥",   # 进屯蒋桥 — a place
+    "林园",   # 送华林园 — 华林园 mid-cut (place)
+    "王庭",   # 车师前王庭 — 单于/court 处所, not the surname 王
+    "石洞",   # 赤石洞蛮酋 — 赤石洞 place fragment
+    "高句",   # 高句骊与濊貊 — 高句骊 truncation (国名/部族)
+    # — 官号片段 —
+    "散骑",   # 散骑常侍 — an office
+    "林监",   # 羽林监敦煌范绍 — 羽林监 mid-cut (官名)
+    "王傅",   # 和王傅张廷范 — 王府傅 (官名), not a person
+    # — 国名/朝代字 + 后字 跨词误切 —
+    "魏散骑",  # 魏散骑常侍赵修 — 魏(国)+散骑常侍
+    "魏诏",   # 魏诏营缮国学 — 魏(国)+诏(decree)
+    "魏诸",   # 魏诸军粮运绝 — 魏(国)+诸(all)
+    "魏顿",   # 魏顿丘匡公穆亮 — 魏(国)+顿丘…
+    "魏平",   # 魏平阳平公丕 — 魏(国)+平阳…
+    "魏发冀",  # 魏发冀、定、瀛 — 魏(国)+发(dispatch)冀州…
+    "唐祚",   # 欲延唐祚 — 唐(国)+祚 (dynastic fortune)
+    "唐恩",   # 世受唐恩 — 唐(国)+恩 (imperial grace)
+    # — 典籍 / 年号 —
+    "梁律",   # 为《梁律》— a law code (book title)
+    "景明",   # 景明中，崇为太乐令 — a 年号 (北魏景明), not a person
+    # — 普通词 / 动宾 / 形容 —
+    "寇钞",   # 共入寇钞 — to raid & plunder (verb)
+    "布德",   # 宣威布德 — to spread virtue (verb phrase)
+    "周旋",   # 周旋民间 — to move about / deal with (verb)
+    "伏见",   # 臣伏见诏书 — memorial formula ("I respectfully observe")
+    "伏辜",   # 石显伏辜 — to be punished for one's guilt (verb)
+    "陈列",   # 为之陈列军事 — to set out / arrange (verb)
+    "莫言",   # 若肉食莫言 — "say nothing of…" (verb phrase)
+    "余怒",   # 柳璨余怒所注 — remaining anger (noun)
+    "林木",   # 无林木可为栅 — trees (common noun)
+    "沈醉",   # 乃饮沈醉 — 沉醉 dead-drunk (state)
+    "沈思",   # 澄沈思良久 — 沉思 to ponder (verb)
+    "沈废",   # 坐沈废累年 — 沉废 to be cast aside (state)
+    "沈勇",   # 性沈勇 — 沉勇 deep & brave (adjective)
+    "王苟",   # 王苟先下寿州 — 王+苟先 (cross-word)
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not
