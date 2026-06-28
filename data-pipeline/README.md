@@ -8,7 +8,7 @@ Builds the static corpus + person index that the web reader ships with.
 2. `parse.py` — convert MediaWiki HTML to structured per-卷 JSON (separating main text and 胡注).
 3. `simplify.py` — OpenCC traditional → simplified conversion.
 4. `year_segment.py` — detect year boundaries inside each 卷.
-5. `persons/` — build the person knowledge base (seed from JY0284 + NER + LLM disambig + CBDB).
+5. `persons/` — build the person knowledge base (seed from JY0284 + NER + LLM disambig + CBDB). See [`persons/README.md`](persons/README.md) for the recognition rules, wave log, and backlog.
 6. `emit.py` — emit `web/public/text/{juan}.json` and `web/public/index/zztj.sqlite`.
 
 ## Setup
