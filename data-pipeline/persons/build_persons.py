@@ -18,7 +18,7 @@ and a surface is only applied in the 卷 listed in its person's `juans`.
 Run:  python build_persons.py
 """
 from __future__ import annotations
-import json, datetime, hashlib, re
+import json, datetime, hashlib, re, collections
 from pathlib import Path
 
 from cast import PEOPLE
@@ -29,6 +29,22 @@ JUANS = list(range(1, 295))  # all 294 卷 (hand 'reviewed' + auto seed layer)
 REPO = Path(__file__).resolve().parents[2]
 TEXT = REPO / "web" / "public" / "text"
 OUT = TEXT / "persons"
+
+
+def _write_text_retry(path, text, tries=8, delay=0.5):
+    """Windows write with retry — an external scanner (Defender real-time, search
+    indexer) intermittently holds a freshly-written JSON file, surfacing as
+    OSError [Errno 22] on the next open. Retry a few times before giving up."""
+    import time
+    for k in range(tries):
+        try:
+            path.write_text(text, encoding="utf-8")
+            return
+        except OSError:
+            if k == tries - 1:
+                raise
+            time.sleep(delay)
+
 
 # Merge the hand-curated cast with the deterministic auto-seed layer. PEOPLE is
 # the combined people list (hand juans grown across batches, auto names split by
@@ -667,7 +683,125 @@ def _hu_xref_juan(notes, y_full, allowed):
     return None
 
 
-# RC-2b inverse — 「X，Y之N世孙也」 where the SUBJECT X is the new person and the
+_XREF_NUM_RE = re.compile(r"见([一二三四五六七八九十百零〇]+)\s*卷")
+
+
+def _merge_xref_card(keep, drop, rules, meta=None):
+    """Fold the later split-window card `drop` into the earlier `keep`: union 卷 /
+    aliases, re-point every RULES surface, extend floruit end. The earliest-anchored
+    brief on `keep` is left as-is (it already reports the true first appearance)."""
+    keep["juans"] = sorted(set(keep.get("juans", [])) | set(drop.get("juans", [])))
+    for fld in ("names", "match"):
+        have = {(n["text"] if isinstance(n, dict) else n)
+                for n in keep.get(fld, [])}
+        for n in drop.get(fld, []):
+            t = n["text"] if isinstance(n, dict) else n
+            if t not in have:
+                keep.setdefault(fld, []).append(n)
+                have.add(t)
+    # NOTE: do NOT extend floruit from the dropped window. Most xref-merges re-unite
+    # a RETROSPECTIVE ALLUSION (e.g. 卷148 崔光「引汉光武崩赵熹…故事」 cites the 东汉 赵熹
+    # centuries later); pulling floruit end to the citing 卷's era would invent a
+    # multi-century lifespan and poison the lifespan-gate disambiguation signal. Leave
+    # floruit anchored to the earliest window — consistent with the (unchanged) brief.
+    kf = keep.get("floruit") or [None, None]
+    df = drop.get("floruit") or [None, None]
+    if kf[0] is None and df[0] is not None:
+        kf[0] = df[0]
+    if kf[1] is None and df[1] is not None and (kf[0] is None or df[1] >= kf[0]):
+        kf[1] = df[1]
+    keep["floruit"] = kf
+    drop_id = drop["id"]
+    keep_id = keep["id"]
+    for smap in rules.values():
+        for s, sp in list(smap.items()):
+            if sp == drop_id:
+                smap[s] = keep_id
+
+
+def merge_xref_windows(by_id, people_list, rules, juans, text_dir, meta=None):
+    """Wave B — re-unite an auto person that split_windows split across a large 卷
+    gap, when the book's OWN 胡注 「见{N}卷」 cross-reference points from a later window
+    back into an earlier window of the SAME canonical surface (李洧 卷227+卷250 → one
+    card; 张建封 卷225–235+卷250 → one card). The 注 is the book's same-person signal.
+
+    Precision-first: only AUTO cards sharing an identical canonical name; merge a later
+    window into the earliest only when some 卷X in that later window has a paragraph
+    where the surface occurs AND a 注 on that paragraph cites 见N卷 with N inside the
+    earliest window ±1 (the ±1 absorbs the book's imprecise 卷/年 citing). Because the
+    membership test is against THIS surface's own window, two people quoted in one
+    paragraph self-disambiguate — each only matches the xref that lands in its window."""
+    groups: dict[str, list] = collections.defaultdict(list)
+    for pid_, p in by_id.items():
+        if str(pid_).startswith("a:"):
+            groups[p["canonical_name"]].append(p)
+    juan_cache: dict[int, list] = {}
+
+    def juan_paras(j):
+        if j not in juan_cache:
+            jf = text_dir / f"juan_{j:03d}.json"
+            juan_cache[j] = (json.loads(jf.read_text(encoding="utf-8"))["paragraphs"]
+                             if jf.exists() else [])
+        return juan_cache[j]
+
+    merged = 0
+    dropped_ids: set = set()
+    for name, cards in groups.items():
+        if len(cards) < 2 or len(name) < 2:
+            continue
+        cards.sort(key=lambda c: min(c["juans"]) if c.get("juans") else 10 ** 9)
+        keep = cards[0]
+        kjs = [j for j in keep.get("juans", []) if j in juans]
+        if not kjs:
+            continue
+        lo, hi = min(kjs) - 1, max(kjs) + 1
+        for C in cards[1:]:
+            hit = False
+            for jx in sorted(set(C.get("juans", []))):
+                if jx not in juans:
+                    continue
+                for para in juan_paras(jx):
+                    main = para.get("main", "")
+                    if name not in main:
+                        continue
+                    # positions where the surface occurs in main
+                    occ = []
+                    p0 = main.find(name)
+                    while p0 >= 0:
+                        occ.append(p0)
+                        p0 = main.find(name, p0 + 1)
+                    for note in para.get("notes", []) or ():
+                        for m in _XREF_NUM_RE.finditer(note.get("text", "")):
+                            n = _cn2int(m.group(1))
+                            if not (n and lo <= n <= hi):
+                                continue
+                            # PROXIMITY: the citation must annotate THIS surface — its
+                            # attach offset must follow an occurrence of `name` within a
+                            # short window (李洧自归，见227卷). This disambiguates two
+                            # people cited in one paragraph (李洧 vs 张建封) and blocks a
+                            # coincidental 见N卷 about an unrelated person from merging a
+                            # cross-era homograph (王郎 = 汉王昌 vs 魏王朗).
+                            aft = note.get("after")
+                            if aft is None:
+                                continue
+                            if any(0 <= aft - (o + len(name)) <= 16 for o in occ):
+                                hit = True
+                                break
+                        if hit:
+                            break
+                    if hit:
+                        break
+                if hit:
+                    break
+            if not hit:
+                continue
+            _merge_xref_card(keep, C, rules, meta)
+            dropped_ids.add(C["id"])
+            del by_id[C["id"]]
+            merged += 1
+    if dropped_ids:
+        people_list[:] = [p for p in people_list if p["id"] not in dropped_ids]
+    return merged, dropped_ids
 # OBJECT Y is the KNOWN ancestor (谱，珪之六世孙也 → 谱 = 王珪's 6th-gen descendant).
 # The forward path mints the relative Y from a known X; this inverse path mints the
 # subject X from a known ancestor Y, inheriting Y's surname (patrilineal). The
@@ -886,6 +1020,19 @@ def main():
     # newly-minted 家世 cards also get their 字 when the text introduces one).
     briefs_enriched = enrich_briefs(JUANS, TEXT, PEOPLE_MERGED)
 
+    # ── Wave B: 胡注 见N卷 xref window-merge ──
+    # split_windows separates one NER surface into per-window cards across a large 卷
+    # gap. The book's own 胡注 「见{N}卷」 cross-reference is the same-person signal —
+    # re-unite李洧 (卷227+卷250) / 张建封 (卷225–235+卷250) before the lookback/mention
+    # passes so their RULES + mentions aggregate onto one card.
+    xref_merged, xref_dropped = merge_xref_windows(
+        by_id, PEOPLE_MERGED, RULES, set(JUANS), TEXT, gloss_meta)
+    for did in xref_dropped:
+        given_of.pop(did, None)
+    if xref_dropped:
+        for nm_, lst in list(canon_to_pids.items()):
+            canon_to_pids[nm_] = [t for t in lst if t[0] not in xref_dropped]
+
     # ── lookback pass — recover 官衔-glued earlier appearances ──
     # An auto-card's 卷 set comes from NER, which can't split a name glued to a long
     # 官衔 first-introduction (御史中丞兼尚书右丞夏侯孜), so the card anchors to a LATER
@@ -1086,9 +1233,9 @@ def main():
 
         para_ids = {m["pid"] for m in mentions}
         per_juan_counts[juan_no] = (len(mentions), len(para_ids))
-        (OUT / "mentions" / f"juan_{juan_no:03d}.json").write_text(
+        _write_text_retry(OUT / "mentions" / f"juan_{juan_no:03d}.json",
             json.dumps({"juan_no": juan_no, "version": 1, "mentions": mentions},
-                       ensure_ascii=False, indent=2), encoding="utf-8")
+                       ensure_ascii=False, indent=2))
 
     # ── people.json — only people actually matched somewhere ──
     missing_brief = [pid for pid in seen_ids if not by_id[pid].get("brief")]
@@ -1116,29 +1263,27 @@ def main():
         rows = sorted(slot.values(), key=lambda r: (r["juan"], r["pid"]))
         appearances_out[pid] = rows
 
-    (OUT / "people.json").write_text(
-        json.dumps({"version": 1, "people": people_out}, ensure_ascii=False, indent=2),
-        encoding="utf-8")
-    (OUT / "appearances.json").write_text(
+    _write_text_retry(OUT / "people.json",
+        json.dumps({"version": 1, "people": people_out}, ensure_ascii=False, indent=2))
+    _write_text_retry(OUT / "appearances.json",
         json.dumps({"version": 1, "appearances": appearances_out},
-                   ensure_ascii=False, indent=2), encoding="utf-8")
+                   ensure_ascii=False, indent=2))
 
     # ── relations.json — RC-2b kinship edges (subject IS object's <kin>) ──
     shipped_ids = {p["id"] for p in people_out}
     relations_out = [r for r in relations_all
                      if r["subject"] in shipped_ids and r["object"] in shipped_ids]
-    (OUT / "relations.json").write_text(
+    _write_text_retry(OUT / "relations.json",
         json.dumps({"version": 1, "relations": relations_out},
-                   ensure_ascii=False, indent=2), encoding="utf-8")
+                   ensure_ascii=False, indent=2))
 
     covered = [j for j in JUANS if j in per_juan_counts]
     total_mentions = sum(c[0] for c in per_juan_counts.values())
-    (OUT / "manifest.json").write_text(
+    _write_text_retry(OUT / "manifest.json",
         json.dumps({"version": 1,
                     "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     "juans": covered, "people_count": len(people_out),
-                    "mention_count": total_mentions}, ensure_ascii=False, indent=2),
-        encoding="utf-8")
+                    "mention_count": total_mentions}, ensure_ascii=False, indent=2))
 
     # ── report ──
     n_reviewed = sum(1 for p in people_out if p["confidence"] == "reviewed")
@@ -1157,6 +1302,7 @@ def main():
     print(f"rc5 谥号/封号 fragment cards dropped: {_FRAG_DROPPED}")
     print(f"lookback 卷 surfaces registered: {lookback_added}")
     print(f"lookback brief/floruit re-anchored: {lookback_rebriefed}")
+    print(f"xref window-merge (见N卷): {xref_merged} later windows folded")
     print(f"book-enrich 字 briefs: {briefs_enriched}")
     print(f"title-glue aliases bound: {SEED_STATS['glue_bound']}"
           f"   missing canonical (cast to add): {SEED_STATS['glue_missing']}")
