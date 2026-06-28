@@ -334,6 +334,201 @@ def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events):
     return out
 
 
+# ── Wave 5 P5 · RC-2b 「X，Y之Z也」 genealogical gloss ─────────────────────────
+# At a clause boundary 资治通鉴 glosses a just-named person: 「温裕，戣之兄子也」 =
+# X(温裕) is Y(戣)'s Z(兄子). Two recoveries: (a) Y is written 省姓 and shares X's
+# surname (戣 → 孔戣) — reconstruct 姓+Y and bind that mention, recall a surname-gate
+# / model NER cannot reach; (b) a kinship edge X——Z——>Y.
+#
+# PATRILINEAL terms only: for 子/孙/兄/弟/父/兄子/从子/族子… X and Y share a surname,
+# so 姓(X)+Y is sound. 婿/甥/外孙/妻/母/舅 (different surname) are deliberately
+# EXCLUDED. The hard precision backstop is the existence gate: 姓+Y is bound ONLY
+# when it already matches a card reachable near this 卷, so a wrong surname guess
+# (董卓+布 → 董布) finds no card and is silently dropped.
+_KINSHIP_PATRILINEAL = [
+    "曾孙", "玄孙", "兄子", "从子", "族子", "犹子", "从孙", "兄孙",
+    "从弟", "从兄", "母弟", "母兄", "季父", "叔父", "伯父",
+    "子", "孙", "弟", "兄", "父",
+]
+_KIN_ALT = "|".join(sorted(_KINSHIP_PATRILINEAL, key=len, reverse=True))
+_GLOSS_RE = re.compile(
+    r"([\u4e00-\u9fff]{1,3})，([\u4e00-\u9fff]{1,4})之(" + _KIN_ALT + r")也"
+)
+_GLOSS_BOUNDARY = set("。；，！？、：")
+
+
+def _juan_gap(juans, j):
+    return min((abs(a - j) for a in juans), default=10 ** 6)
+
+
+def extract_gloss(text, rule_map, canon_to_pids, juan_no, by_id, consumed):
+    """RC-2b. Return (mentions, relations) for one main-text blob:
+      mentions = [(start, end, person_id, surface)] — Y bound to its full 姓名 card,
+      relations = [(subject_pid, kin, object_pid, x_surface, y_surface)] meaning
+                  subject IS object's <kin>.
+    Precision-first: X must resolve through the 卷's collision-free surface map,
+    its surname must be derivable, and 姓+Y must already be a known card."""
+    mentions, relations = [], []
+    for m in _GLOSS_RE.finditer(text):
+        # require a real clause boundary just before X (start, or punctuation)
+        if m.start(1) > 0 and text[m.start(1) - 1] not in _GLOSS_BOUNDARY:
+            continue
+        x_surf, y_surf, z = m.group(1), m.group(2), m.group(3)
+        if not _gloss_y_ok(y_surf):
+            continue
+        pid_x = rule_map.get(x_surf)
+        if not pid_x:
+            continue
+        cx = by_id[pid_x]["canonical_name"]
+        surname = seed_mod._surname_of(cx)
+        if not surname:
+            continue
+        # Y written 省姓 (戣) → 姓+Y; or already a full 姓名 present as a card.
+        if seed_mod._surname_of(y_surf) and y_surf in canon_to_pids:
+            y_full = y_surf
+        else:
+            y_full = surname + y_surf
+        cands = canon_to_pids.get(y_full)
+        if not cands:
+            continue
+        pid_y = min(cands, key=lambda pc: _juan_gap(pc[1], juan_no))[0]
+        if pid_y == pid_x:
+            continue
+        ys, ye = m.start(2), m.end(2)
+        if not any(consumed[ys:ye]):
+            for k in range(ys, ye):
+                consumed[k] = True
+            mentions.append((ys, ye, pid_y, y_surf))
+        relations.append((pid_x, z, pid_y, x_surf, y_surf))
+    return mentions, relations
+
+
+_CN_DIGIT = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7,
+             "八": 8, "九": 9, "十": 10, "百": 100, "零": 0, "〇": 0}
+
+# Y morphemes that are pronouns / 尊号 / 庙号, never a personal given name — a gloss
+# 「X，上之弟也」 / 「X，太祖之孙也」 refers to the reigning ruler or a temple name, so
+# 姓+上 / 姓+太祖 must NOT be reconstructed as a person (萧上 / 萧太祖 are bogus).
+_GLOSS_Y_BLOCK = set("上帝后主君王公侯太子孙父母弟兄妻女甥婿妃嫔")
+
+
+def _gloss_y_ok(y: str) -> bool:
+    if not y or y in _GLOSS_Y_BLOCK:
+        return False
+    if len(y) <= 2 and y[-1] in "祖宗":   # 庙号: 太祖/高祖/世祖/太宗/高宗
+        return False
+    return True
+
+
+def _cn2int(s: str):
+    """Parse a small Chinese numeral (≤ 三百, the 资治通鉴 卷 range) to int. Handles
+    百/十 positional forms: 二百四十→240, 三十→30, 百→100. None if unparseable."""
+    if not s:
+        return None
+    total, section, last = 0, 0, 0
+    for ch in s:
+        if ch not in _CN_DIGIT:
+            return None
+        v = _CN_DIGIT[ch]
+        if v == 100:
+            section = (section + (last or 1)) * 100
+            total += section
+            section, last = 0, 0
+        elif v == 10:
+            section += (last or 1) * 10
+            last = 0
+        else:
+            last = v
+    return total + section + last or None
+
+
+def _hu_xref_juan(notes, y_full, allowed):
+    """A 胡注 「{Y}见…二百四十卷…」 cross-ref 卷 for a glossed person, when present
+    and within range. Anchors a generatively-created card to where Y actually is."""
+    for note in notes or ():
+        t = note.get("text", "")
+        idx = t.find(y_full)
+        if idx < 0:
+            continue
+        m = re.search(r"([一二三四五六七八九十百零〇]+)\s*卷", t[idx:idx + 24])
+        if m:
+            j = _cn2int(m.group(1))
+            if j and j in allowed:
+                return j
+    return None
+
+
+def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
+                      people_merged, meta, allowed):
+    """RC-2b pre-pass — generative recall. When a 「X，Y之Z也」 gloss reconstructs
+    Y = 姓(X)+Y to a name that has NO card (孔戣, only ever written 省姓 as 戣), mint
+    one, anchored to the gloss 卷 (and the 胡注 cross-ref 卷 when given). Strong
+    precision gates: X must resolve to a real person in this 卷, the kin term is
+    patrilineal (shared surname), and Y+姓 must not be a common non-person word.
+    Returns the number of cards created; mutates by_id/canon_to_pids/people_merged."""
+    created: dict[str, dict] = {}
+    for juan_no in juans:
+        jf = text_dir / f"juan_{juan_no:03d}.json"
+        if not jf.exists():
+            continue
+        rule_map = rules.get(juan_no, {})
+        if not rule_map:
+            continue
+        juan = json.loads(jf.read_text(encoding="utf-8"))
+        for para in juan["paragraphs"]:
+            mt = para.get("main", "")
+            for m in _GLOSS_RE.finditer(mt):
+                if m.start(1) > 0 and mt[m.start(1) - 1] not in _GLOSS_BOUNDARY:
+                    continue
+                x_surf, y_surf = m.group(1), m.group(2)
+                if not _gloss_y_ok(y_surf):
+                    continue
+                pid_x = rule_map.get(x_surf)
+                if not pid_x:
+                    continue
+                surname = seed_mod._surname_of(by_id[pid_x]["canonical_name"])
+                if not surname:
+                    continue
+                if seed_mod._surname_of(y_surf) and y_surf in canon_to_pids:
+                    continue  # already a full-name card → handled by binding pass
+                y_full = surname + y_surf
+                if y_full in canon_to_pids or len(y_full) < 2 or len(y_full) > 4:
+                    continue
+                if seed_mod.bad_auto_surface(y_full) or \
+                        y_full in seed_mod.COMMON_WORD_NONPERSON:
+                    continue
+                xref = _hu_xref_juan(para.get("notes"), y_full, allowed)
+                if y_full in created:
+                    for j in {juan_no, xref}:
+                        if j and j not in created[y_full]["juans"]:
+                            created[y_full]["juans"].append(j)
+                    continue
+                dyn = (meta.get(juan_no, {}).get("dynasty") or "").strip()
+                cs = meta.get(juan_no, {}).get("ce_start")
+                juans_c = sorted({j for j in (juan_no, xref) if j})
+                j0 = min(juans_c)
+                card = {
+                    "id": seed_mod._auto_id(y_full, 9000 + len(created)),
+                    "canonical_name": y_full,
+                    "names": [],
+                    "dynasty": dyn or "—",
+                    "era_hint": f"{dyn}人物" if dyn else "人物",
+                    "floruit": [cs, cs] if cs else [None, None],
+                    "brief": f"{dyn + '·' if dyn else ''}见于卷{j0:03d}（家世胡注）。",
+                    "identity": f"{dyn + '·' if dyn else ''}见于卷{j0:03d}（家世胡注）。",
+                    "match": [y_full],
+                    "juans": juans_c,
+                    "confidence": "high",
+                }
+                created[y_full] = card
+    for y_full, card in created.items():
+        people_merged.append(card)
+        by_id[card["id"]] = card
+        canon_to_pids.setdefault(y_full, []).append(
+            (card["id"], set(card["juans"])))
+    return len(created)
+
+
 def main():
     by_id = {p["id"]: p for p in PEOPLE_MERGED}
     # Duplicate-id guard — a copy/paste slip would silently drop a person.
@@ -353,6 +548,18 @@ def main():
         if g and g not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
             given_of[pid_] = g
 
+    # RC-2b — canonical 姓名 → [(pid, {juans})] for gloss Y reconstruction (孔戣).
+    canon_to_pids: dict[str, list] = {}
+    for pid_, p in by_id.items():
+        canon_to_pids.setdefault(p["canonical_name"], []).append(
+            (pid_, set(p.get("juans", []))))
+
+    # RC-2b pre-pass — mint cards for pure-new-recall glossed persons (孔戣, only
+    # ever written 省姓) so the binding pass below can resolve their 戣 mentions.
+    gloss_meta = seed_mod.juan_meta()
+    gloss_new_cards = build_gloss_cards(JUANS, TEXT, RULES, canon_to_pids, by_id,
+                                        PEOPLE_MERGED, gloss_meta, set(JUANS))
+
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "mentions").mkdir(parents=True, exist_ok=True)
 
@@ -362,6 +569,8 @@ def main():
     per_juan_counts: dict[int, tuple[int, int]] = {}
     anaphora_emitted = 0
     role_emitted = 0
+    gloss_emitted = 0
+    relations_all: list = []
 
     for juan_no in JUANS:
         jf = TEXT / f"juan_{juan_no:03d}.json"
@@ -414,6 +623,23 @@ def main():
                                      "confidence": by_id[pid_].get("confidence", "reviewed")})
                     seen_ids.add(pid_)
                     anaphora_emitted += 1
+            # Wave 5 P5 — RC-2b 「X，Y之Z也」 gloss: recover Y=姓+Y (戣→孔戣) and a
+            # kinship edge. Runs on 原文 after alias/role/anaphora consumption.
+            g_ments, g_rels = extract_gloss(main_text, RULES.get(juan_no, {}),
+                                            canon_to_pids, juan_no, by_id, consumed)
+            for (s, e, pid_, surf) in g_ments:
+                mentions.append({"pid": pid, "ce_year": ce, "source": "main",
+                                 "start": s, "end": e, "surface": surf,
+                                 "person_id": pid_, "kind": "gloss",
+                                 "confidence": by_id[pid_].get("confidence", "reviewed")})
+                seen_ids.add(pid_)
+                gloss_emitted += 1
+            for (px, z, py, xs, ys) in g_rels:
+                seen_ids.add(px)
+                seen_ids.add(py)
+                relations_all.append({"subject": px, "kin": z, "object": py,
+                                      "juan": juan_no, "para": pid,
+                                      "x": xs, "y": ys})
             for ni, note in enumerate(para.get("notes", [])):
                 for (s, e, pid_, surf) in extract(note.get("text", ""), surfaces):
                     mentions.append({"pid": pid, "ce_year": ce, "source": "hu",
@@ -470,6 +696,14 @@ def main():
         json.dumps({"version": 1, "appearances": appearances_out},
                    ensure_ascii=False, indent=2), encoding="utf-8")
 
+    # ── relations.json — RC-2b kinship edges (subject IS object's <kin>) ──
+    shipped_ids = {p["id"] for p in people_out}
+    relations_out = [r for r in relations_all
+                     if r["subject"] in shipped_ids and r["object"] in shipped_ids]
+    (OUT / "relations.json").write_text(
+        json.dumps({"version": 1, "relations": relations_out},
+                   ensure_ascii=False, indent=2), encoding="utf-8")
+
     covered = [j for j in JUANS if j in per_juan_counts]
     total_mentions = sum(c[0] for c in per_juan_counts.values())
     (OUT / "manifest.json").write_text(
@@ -489,6 +723,9 @@ def main():
           f"   (candidate chars admitted: {SEED_STATS['anaphora_char_admitted']})")
     print(f"role appellation (语境称谓) emitted: {role_emitted}"
           f"   (monarchs mapped: {len(ROLE_NAME_TO_PID)})")
+    print(f"RC-2b gloss recall emitted: {gloss_emitted}"
+          f"   kinship relations: {len(relations_out)}"
+          f"   new cards minted: {gloss_new_cards}")
     print(f"title-glue aliases bound: {SEED_STATS['glue_bound']}"
           f"   missing canonical (cast to add): {SEED_STATS['glue_missing']}")
     hand_ids = {p["id"] for p in PEOPLE_MERGED if p.get("confidence") == "reviewed"}

@@ -92,13 +92,15 @@ def main() -> int:
             surf = m["surface"]
             kind = m.get("kind", "alias")
             # Single-char surfaces are only permitted for position-resolved
-            # anaphora (省称回指), where the offset pins one specific person; a
-            # single-char *alias* would be a corpus-wide false-match storm.
-            if len(surf) <= 1 and kind != "anaphora":
+            # anaphora (省称回指) and RC-2b gloss (戣→孔戣, the 「X，Y之Z也」 clause
+            # pins one specific person); a single-char *alias* would be a
+            # corpus-wide false-match storm.
+            if len(surf) <= 1 and kind not in ("anaphora", "gloss"):
                 err(f"juan{juan_no:03d} pid{m['pid']}: single-char surface '{surf}'")
             # Bare/ambiguous appellations are only permitted as 'role' mentions,
-            # where the reigns resolver has bound them to one monarch by year.
-            if surf in BANNED and kind != "role":
+            # where the reigns resolver has bound them to one monarch by year,
+            # or position-pinned 'gloss' recall.
+            if surf in BANNED and kind not in ("role", "gloss"):
                 err(f"juan{juan_no:03d} pid{m['pid']}: banned ambiguous surface '{surf}'")
             pid = m.get("person_id")
             if pid not in people:
