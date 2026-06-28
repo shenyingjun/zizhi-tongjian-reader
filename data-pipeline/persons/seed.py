@@ -107,6 +107,8 @@ COMMON_WORD_NONPERSON: set[str] = {
     "菩萨",   # 菩萨 — Buddhist term; 尉迟菩萨 amplifies it corpus-wide
     "王安",   # 韩王安 = 韩王·名安 (封号+单名), tail 王安 is a mis-strip of 韩
     "王政",   # 秦王政 = 秦王·名政 (嬴政), tail 王政 is a mis-strip of 秦
+    "吕王嘉",  # 封号 glue: 吕王(吕氏封王)+名嘉 mis-segmentation (卷013); the real 吕嘉
+              # (南越相) and 王嘉 (汉相) both already have their own cards.
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not
@@ -140,6 +142,12 @@ def bad_auto_surface(s: str) -> bool:
     # consort rank, not a fixed personal name (the model glues 姓 onto the title).
     if len(s) >= 3 and any(s.endswith(suf) for suf in _ROLE_SUFFIX):
         return True
+    # 司马 / 司空 / 司徒 / 太史 双为官与复姓: 当其后缀本身是姓首时即官+名 glue（司马·高颎、
+    # 司马·任约），非一人 → 丢弃。此前仅在 model NER 路径施加，jieba/导读 路径漏网，故上提到
+    # 共用 guard，全路径生效。
+    for _off in _TITLE_SURNAMES:
+        if len(s) >= len(_off) + 2 and s.startswith(_off) and s[len(_off)] in CLEAN_SURNAMES:
+            return True
     return False
 
 
@@ -236,6 +244,11 @@ TITLE_GLUE_ALIASES = {
     "秦主健": "苻健",
     "秦主泓": "姚泓",
     "宋公裕": "刘裕", "宋王裕": "刘裕",
+    # 官名 glue (司马 = 官 here, not 姓): 高/任 are AMBIGUOUS surnames so the
+    # CLEAN_SURNAMES office-glue guard skips them — route the glued surface to the
+    # real person instead (卷174 historian audit).
+    "司马高颎": "高颎",
+    "司马任约": "任约",
 }
 
 # Surname chars that are ALSO very common function words / nouns in 文言. A name
@@ -479,6 +492,49 @@ def _elided_surname(full: str, given: str):
     if len(head) == 1 and head in (CLEAN_SURNAMES | AMBIGUOUS_SURNAMES):
         return head
     return None
+
+
+# Curated jieba mid-name truncations: a short card is the SAME person as a full 姓名,
+# but the truncated surface (达奚[长]儒 → 达奚儒, [陈慧]纪 wrongly read as 陈纪) yielded a
+# separate card. Each entry restricts the fold to the 卷 where the truncation occurs,
+# so unrelated 同名 cards (the 汉 陈纪 of 卷014/059) are never touched. Seeded from the
+# 卷174 historian audit (Wave 3/5 backlog); extend as new truncations surface.
+MANUAL_TRUNC_MERGE: dict[str, tuple[str, set[int]]] = {
+    "达奚儒": ("达奚长儒", {174}),
+    "陈纪":   ("陈慧纪", {174}),
+}
+
+
+def merge_truncations(people):
+    """Fold curated truncated-name cards into their full 姓名, restricted to the listed
+    卷. Mutates `people` in place; returns the merge count."""
+    by_canon: dict[str, list] = collections.defaultdict(list)
+    for p in people:
+        by_canon[p["canonical_name"]].append(p)
+    merged = 0
+    drop_ids: set[str] = set()
+    for short, (full, juan_filter) in MANUAL_TRUNC_MERGE.items():
+        hosts = by_canon.get(full)
+        if not hosts:
+            continue
+        host = hosts[0]
+        for p in by_canon.get(short, ()):
+            if p["id"] in drop_ids or not (set(p["juans"]) & juan_filter):
+                continue
+            for j in p["juans"]:
+                if j not in host["juans"]:
+                    host["juans"].append(j)
+            for m in p.get("match", []):
+                if m not in host["match"]:
+                    host["match"].append(m)
+            if short not in host["match"]:
+                host["match"].append(short)
+            host["juans"] = sorted(set(host["juans"]))
+            drop_ids.add(p["id"])
+            merged += 1
+    if drop_ids:
+        people[:] = [p for p in people if p["id"] not in drop_ids]
+    return merged
 
 
 def merge_anaphora(people):
@@ -1009,6 +1065,7 @@ def build_seed(hand_people, juans_allowed):
     # 2c. RC-2 anaphora / truncation merge — fold 省姓回指 + jieba-truncated 2-char
     #     fragments into the full 姓名 they belong to, per 卷 (see merge_anaphora).
     anaphora_merged, anaphora_dropped = merge_anaphora(people)
+    trunc_merged = merge_truncations(people)
 
     # 2d. RC-2c generative 省称 — propose each full 姓名's 2-char given-name tail as a
     #     match surface (recall for short forms no NER candidate proposed). The collision
