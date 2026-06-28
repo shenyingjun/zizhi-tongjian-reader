@@ -4,8 +4,8 @@ Builds the **person knowledge base** the reader ships with: who appears in 《�
 where each person is mentioned, and which surface strings (full names, 省称, 封号, 谥号,
 role appellations) resolve to which person — all computed **offline, at build time**.
 
-Current output (294 卷): **13,629 people** (179 hand-reviewed + 13,450 auto) ·
-**129,796 mentions**. Run `python validate_persons.py` after every rebuild.
+Current output (294 卷): **13,321 people** (179 hand-reviewed + 13,142 auto) ·
+**129,337 mentions**. Run `python validate_persons.py` after every rebuild.
 
 ---
 
@@ -57,6 +57,7 @@ character spans it consumes so later passes don't double-bind. Surfaces live in
 | **role** (Wave 5 P3) | 语境称谓 吴主/魏主/周主/契丹主 → the monarch *reigning at that year* | `reigns.resolve_role(surf, ce)`; title-glue + same-year-succession split |
 | **gloss** (RC-2b) | 家世 glosses 「X，Y之N世孙也」 → mint & bind the 省姓 relative | patrilineal kin only; surname shared; forward **and** inverse direction |
 | **titleglue** (RC-4) | 封号/王号 + 名 (赵王伦→司马伦, 蜀公迥) | clan-scoped; must not global-blacklist the bare 名 |
+| **xref-merge** (R29) | re-unites split-window cards the book's 胡注「见N卷」 cross-references prove are one person (李洧 卷227+250) | same canonical; proximity ≤16 chars; N in earliest window ±1 |
 | **lookback** | recovers 官衔-glued earlier appearances (御史中丞…夏侯孜) | scan ≤2 prior 卷; bind only if surface unclaimed there |
 
 ### Root-cause taxonomy (RC-N)
@@ -95,6 +96,22 @@ Detailed findings live in the session `findings` SQL table; high-level:
   - **RC-5 fragment guard** — data-driven drop of 2-char auto cards always glued to a
     封号/谥号/官名 tail and never standalone (14 dropped: 武灵/悼惠/衞思/…; homographs
     曹参/魏尚 kept).
+- **R29 (this round):**
+  - **复姓+单名 alias fix** — `_given_tail` no longer strips a 复姓 char into a false
+    cross-boundary 2-char alias (夏侯孜→侯孜, 司马懿→马懿). (b907593)
+  - **Lookback brief/floruit re-anchor** — when the lookback pass adds an earlier 卷,
+    the auto card's `见于卷NNN` brief + floruit start are rewritten to the true first
+    appearance (夏侯孜 now 卷249/850, not 卷250/860). 47 cards re-anchored. (b907593)
+  - **Wave B · 胡注 见N卷 xref-merge** — auto cards that `split_windows` split across a
+    large 卷 gap are re-united when the book's own 胡注「见N卷」 points from a later window
+    back into an earlier one (李洧 卷227+250 → 1 card; 张建封 → 1 card). 209 merges;
+    proximity-gated so cross-era homographs stay split (王郎 keeps 6 cards). floruit left
+    anchored to the earliest window (retrospective allusions must not inflate lifespan).
+    (96525a8)
+  - **Rolling historian-audit blacklist** — 6 卷 audited across all eras (080/180/280 +
+    030/120/230); **34 confirmed non-person surfaces** globally blacklisted (谥号/官署/
+    藩镇/部族/城名/动宾 fragments), each verified multi-卷/multi-dynasty with no 字 bio and
+    no real-person homograph. 13,420 → 13,321 cards, −448 junk mentions. (c98e451, dfe6efc)
 
 ---
 
@@ -103,11 +120,20 @@ Detailed findings live in the session `findings` SQL table; high-level:
 Tracked in the `findings` table (status `open`/`partial`). By priority:
 
 **High**
-- `r26-dynasty-mislink` (RC-7) — 卷145: 北魏 people tagged [齐]/[梁]/[宋]. 通鉴 dates by
-  the orthodox line, but actors are from rival states. Honest fix: show era/在世 rather
-  than a wrong 朝代, or derive dynasty from the person's own reign span.
-- `r26-fengtitle` (RC-4) — 封号+名 still mis-read as 王/侯-surname in some 北魏 cases
-  (王宝←湘东王宝晊, 王显←阳平王元显). Extend titleglue clan scoping.
+- `r29-rc7-dynasty-scoped` (RC-7) — auto cards inherit `dynasty` from their first-
+  appearance 卷's orthodox narrating line, so 北朝 actors in 南朝-narrated 卷119–176 are
+  mis-tagged 宋/齐/梁 (高允/源贺/崔光 → should be 北魏; 高欢/宇文泰 genuinely span two
+  regimes). Shown as a card chip → user-visible. Era metadata is in
+  `web/public/text/manifest.json` (dynasty/ce_start/ce_end). **~2,879 cards** in range;
+  only **~77** are a "single explicit 北朝 dynasty + years fit" safe subset. The systemic
+  fix (broad-era「北朝」/「存疑」 vs forced dynasty) is a **product-display decision** →
+  awaiting user call before automating.
+- `r29-mislink-*` / `r26-fengtitle` (RC-4 封号截断) — the **#1 remaining 错链 class**,
+  present in every 卷 audit: a 封号+given is mis-bound to a 王X/公X pseudo-surname or a
+  wrong-dynasty homograph (王骏→司马骏, 王亮→司马亮, 王弥→拓跋弥, 王康→刘康, 秦王炽磐→
+  乞伏炽磐). titleglue (RC-4) already fixes the cases where the clan+given card exists;
+  the rest need **generative card minting** (the clan-form name never appears as a clean
+  token) with 萧/元 国姓-coexistence disambiguation — higher risk, needs user validation.
 
 **Medium**
 - `r28-dunhao-coordination` (recall) — **the 顿号 wave.** `A、B` shares POS, so a bound
@@ -142,5 +168,8 @@ python validate_persons.py     # expect: OK ✓ all person-data invariants hold
 cd ..\..\web ; npm run build   # rebuild the PWA bundle
 ```
 
-If `build_persons.py` raises `OSError [Errno 22]` on `appearances.json`, the vite dev
-server is holding the file — retry 2–3×.
+If `build_persons.py` raises `OSError [Errno 22]` on a JSON write, an external file
+scanner (Windows Defender / search indexer) is momentarily locking the freshly-written
+file — **not** the vite dev server. All output writes go through `_write_text_retry`
+(8 tries, 0.5 s apart); a transient lock is retried automatically. If it still fails,
+re-run the build.
