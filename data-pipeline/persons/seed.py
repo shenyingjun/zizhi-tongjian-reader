@@ -307,6 +307,22 @@ COMMON_WORD_NONPERSON: set[str] = {
     # RC-1 (R33 卷250 historian audit) — 两林蛮 is a 西南 部族 (the Liang-Lin Man); the
     # model false-fired a 林蛮 card inside 两林蛮. No 林蛮 person in the corpus.
     "林蛮",   # 掠两林蛮 / 两林蛮开门纳之 — 两林(蛮)部 fragment, not 林(姓)+蛮
+    # Wave 36b (reader-agent audit of 卷035–232) — confirmed non-person auto surfaces, each
+    # carrying only auto briefs across multiple 卷/dynasties with NO real-person homograph.
+    # — 普通词 / 形容 / 成语 —
+    "英杰",   # 天资英杰 / 英杰之才 / 招延英杰 — heroes·talents (普通名词), 14 cards, never a person
+    "布野",   # 牛马布野 / 百姓布野 — spread across the fields (成语), not 布(姓)+野
+    "沈密",   # 性沈密 / 重厚沈密 — 沉静缜密 (形容性格), not 沈(姓)+密; bare 密 = 「密(secretly)」
+    # — 地名 / 城戍 / 渡口 —
+    "石梁",   # 克…石梁(二戍) / 退保石梁 / 拔石梁 — a 戍/fortress place, not 石(姓)+梁
+    "钱溪",   # 钱溪江岸 / 趣钱溪 / 攻钱溪 — a 长江 battle site (place), 19 cards, not 钱(姓)+溪
+    # — 部族 / 跨词 —
+    "索头",   # 索头郁鞠 / 加索头乞得 — 索头(鲜卑)=拓跋部 nickname (a 部族), the person is the tail
+    "胡来",   # 胡来攻 / 胡来转近 — 胡(虏)来 (the Hu came, verb) or 去胡来王 title, not 胡(姓)+来
+    # — [实名/指代] + 动词 误粘 (cf. 帅-tail in bad_auto_surface) —
+    "温至",   # 温至金乡 / 温至枋头 / 温至长安 — 桓温 至(arrived at), not 温(姓)+至
+    "温屯",   # 温屯故太极殿前 / 温屯武阳 — 桓温 屯(stationed at), not 温(姓)+屯
+    "景犹",   # 景犹欲全其一子 / 景犹有船 — 侯景 犹(still·yet), not 景(姓)+犹; bare 犹 = 「still」
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not
