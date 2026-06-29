@@ -304,6 +304,9 @@ COMMON_WORD_NONPERSON: set[str] = {
     # — 国名/朝代字 + 后字 跨词误切 (cf. 王至/王素/王苟) —
     "王欲",   # 王欲… — 王(爵/姓)+欲 (wishes to), 周→梁→宋→后梁, never a name
     "王发",   # 王发… — 王(爵/姓)+发 (dispatches), 汉→宋, cross-word (发=姬发 is single-char)
+    # RC-1 (R33 卷250 historian audit) — 两林蛮 is a 西南 部族 (the Liang-Lin Man); the
+    # model false-fired a 林蛮 card inside 两林蛮. No 林蛮 person in the corpus.
+    "林蛮",   # 掠两林蛮 / 两林蛮开门纳之 — 两林(蛮)部 fragment, not 林(姓)+蛮
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not

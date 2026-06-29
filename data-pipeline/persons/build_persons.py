@@ -1331,6 +1331,11 @@ def main():
             ce = para.get("ce_year")
             main_text = para.get("main", "")
             consumed = [False] * len(main_text)
+            # Section-local anaphora gate: a numbered section (①②…⑳) resets the
+            # 省称 anchor table so a stale full name in an earlier section can't bind
+            # a bare given char (云 in 云大破蛮 ≠ 张云). Full names recur per section.
+            if main_text[:1] and "\u2460" <= main_text[0] <= "\u2473":
+                char_anchor.clear()
             # rc4 封号-glue runs FIRST: reserve 「封号+given」 spans (任城王澄→元澄) so the
             # alias matcher cannot form the false 王X glue over the same characters.
             feng_hits = extract_titleglue(main_text, ce, consumed,
