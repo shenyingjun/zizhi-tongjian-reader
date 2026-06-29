@@ -845,12 +845,12 @@ def _gloss_subject_ok(x: str) -> bool:
         and not (len(x) <= 2 and x[-1] in "祖宗")
 
 
-def _ancestor_surname(y_surf, canon_to_pids, notes, by_id=None, gindex=None):
+def _ancestor_surname(y_surf, canon_to_pids, notes, by_id=None, gindex=None, juan_no=None):
     """Surname of the gloss ancestor Y. A full 姓名 Y yields its own 姓; a 省姓
     single-char Y is resolved through the paragraph 胡注 「{姓}{Y}…」 (uniquely), or
     via a 2-hop 「{Y}父{父名}」 chain when the father resolves to a card (宰→智兴→王).
-    A 省姓 2-char given (崇文 of 高崇文, 元裕 of 高元裕) resolves when exactly one
-    carded surname pairs with it (高骈，崇文之孙 → 高)."""
+    A 省姓 2-char given (崇文 of 高崇文) resolves to a carded surname; when several
+    surnames pair with it (高崇文 vs 王崇文), the ancestor nearest this 卷 wins."""
     sn = seed_mod._surname_of(y_surf)
     if sn and len(y_surf) >= 2 and y_surf in canon_to_pids:
         return sn
@@ -858,6 +858,15 @@ def _ancestor_surname(y_surf, canon_to_pids, notes, by_id=None, gindex=None):
         cands = gindex.get(y_surf, set())
         if len(cands) == 1:
             return next(iter(cands))
+        if len(cands) > 1 and juan_no is not None:
+            best, bg = None, 10 ** 6
+            for s in cands:
+                for _pid, pj in canon_to_pids.get(s + y_surf, []):
+                    g = _juan_gap(pj, juan_no)
+                    if g < bg:
+                        best, bg = s, g
+            if best:
+                return best
     if len(y_surf) != 1:
         return None
     found = set()
@@ -913,7 +922,16 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
     gindex: dict[str, set] = {}
     for p in by_id.values():
         cn = p.get("canonical_name", "")
+        # a CARDED name proves its head is a real surname, so accept ambiguous-clan
+        # heads (高/严/任/康/万…) here even though _surname_of refuses raw candidates —
+        # the ancestor-gloss recall (崇文→高 for 高骈) needs them; precision stays
+        # because minting requires the resolved full name to be an existing card.
         sn = seed_mod._surname_of(cn)
+        if not sn:
+            if len(cn) >= 3 and cn[:2] in seed_mod.COMPOUND:
+                sn = cn[:2]
+            elif len(cn) >= 2 and cn[0] in seed_mod.SURNAMES:
+                sn = cn[0]
         if sn and len(cn) >= 2:
             gindex.setdefault(cn[len(sn):], set()).add(sn)
     office_glue_cues: tuple[str, ...] = tuple(sorted({
@@ -1013,7 +1031,7 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                     # X = 姓(Y)+X with the ancestor's surname (recovered from 胡注).
                     if not _gloss_subject_ok(x_surf):
                         continue
-                    surname = _ancestor_surname(y_surf, canon_to_pids, para.get("notes"), by_id, gindex)
+                    surname = _ancestor_surname(y_surf, canon_to_pids, para.get("notes"), by_id, gindex, juan_no)
                     if not surname:
                         continue
                     new_full = surname + x_surf
