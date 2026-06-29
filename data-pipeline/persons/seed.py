@@ -323,6 +323,37 @@ COMMON_WORD_NONPERSON: set[str] = {
     "温至",   # 温至金乡 / 温至枋头 / 温至长安 — 桓温 至(arrived at), not 温(姓)+至
     "温屯",   # 温屯故太极殿前 / 温屯武阳 — 桓温 屯(stationed at), not 温(姓)+屯
     "景犹",   # 景犹欲全其一子 / 景犹有船 — 侯景 犹(still·yet), not 景(姓)+犹; bare 犹 = 「still」
+    # Wave 39 (reader-agent audit of 卷001–034, early W. Han) — confirmed non-person auto
+    # surfaces. 战国 narrative is dense with [国名/王]+动词 slices the char-NER mis-cards.
+    # Rejected from this batch (REAL people, deliberately kept): 魏相 (宣帝丞相), 王尚
+    # (谯王·尚之 封号 mis-slice), 章武 (章武王·融) — those need targeted handling, not a ban.
+    # — [国名/王] + 动词 战国叙事切片 —
+    "秦败", "魏败", "秦自", "秦合", "秦益", "秦强", "赵会", "赵壁",
+    "王崩", "王恐", "王必", "王怒", "王召", "王许", "王齐", "王实", "魏筑",
+    # — 动宾 / 动词 —
+    "支秦",   # 韩、魏不能支秦 — to resist Qin
+    "谢汉",   # 上书谢汉 — to apologize/thank Han
+    "寇狄",   # 匈奴寇狄(道) — to raid 狄道, cross-word
+    "解鞍",   # 皆下马解鞍 — to unsaddle
+    # — 地名 / 城郭 / 台榭 / 封邑 —
+    "中山",   # 攻中山 / 略中山之地 / 中山君奔齐 — the STATE 中山 (ruler is 中山君/王)
+    "广武",   # 军广武 / 渡广武(水) / 临广武间 — 楚汉相争 的地名
+    "桑丘",   # 齐伐燕取桑丘 — place
+    "杜平",   # 魏惠王会于杜平 — place
+    "邢丘",   # 秦拔魏邢丘 — place
+    "章华",   # 起章华之台 — 楚 的台榭 (palace terrace)
+    "隆虑",   # 隆虑公主 — 封邑/汤沐邑 fragment, the person is the named 公主/子
+    # — 普通词 / 成语 / 形容 / 部族 —
+    "郑声",   # 放郑声，郑声淫 — the music of 郑 (郑卫之声)
+    "韩卢",   # 走韩卢而搏蹇兔 — 韩国的名犬 (proverbial hound), not 韩(姓)+卢
+    "英俊",   # 英俊宜可得矣 — talented men (cf. 英杰)
+    "温良",   # 仁爱温良者 — gentle·kind (形容)
+    "汤功",   # 嘉延寿、汤功 — 陈汤之「功」(merit), not a person
+    "骆越",   # 骆越之人 — a 越 部族 (ethnonym)
+    # — 官名 / 复姓 / 爵号 glue —
+    "太史",   # 智果别族于太史 — 官/复姓 origin, not a standalone person (太史慈 is 3-char)
+    "赵相",   # 赵相张耳/贯高/周昌/虞卿 — 赵国(的)相 (title) glued before the named person
+    "侯莽",   # 新都侯莽 — 新都侯·王莽 mis-slice; 王莽 is carded in full elsewhere
 }
 
 # RC-6/RC-3c — 3-char 鲜卑/胡 复姓 (clan names). On their own they are a CLAN, not
