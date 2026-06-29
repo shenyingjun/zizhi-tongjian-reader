@@ -628,19 +628,33 @@ def extract_gloss(text, rule_map, canon_to_pids, juan_no, by_id, consumed):
     its surname must be derivable, and 姓+Y must already be a known card."""
     mentions, relations = [], []
     for m in _GLOSS_RE.finditer(text):
+        x_surf, y_surf, z = m.group(1), m.group(2), m.group(3)
         # require a real clause boundary just before X (start, or punctuation)
         if m.start(1) > 0 and text[m.start(1) - 1] not in _GLOSS_BOUNDARY:
             continue
-        x_surf, y_surf, z = m.group(1), m.group(2), m.group(3)
         if not _gloss_y_ok(y_surf):
             continue
         pid_x = rule_map.get(x_surf)
-        if not pid_x:
-            continue
-        cx = by_id[pid_x]["canonical_name"]
-        surname = seed_mod._surname_of(cx)
-        if not surname and len(cx) >= 2 and cx[0] in seed_mod.SURNAMES:
-            surname = cx[0]  # carded name proves an ambiguous head (严/高) is a real 姓
+        x_emit = None
+        if not pid_x or pid_x not in by_id:
+            # subject unmapped (省称 not NER'd): if both subject 姓+X and ancestor 姓+Y
+            # are carded under one shared surname, the patrilineal rule binds both.
+            sub_ok = []
+            for s in seed_mod.SURNAMES:
+                xf, yf = s + x_surf, s + y_surf
+                if xf in canon_to_pids and yf in canon_to_pids:
+                    sub_ok.append((s, canon_to_pids[xf], canon_to_pids[yf]))
+            if len(sub_ok) != 1:
+                continue
+            s, xc, yc = sub_ok[0]
+            pid_x = min(xc, key=lambda pc: _juan_gap(pc[1], juan_no))[0]
+            x_emit = (m.start(1), m.end(1))
+            surname = s
+        else:
+            cx = by_id[pid_x]["canonical_name"]
+            surname = seed_mod._surname_of(cx)
+            if not surname and len(cx) >= 2 and cx[0] in seed_mod.SURNAMES:
+                surname = cx[0]  # carded name proves an ambiguous head (严/高) is a real 姓
         if not surname:
             continue
         # Y written 省姓 (戣) → 姓+Y; or already a full 姓名 present as a card.
@@ -659,6 +673,12 @@ def extract_gloss(text, rule_map, canon_to_pids, juan_no, by_id, consumed):
             for k in range(ys, ye):
                 consumed[k] = True
             mentions.append((ys, ye, pid_y, y_surf))
+        if x_emit:  # subject 省称 recovered (瑑→刘瑑): bind it too if span free
+            xs2, xe2 = x_emit
+            if not any(consumed[xs2:xe2]):
+                for k in range(xs2, xe2):
+                    consumed[k] = True
+                mentions.append((xs2, xe2, pid_x, x_surf))
         relations.append((pid_x, z, pid_y, x_surf, y_surf))
     return mentions, relations
 
@@ -1009,7 +1029,7 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                 x_surf, y_surf = m.group(1), m.group(2)
                 pid_x = rule_map.get(x_surf)
                 inverse = False
-                if pid_x:
+                if pid_x and pid_x in by_id:
                     # FORWARD — X known, mint the 省姓 relative Y = 姓(X)+Y.
                     if not _gloss_y_ok(y_surf):
                         continue
@@ -1399,8 +1419,11 @@ def main():
                 seen_ids.add(pid_)
                 feng_emitted += 1
             # alias matches that overlap a reserved 封号 span are the suppressed glue.
+            # single-char alias surfaces are never trusted (元胄→胄 etc. flow through
+            # the anaphora/gloss passes which pin them to an antecedent); a bare given
+            # char as a standalone alias is a precision storm.
             alias_hits = [h for h in extract(main_text, surfaces)
-                          if not any(consumed[h[0]:h[1]])]
+                          if not any(consumed[h[0]:h[1]]) and (h[1] - h[0]) >= 2]
             for (s, e, pid_, surf) in alias_hits:
                 for k in range(s, e):
                     consumed[k] = True
@@ -1459,6 +1482,8 @@ def main():
                                       "x": xs, "y": ys})
             for ni, note in enumerate(para.get("notes", [])):
                 for (s, e, pid_, surf) in extract(note.get("text", ""), surfaces):
+                    if e - s < 2:
+                        continue
                     mentions.append({"pid": pid, "ce_year": ce, "source": "hu",
                                      "note_index": ni, "start": s, "end": e,
                                      "surface": surf, "person_id": pid_, "kind": "alias",
