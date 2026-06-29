@@ -639,6 +639,8 @@ def extract_gloss(text, rule_map, canon_to_pids, juan_no, by_id, consumed):
             continue
         cx = by_id[pid_x]["canonical_name"]
         surname = seed_mod._surname_of(cx)
+        if not surname and len(cx) >= 2 and cx[0] in seed_mod.SURNAMES:
+            surname = cx[0]  # carded name proves an ambiguous head (严/高) is a real 姓
         if not surname:
             continue
         # Y written 省姓 (戣) → 姓+Y; or already a full 姓名 present as a card.
@@ -1047,7 +1049,8 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                     anchor_given = x_surf if len(x_surf) == 1 else None
                     inverse = True
                     # ancestor 省称: shared surname makes 震 = 严震 (carded) — bind the
-                    # bare ancestor mention too (譔，震之从孙也 → 震 underlines 严震).
+                    # bare ancestor mention too (譔，震之从孙也 → 震 underlines 严震). The
+                    # gloss confirms personhood, so register a 卷-alias directly.
                     if len(y_surf) == 1 and y_surf not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
                         for apid, _aj in canon_to_pids.get(surname + y_surf, []):
                             carded_anaphora.setdefault(apid, (set(), y_surf))[0].add(juan_no)
@@ -1091,10 +1094,13 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                 created[new_full] = card
                 if inverse:
                     # register the full surface so the alias pass binds 王谱; record
-                    # the 省姓 given char so the anaphora pass binds the bare 谱.
+                    # the 省姓 given char so the anaphora pass binds the bare 谱; and
+                    # register the bare given so the FORWARD gloss binds the ancestor
+                    # (譔→严譔 lets 震 resolve to 严震 via 「譔，震之从孙也」).
                     rule_map.setdefault(new_full, card["id"])
                     if anchor_given:
                         anaphora[new_full] = anchor_given
+                        rule_map.setdefault(anchor_given, card["id"])
               for m in _KIN2_RE.finditer(mtext):
                 x, kin, y = m.group(1), m.group(2), m.group(3)
                 if m.start(1) > 0 and mtext[m.start(1) - 1] not in _GLOSS_BOUNDARY \
