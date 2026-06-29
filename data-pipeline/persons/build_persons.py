@@ -487,7 +487,7 @@ _KINSHIP_PATRILINEAL = [
 _KIN_ALT = (r"[一二三四五六七八九十]+世孙|世孙|"
             + "|".join(sorted(_KINSHIP_PATRILINEAL, key=len, reverse=True)))
 _GLOSS_RE = re.compile(
-    r"([\u4e00-\u9fff]{1,3})，([\u4e00-\u9fff]{1,4})之(" + _KIN_ALT + r")也"
+    r"([\u4e00-\u9fff]{1,3})，([\u4e00-\u9fff]{1,4})之(" + _KIN_ALT + r")(?:也|[。；，、])"
 )
 _GLOSS_BOUNDARY = set("。；，！？、：")
 
@@ -834,9 +834,10 @@ def _gloss_subject_ok(x: str) -> bool:
         and not (len(x) <= 2 and x[-1] in "祖宗")
 
 
-def _ancestor_surname(y_surf, canon_to_pids, notes):
+def _ancestor_surname(y_surf, canon_to_pids, notes, by_id=None):
     """Surname of the gloss ancestor Y. A full 姓名 Y yields its own 姓; a 省姓
-    single-char Y is resolved through the paragraph 胡注 「{姓}{Y}…」 (uniquely)."""
+    single-char Y is resolved through the paragraph 胡注 「{姓}{Y}…」 (uniquely), or
+    via a 2-hop 「{Y}父{父名}」 chain when the father resolves to a card (宰→智兴→王)."""
     sn = seed_mod._surname_of(y_surf)
     if sn and len(y_surf) >= 2 and y_surf in canon_to_pids:
         return sn
@@ -852,6 +853,18 @@ def _ancestor_surname(y_surf, canon_to_pids, notes):
             elif t[idx - 1] in seed_mod.CLEAN_SURNAMES:
                 found.add(t[idx - 1])
             idx = t.find(y_surf, idx + 1)
+    if not found and by_id is not None:
+        # 2-hop chain: 「宰父智兴」 — Y's father resolves to a card; Y inherits that
+        # surname (智兴→王智兴→王). Father written 省姓 (alias) or full 姓名.
+        for note in notes or ():
+            for fm in re.finditer(y_surf + r"父([\u4e00-\u9fff]{2})", note.get("text", "")):
+                f = fm.group(1)
+                names = {c + f for c in seed_mod.CLEAN_SURNAMES} | {f}
+                fc = {seed_mod._surname_of(p["canonical_name"]) for p in (by_id or {}).values()
+                      if p.get("canonical_name") in names}
+                fc.discard(None)
+                if len(fc) == 1:
+                    found.add(next(iter(fc)))
     return next(iter(found)) if len(found) == 1 else None
 
 
@@ -875,8 +888,10 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
         juan = json.loads(jf.read_text(encoding="utf-8"))
         for para in juan["paragraphs"]:
             mt = para.get("main", "")
-            for m in _GLOSS_RE.finditer(mt):
-                if m.start(1) > 0 and mt[m.start(1) - 1] not in _GLOSS_BOUNDARY:
+            scan = [mt] + [nt.get("text", "") for nt in para.get("notes", [])]
+            for mtext in scan:
+              for m in _GLOSS_RE.finditer(mtext):
+                if m.start(1) > 0 and mtext[m.start(1) - 1] not in _GLOSS_BOUNDARY:
                     continue
                 x_surf, y_surf = m.group(1), m.group(2)
                 pid_x = rule_map.get(x_surf)
@@ -896,13 +911,13 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                     # X = 姓(Y)+X with the ancestor's surname (recovered from 胡注).
                     if not _gloss_subject_ok(x_surf):
                         continue
-                    surname = _ancestor_surname(y_surf, canon_to_pids, para.get("notes"))
+                    surname = _ancestor_surname(y_surf, canon_to_pids, para.get("notes"), by_id)
                     if not surname:
                         continue
                     new_full = surname + x_surf
                     anchor_given = x_surf if len(x_surf) == 1 else None
                     inverse = True
-                if new_full in canon_to_pids or len(new_full) < 2 or len(new_full) > 4:
+                if new_full in canon_to_pids or len(new_full) < 2 or len(new_full) > 3:
                     continue
                 if seed_mod.bad_auto_surface(new_full) or \
                         new_full in seed_mod.COMMON_WORD_NONPERSON:
