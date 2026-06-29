@@ -845,7 +845,7 @@ def _gloss_subject_ok(x: str) -> bool:
         and not (len(x) <= 2 and x[-1] in "祖宗")
 
 
-def _ancestor_surname(y_surf, canon_to_pids, notes, by_id=None, gindex=None, juan_no=None):
+def _ancestor_surname(y_surf, canon_to_pids, notes, by_id=None, gindex=None):
     """Surname of the gloss ancestor Y. A full 姓名 Y yields its own 姓; a 省姓
     single-char Y is resolved through the paragraph 胡注 「{姓}{Y}…」 (uniquely), or
     via a 2-hop 「{Y}父{父名}」 chain when the father resolves to a card (宰→智兴→王).
@@ -858,15 +858,6 @@ def _ancestor_surname(y_surf, canon_to_pids, notes, by_id=None, gindex=None, jua
         cands = gindex.get(y_surf, set())
         if len(cands) == 1:
             return next(iter(cands))
-        if len(cands) > 1 and juan_no is not None:
-            best, bg = None, 10 ** 6
-            for s in cands:
-                for _pid, pj in canon_to_pids.get(s + y_surf, []):
-                    g = _juan_gap(pj, juan_no)
-                    if g < bg:
-                        best, bg = s, g
-            if best:
-                return best
     if len(y_surf) != 1:
         return None
     found = set()
@@ -1027,11 +1018,20 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                         continue  # already a full-name card → handled by binding pass
                     new_full, anchor_given = surname + y_surf, None
                 else:
-                    # INVERSE — X is the new descendant, Y the KNOWN ancestor; mint
-                    # X = 姓(Y)+X with the ancestor's surname (recovered from 胡注).
+                    # INVERSE — X is the descendant. By the patrilineal rule X shares
+                    # the surname of whatever full 姓名 ending in X is already carded in
+                    # THIS 卷 (高騈 in section → bare 騈 = 高騈); the ancestor merely
+                    # confirms personhood. Fall back to ancestor-胡注 only to MINT a new
+                    # card when no such subject card exists.
                     if not _gloss_subject_ok(x_surf):
                         continue
-                    surname = _ancestor_surname(y_surf, canon_to_pids, para.get("notes"), by_id, gindex, juan_no)
+                    surname = None
+                    if len(x_surf) == 1:
+                        subj = {k[0] for k in rule_map if len(k) == 2 and k[1] == x_surf}
+                        if len(subj) == 1:
+                            surname = next(iter(subj))
+                    if not surname:
+                        surname = _ancestor_surname(y_surf, canon_to_pids, para.get("notes"), by_id, gindex)
                     if not surname:
                         continue
                     new_full = surname + x_surf
