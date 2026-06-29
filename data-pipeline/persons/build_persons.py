@@ -433,6 +433,13 @@ def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events, ce, b
             for k in range(start, start + len(term)):
                 fixed_mask[k] = 1
             start = text.find(term, start + 1)
+    kin2_y_starts = set()
+    for m in _KIN2_RE.finditer(text):
+        if m.start(1) > 0 and text[m.start(1) - 1] not in _GLOSS_BOUNDARY \
+                and text[m.start(1) - 1] not in "「『（":
+            continue
+        if _gloss_subject_ok(m.group(1)) and len(m.group(1)) == 1:
+            kin2_y_starts.add(m.start(3))
     ev_i, nev = 0, len(anchor_events)
     for i, ch in enumerate(text):
         # establish every full-name antecedent that ends at or before this char
@@ -447,6 +454,8 @@ def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events, ce, b
         pid_ = char_anchor.get(ch)
         if pid_ is None:        # no antecedent seen yet → suppress
             continue
+        if pid_ not in by_id:   # xref-merged card id; RULES now points at the survivor
+            continue
         left = text[i - 1] if i > 0 else ""
         right = text[i + 1] if i + 1 < n else ""
         # a bare 省称 drops the surname — if the left neighbor IS a clean surname
@@ -459,7 +468,7 @@ def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events, ce, b
             continue
         if left in _ANAPHORA_MODS:
             continue
-        if not (right in _ANAPHORA_RIGHT or left in _ANAPHORA_LEFT):
+        if not (right in _ANAPHORA_RIGHT or left in _ANAPHORA_LEFT or i in kin2_y_starts):
             continue
         if _lifespan_outside(by_id[pid_], ce):  # bare 省称 to a wrong-era antecedent
             continue
@@ -893,6 +902,7 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
     Returns the number of cards created; mutates by_id/canon_to_pids/people_merged."""
     created: dict[str, dict] = {}
     anaphora: dict[str, tuple] = {}   # name -> (given_char) for inverse-minted subjects
+    carded_anaphora: dict[str, tuple[set[int], str]] = {}  # existing pid -> ({juans}, given_char)
     # given-char → set of carded surnames, for 省姓 relative resolution (绹→令狐绹→令狐)
     gindex: dict[str, set] = {}
     for p in by_id.values():
@@ -900,6 +910,70 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
         sn = seed_mod._surname_of(cn)
         if sn and len(cn) >= 2:
             gindex.setdefault(cn[len(sn):], set()).add(sn)
+    office_glue_cues: tuple[str, ...] = tuple(sorted({
+        "判度支河南", "判度支", "判支", "平章事", "侍郎", "将军", "尚书", "刺史",
+        "节度使", "观察使", "校理", "拾遗", "中丞",
+    }, key=len, reverse=True))
+    office_glue_given_block = set("王公侯主子后帝氏第官人臣军使州府司部省道不")
+    office_glue_right_ok = set("同充为迁拜罢谏曰薨卒贬除加兼领权知，。；、：︰")
+    compounds = sorted(seed_mod.COMPOUND, key=len, reverse=True)
+    surnames = "".join(sorted(re.escape(ch) for ch in seed_mod.CLEAN_SURNAMES))
+    cue_alt = "|".join(re.escape(c) for c in office_glue_cues)
+    compound_alt = "|".join(re.escape(c) for c in compounds)
+    office_glue_re = re.compile(
+        rf"(?:{cue_alt})({compound_alt}|[{surnames}])([\u4e00-\u9fff])")
+    office_glue_hits: dict[str, dict] = collections.defaultdict(
+        lambda: {"n": 0, "juans": set()})
+    for juan_no in juans:
+        jf = text_dir / f"juan_{juan_no:03d}.json"
+        if not jf.exists():
+            continue
+        juan = json.loads(jf.read_text(encoding="utf-8"))
+        for para in juan["paragraphs"]:
+            scan = [para.get("main", "")] + [
+                nt.get("text", "") for nt in para.get("notes", [])]
+            for mtext in scan:
+                for m in office_glue_re.finditer(mtext):
+                    new_full = m.group(1) + m.group(2)
+                    if m.group(2) in office_glue_given_block:
+                        continue
+                    right = mtext[m.end():m.end() + 1]
+                    if right and (right in seed_mod.CLEAN_SURNAMES or
+                                  right not in office_glue_right_ok):
+                        continue
+                    if new_full in canon_to_pids:
+                        continue
+                    if seed_mod.bad_auto_surface(new_full) or \
+                            new_full in seed_mod.COMMON_WORD_NONPERSON or \
+                            new_full in seed_mod.COMPOUND:
+                        continue
+                    office_glue_hits[new_full]["n"] += 1
+                    office_glue_hits[new_full]["juans"].add(juan_no)
+
+    for new_full, info in office_glue_hits.items():
+        if info["n"] < 2 or new_full in created:
+            continue
+        juans_c = sorted(info["juans"])
+        j0 = min(juans_c)
+        dyn = (meta.get(j0, {}).get("dynasty") or "").strip()
+        cs = meta.get(j0, {}).get("ce_start")
+        card = {
+            "id": seed_mod._auto_id(new_full, 9000 + len(created)),
+            "canonical_name": new_full,
+            "names": [],
+            "dynasty": dyn or "—",
+            "era_hint": f"{dyn}人物" if dyn else "人物",
+            "floruit": [cs, cs] if cs else [None, None],
+            "brief": f"{dyn + '·' if dyn else ''}见于卷{j0:03d}（官衔连写）。",
+            "identity": f"{dyn + '·' if dyn else ''}见于卷{j0:03d}（官衔连写）。",
+            "match": [new_full],
+            "juans": juans_c,
+            "confidence": "high",
+        }
+        created[new_full] = card
+        for j in juans_c:
+            rules.setdefault(j, {}).setdefault(new_full, card["id"])
+
     for juan_no in juans:
         jf = text_dir / f"juan_{juan_no:03d}.json"
         if not jf.exists():
@@ -984,13 +1058,24 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                 if not _gloss_subject_ok(x) or len(x) != 1:
                     continue
                 surname = None
+                y_pid = None
                 for yl in (2, 1, 3):
                     if yl <= len(y):
-                        surname = _resolve_y_surname(y[:yl], by_id, gindex)
+                        y_surf = y[:yl]
+                        surname = _resolve_y_surname(y_surf, by_id, gindex)
                         if surname:
+                            y_full = y_surf if seed_mod._surname_of(y_surf) and len(y_surf) >= 2 \
+                                else surname + y_surf
+                            cands = canon_to_pids.get(y_full) or []
+                            if cands:
+                                y_pid = min(cands, key=lambda pc: _juan_gap(pc[1], juan_no))[0]
                             break
                 if not surname:
                     continue
+                if y_pid:
+                    y_given = seed_mod._given_single(by_id[y_pid]["canonical_name"])
+                    if y_given and y_given not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
+                        carded_anaphora.setdefault(y_pid, (set(), y_given))[0].add(juan_no)
                 nf = surname + x
                 if nf in canon_to_pids or len(nf) < 2 or len(nf) > 3 or nf in created:
                     continue
@@ -1015,6 +1100,8 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
             (card["id"], set(card["juans"])))
     inv_anaphora = [(created[n]["id"], created[n]["juans"], g)
                     for n, g in anaphora.items()]
+    inv_anaphora.extend((pid, sorted(juans), g)
+                        for pid, (juans, g) in carded_anaphora.items())
     return len(created), inv_anaphora
 
 
@@ -1100,12 +1187,18 @@ def main():
     gloss_new_cards, gloss_inv_anaphora = build_gloss_cards(
         JUANS, TEXT, RULES, canon_to_pids, by_id,
         PEOPLE_MERGED, gloss_meta, set(JUANS))
-    minted_admit: dict[int, set] = {}   # juan -> {given_char} for inverse-minted subjects
+    minted_admit: dict[int, set] = {}   # juan -> {given_char} for inverse-minted/carded gloss subjects
+    minted_anchor_candidates: dict[int, dict[str, set[str]]] = {}
     for cid, cjuans, gch in gloss_inv_anaphora:
         if gch and gch not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
             given_of[cid] = gch
             for j in cjuans:
                 minted_admit.setdefault(j, set()).add(gch)
+                minted_anchor_candidates.setdefault(j, {}).setdefault(gch, set()).add(cid)
+    minted_anchor = {
+        j: {gch: next(iter(cids)) for gch, cids in cmap.items() if len(cids) == 1}
+        for j, cmap in minted_anchor_candidates.items()
+    }
 
     # book-enrich — courtesy-name apposition into briefs (after gloss cards exist so
     # newly-minted 家世 cards also get their 字 when the text introduces one).
@@ -1227,7 +1320,10 @@ def main():
         juan = json.loads(jf.read_text(encoding="utf-8"))
         surfaces = surfaces_for(juan_no)
         admitted = ANAPHORA_RULES.get(juan_no, set()) | minted_admit.get(juan_no, set())
-        char_anchor: dict[str, str] = {}  # given-char -> nearest antecedent person_id (卷-local)
+        char_anchor: dict[str, str] = {
+            gch: pid_ for gch, pid_ in minted_anchor.get(juan_no, {}).items()
+            if pid_ in by_id
+        }  # given-char -> nearest antecedent person_id (卷-local)
         cue_idx = build_role_cue_index(juan["paragraphs"])  # P3 succession split
         mentions = []
         for p_idx, para in enumerate(juan["paragraphs"]):
