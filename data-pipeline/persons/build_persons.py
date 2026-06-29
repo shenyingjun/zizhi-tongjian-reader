@@ -845,13 +845,19 @@ def _gloss_subject_ok(x: str) -> bool:
         and not (len(x) <= 2 and x[-1] in "祖宗")
 
 
-def _ancestor_surname(y_surf, canon_to_pids, notes, by_id=None):
+def _ancestor_surname(y_surf, canon_to_pids, notes, by_id=None, gindex=None):
     """Surname of the gloss ancestor Y. A full 姓名 Y yields its own 姓; a 省姓
     single-char Y is resolved through the paragraph 胡注 「{姓}{Y}…」 (uniquely), or
-    via a 2-hop 「{Y}父{父名}」 chain when the father resolves to a card (宰→智兴→王)."""
+    via a 2-hop 「{Y}父{父名}」 chain when the father resolves to a card (宰→智兴→王).
+    A 省姓 2-char given (崇文 of 高崇文, 元裕 of 高元裕) resolves when exactly one
+    carded surname pairs with it (高骈，崇文之孙 → 高)."""
     sn = seed_mod._surname_of(y_surf)
     if sn and len(y_surf) >= 2 and y_surf in canon_to_pids:
         return sn
+    if len(y_surf) >= 2 and gindex:
+        cands = gindex.get(y_surf, set())
+        if len(cands) == 1:
+            return next(iter(cands))
     if len(y_surf) != 1:
         return None
     found = set()
@@ -1007,13 +1013,20 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                     # X = 姓(Y)+X with the ancestor's surname (recovered from 胡注).
                     if not _gloss_subject_ok(x_surf):
                         continue
-                    surname = _ancestor_surname(y_surf, canon_to_pids, para.get("notes"), by_id)
+                    surname = _ancestor_surname(y_surf, canon_to_pids, para.get("notes"), by_id, gindex)
                     if not surname:
                         continue
                     new_full = surname + x_surf
                     anchor_given = x_surf if len(x_surf) == 1 else None
                     inverse = True
                 if new_full in canon_to_pids or len(new_full) < 2 or len(new_full) > 3:
+                    # ancestor gloss resolved a card that already exists (高骈，崇文之孙
+                    # 也): register its 省称 given (骈) so the section-local anaphora pass
+                    # binds bare mentions even when the surname (高) is ambiguous.
+                    if inverse and anchor_given and new_full in canon_to_pids:
+                        for pcid, _pj in canon_to_pids[new_full]:
+                            if anchor_given not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
+                                carded_anaphora.setdefault(pcid, (set(), anchor_given))[0].add(juan_no)
                     continue
                 if seed_mod.bad_auto_surface(new_full) or \
                         new_full in seed_mod.COMMON_WORD_NONPERSON:
