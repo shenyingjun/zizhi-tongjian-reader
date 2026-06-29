@@ -1030,6 +1030,15 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                         subj = {k[0] for k in rule_map if len(k) == 2 and k[1] == x_surf}
                         if len(subj) == 1:
                             surname = next(iter(subj))
+                        if not surname:
+                            # shared-surname from the subject's OWN full mention in this
+                            # 卷 (严譔为镇南… → 譔，震之从孙: 严譔 confirms 严) — mint even
+                            # when NER missed it and the ancestor's clan is ambiguous.
+                            txt = " ".join(scan)
+                            pre = {txt[k - 1] for k in range(1, len(txt))
+                                   if txt[k] == x_surf and txt[k - 1] in seed_mod.SURNAMES}
+                            if len(pre) == 1:
+                                surname = next(iter(pre))
                     if not surname:
                         surname = _ancestor_surname(y_surf, canon_to_pids, para.get("notes"), by_id, gindex)
                     if not surname:
