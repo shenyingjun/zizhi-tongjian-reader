@@ -332,6 +332,13 @@ def bad_auto_surface(s: str) -> bool:
         return True
     if s[-1] in "王后妃帝":            # 赵王 / 窦太后 / 许皇后 / 魏文帝 …
         return True
+    # [名]帅 — 帅 = 统帅/将兵 (to lead / commander), a role-verb the char-NER glues onto a
+    # real leading name: 越帅甲士 / 桓帅众 / 刘胡帅步卒 / 景帅骑 / 王帅银枪都. Never a personal
+    # given name in this corpus (every 帅-tail surface is such a misparse), so a 姓-headed
+    # form ending in 帅 is role-glue, not one referent. (帅 as a leading surname — 帅范 — is
+    # untouched: this only fires on a trailing 帅.)
+    if len(s) <= 4 and s[-1] == "帅":
+        return True
     if s.endswith("太子") or s.endswith("世子"):
         return True
     if len(s) <= 3 and s.endswith("氏"):  # 王氏 / 窦氏 clan reference

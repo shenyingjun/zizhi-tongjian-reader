@@ -296,6 +296,8 @@ COMMON_BIGRAMS = {
     # 赞 / misc common
     "赞拜", "赞成", "称赞", "赞礼", "赞导", "赞曰",
     "邕邕",
+    # 足 (王足/马足) — 何足 = 成语「何足…」(how is it worth), never 马足(=horse-foot)+anaphora.
+    "何足",
 }
 
 # Preceding chars that turn a following anchor char into an adjective/verb reading
