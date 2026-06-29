@@ -1046,6 +1046,11 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                     new_full = surname + x_surf
                     anchor_given = x_surf if len(x_surf) == 1 else None
                     inverse = True
+                    # ancestor 省称: shared surname makes 震 = 严震 (carded) — bind the
+                    # bare ancestor mention too (譔，震之从孙也 → 震 underlines 严震).
+                    if len(y_surf) == 1 and y_surf not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
+                        for apid, _aj in canon_to_pids.get(surname + y_surf, []):
+                            carded_anaphora.setdefault(apid, (set(), y_surf))[0].add(juan_no)
                 if new_full in canon_to_pids or len(new_full) < 2 or len(new_full) > 3:
                     # ancestor gloss resolved a card that already exists (高骈，崇文之孙
                     # 也): register its 省称 given (骈) so the section-local anaphora pass
