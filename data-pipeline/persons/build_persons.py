@@ -535,7 +535,7 @@ def _clans_at(ce):
     return tuple({c for (c, s, e) in _DYNASTY_CLANS if s <= ce <= e})
 
 
-def extract_titleglue(text, ce, consumed, rule_map, by_id):
+def extract_titleglue(text, ce, consumed, rule_map, by_id, alias_map=None):
     """rc4. Bind 「封号+given」 to its 宗室 person and mark the 封号 span consumed so the
     caller can drop the false 王X alias glue. Returns [(start, end, pid, surface)] with
     the WHOLE appellation (任城王澄) as the surface, mapped to the clan person (元澄).
@@ -573,6 +573,28 @@ def extract_titleglue(text, ce, consumed, rule_map, by_id):
                 bound = (gs + glen, next(iter(hits)))
                 break
         if not bound:
+            # Precision-only slice: the 封号 frame is valid (place not an 官名, clan reigns
+            # this year) but no clan+given card exists to bind/mint. If the alias pass would
+            # otherwise glue 「爵+given」 (王骏/公弥) onto a WRONG-ERA homograph (汉 王骏 in a
+            # 晋 卷), reserve that span so the false alias is dropped. No mention emitted —
+            # a missing underline beats a wrong one; the right-era person is minted later.
+            for glen in (2, 1):
+                if glen > len(given):
+                    continue
+                g = given[:glen]
+                if g in _FENG_GIVEN_BLOCK:
+                    continue
+                false_s, false_e = rank_pos, gs + glen
+                fsurf = text[false_s:false_e]
+                pid_w = rule_map.get(fsurf) or (alias_map.get(fsurf) if alias_map else None)
+                if not pid_w or any(consumed[false_s:false_e]):
+                    continue
+                fl = by_id[pid_w].get("floruit") or [None, None]
+                undated = fl[0] is None and fl[1] is None
+                if _lifespan_outside(by_id[pid_w], ce) or undated:
+                    for k in range(false_s, false_e):
+                        consumed[k] = True
+                    break
             continue
         ge, pid_c = bound
         start = m.start(1)
@@ -1147,7 +1169,7 @@ def main():
             # rc4 封号-glue runs FIRST: reserve 「封号+given」 spans (任城王澄→元澄) so the
             # alias matcher cannot form the false 王X glue over the same characters.
             feng_hits = extract_titleglue(main_text, ce, consumed,
-                                          RULES.get(juan_no, {}), by_id)
+                                          RULES.get(juan_no, {}), by_id, dict(surfaces))
             for (s, e, pid_, surf) in feng_hits:
                 mentions.append({"pid": pid, "ce_year": ce, "source": "main",
                                  "start": s, "end": e, "surface": surf,
