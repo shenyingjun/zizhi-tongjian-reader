@@ -490,6 +490,8 @@ _GLOSS_RE = re.compile(
     r"([\u4e00-\u9fff]{1,3})，([\u4e00-\u9fff]{1,4})之(" + _KIN_ALT + r")(?:也|[。；，、])"
 )
 _GLOSS_BOUNDARY = set("。；，！？、：")
+# compact X-kin-Y (no 之/也): 「滈父绹」 X=given, kin, Y=known relative → mint 姓(Y)+X.
+_KIN2_RE = re.compile(r"([\u4e00-\u9fff]{1,2})(" + _KIN_ALT + r")([\u4e00-\u9fff]{1,3})")
 
 
 def _juan_gap(juans, j):
@@ -868,6 +870,19 @@ def _ancestor_surname(y_surf, canon_to_pids, notes, by_id=None):
     return next(iter(found)) if len(found) == 1 else None
 
 
+def _resolve_y_surname(y, by_id, gindex):
+    """Surname of relative Y: a 2-3 char card yields its own 姓; a 省姓 single char
+    resolves only if exactly one carded surname pairs with that given (绹→令狐)."""
+    sn = seed_mod._surname_of(y)
+    if sn and len(y) >= 2 and any(p.get("canonical_name") == y for p in by_id.values()):
+        return sn
+    if len(y) == 1:
+        cands = gindex.get(y, set())
+        if len(cands) == 1:
+            return next(iter(cands))
+    return None
+
+
 def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                       people_merged, meta, allowed):
     """RC-2b pre-pass — generative recall. When a 「X，Y之Z也」 gloss reconstructs
@@ -878,6 +893,13 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
     Returns the number of cards created; mutates by_id/canon_to_pids/people_merged."""
     created: dict[str, dict] = {}
     anaphora: dict[str, tuple] = {}   # name -> (given_char) for inverse-minted subjects
+    # given-char → set of carded surnames, for 省姓 relative resolution (绹→令狐绹→令狐)
+    gindex: dict[str, set] = {}
+    for p in by_id.values():
+        cn = p.get("canonical_name", "")
+        sn = seed_mod._surname_of(cn)
+        if sn and len(cn) >= 2:
+            gindex.setdefault(cn[len(sn):], set()).add(sn)
     for juan_no in juans:
         jf = text_dir / f"juan_{juan_no:03d}.json"
         if not jf.exists():
@@ -954,6 +976,38 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                     rule_map.setdefault(new_full, card["id"])
                     if anchor_given:
                         anaphora[new_full] = anchor_given
+              for m in _KIN2_RE.finditer(mtext):
+                x, kin, y = m.group(1), m.group(2), m.group(3)
+                if m.start(1) > 0 and mtext[m.start(1) - 1] not in _GLOSS_BOUNDARY \
+                        and mtext[m.start(1) - 1] not in "「『（":
+                    continue
+                if not _gloss_subject_ok(x) or len(x) != 1:
+                    continue
+                surname = None
+                for yl in (2, 1, 3):
+                    if yl <= len(y):
+                        surname = _resolve_y_surname(y[:yl], by_id, gindex)
+                        if surname:
+                            break
+                if not surname:
+                    continue
+                nf = surname + x
+                if nf in canon_to_pids or len(nf) < 2 or len(nf) > 3 or nf in created:
+                    continue
+                if seed_mod.bad_auto_surface(nf) or nf in seed_mod.COMMON_WORD_NONPERSON:
+                    continue
+                dyn = (meta.get(juan_no, {}).get("dynasty") or "").strip()
+                cs = meta.get(juan_no, {}).get("ce_start")
+                created[nf] = {
+                    "id": seed_mod._auto_id(nf, 9000 + len(created)),
+                    "canonical_name": nf, "names": [], "dynasty": dyn or "—",
+                    "era_hint": f"{dyn}人物" if dyn else "人物",
+                    "floruit": [cs, cs] if cs else [None, None],
+                    "brief": f"{dyn + '·' if dyn else ''}见于卷{juan_no:03d}（家世胡注）。",
+                    "identity": f"{dyn + '·' if dyn else ''}见于卷{juan_no:03d}（家世胡注）。",
+                    "match": [nf], "juans": [juan_no], "confidence": "high"}
+                rule_map.setdefault(nf, created[nf]["id"])
+                anaphora[nf] = x
     for new_full, card in created.items():
         people_merged.append(card)
         by_id[card["id"]] = card
