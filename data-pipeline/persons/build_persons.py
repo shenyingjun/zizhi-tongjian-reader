@@ -699,6 +699,11 @@ def _gloss_y_ok(y: str) -> bool:
         return False
     if len(y) <= 2 and y[-1] in "祖宗":   # 庙号: 太祖/高祖/世祖/太宗/高宗
         return False
+    # 后妃 honorific tails: 姓+Y where Y ends in a consort title (皇后/太后/淑妃/贵妃…)
+    # is never a patrilineal given name to reconstruct — block so a gloss like
+    # 「温，韦皇后之兄也」 never rebuilds 王皇后 from a 王-surnamed subject.
+    if len(y) >= 2 and y[-1] in "后妃嫔":
+        return False
     return True
 
 
