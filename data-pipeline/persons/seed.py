@@ -84,6 +84,9 @@ COMMON_WORD_NONPERSON: set[str] = {
     "杜姥宅",  # 建康地名 (a place), not a person — 杜(姓)-headed glue
     "魏博留",  # 魏博留后 (藩镇官) truncation, not a person
     "于智",   # 明于智略 — "明于智(谋)", not the surname 于
+    "王国",   # 王国 — 诸侯/封地之"国"（皆以州名为王国名）, the common noun "principality";
+              # the only carded mentions were a 家世胡注 mis-mint in j225 胡注 (not a person).
+              # The j59 凉州 rebel 王国 is uncarded regardless; precision-first: wrong > missing.
     "公亮",   # 杞公亮 — 爵(公)-glue, the person is 宇文亮
     # RC-1 (wave-4 audit) — surname + common char that jieba mislabels nr; each spread
     # across many 卷 as a junk card. All are idioms / collective titles, never one person.
