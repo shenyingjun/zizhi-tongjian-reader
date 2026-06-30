@@ -91,10 +91,6 @@ export default function App() {
     }
     return true;
   });
-  // Mobile-only right-side drawer dedicated to 本卷纪年. Kept separate from
-  // the search/lookup drawer so search keeps its full vertical space in
-  // landscape (where the screen is already short).
-  const [showYearDrawer, setShowYearDrawer] = useState<boolean>(false);
   // Font size scale for the reader body — persisted so iOS / mobile users
   // who can't comfortably pinch-zoom (and would lose layout if they did)
   // have a stable way to bump up text size. Desktop benefits too.
@@ -446,27 +442,29 @@ export default function App() {
 
   // Edge-swipe gestures on mobile open the side drawers:
   //   - left-edge → 卷 navigation sidebar
-  //   - right-edge → 本卷纪年 drawer
-  // Search has its own button and is not gesture-bound (search isn't a
-  // high-frequency action while reading and we don't want every swipe-right
-  // to accidentally pop up the search panel).
+  //   - right-edge → the 3-in-1 dock, opened on its 本卷纪年 view
+  // The dock can also be opened by its 检索 button in the header (two triggers,
+  // one drawer).
   //
   // When a drawer is already open, a swipe in the closing direction
-  // dismisses it (swipe left for the sidebar, swipe right for the right-
-  // side drawers). Close gestures may start anywhere — they don't require
-  // the edge strip — so the user can grab the drawer itself and shove it.
+  // dismisses it (swipe left for the sidebar, swipe right for the dock).
+  // Close gestures may start anywhere — they don't require the edge strip —
+  // so the user can grab the drawer itself and shove it.
   //
   // Notes:
   //   - In Safari (not standalone PWA) iOS reserves edge swipes for browser
   //     back/forward; the system gesture usually wins. The sidebar still has
-  //     its toolbar button as a fallback; 本卷纪年 is gesture-only by design.
+  //     its toolbar button as a fallback; the dock has its 检索 button.
   //   - The trigger zone is a thin strip (24px) so reader text selection is
   //     not affected by touches that start inside the body.
-  const drawerStateRef = useRef({ sidebar: false, year: false });
+  const drawerStateRef = useRef({ sidebar: false, dock: false });
   drawerStateRef.current = {
     sidebar: showSidebar,
-    year: showYearDrawer,
+    dock: sheetDetent !== 'peek',
   };
+  // Stable handle to the latest openDockYears so the (deps: []) gesture effect
+  // always opens with current state.
+  const openDockYearsRef = useRef<() => void>(() => {});
   useEffect(() => {
     const EDGE = 24;
     const THRESHOLD_X = 50;
@@ -486,7 +484,7 @@ export default function App() {
       fromLeft = t.clientX <= EDGE;
       fromRight = t.clientX >= w - EDGE;
       const anyOpen = drawerStateRef.current.sidebar
-        || drawerStateRef.current.year;
+        || drawerStateRef.current.dock;
       // Only track the gesture if it could possibly do something:
       // either it starts in an edge strip (potential open) or a drawer
       // is already open (potential close).
@@ -503,18 +501,18 @@ export default function App() {
       if (Math.abs(dy) > MAX_OFF_AXIS) return;
       if (Math.abs(dx) < THRESHOLD_X) return;
 
-      const { sidebar, year } = drawerStateRef.current;
+      const { sidebar, dock } = drawerStateRef.current;
       // Close gestures win over open gestures so the user can dismiss a
       // drawer without an accidental re-open on the opposite edge.
       if (sidebar && dx < 0) { setShowSidebar(false); return; }
-      if (year && dx > 0) { setShowYearDrawer(false); return; }
+      if (dock && dx > 0) { setSheetDetent('peek'); return; }
 
       if (fromLeft && dx > 0) {
         setShowSidebar(true);
-        setShowYearDrawer(false);
+        setSheetDetent('peek');
       } else if (fromRight && dx < 0) {
-        setShowYearDrawer(true);
-        setShowSidebar(false);
+        // Right-edge swipe opens the 3-in-1 dock on its 纪年 view.
+        openDockYearsRef.current();
       }
     };
     const onTouchCancel = () => { startX = null; };
@@ -669,6 +667,20 @@ export default function App() {
       dragging = false;
     };
 
+    // Suppress the browser's native context / selection menu (right-click on
+    // desktop, long-press callout on touch) when the user has selected reader
+    // text. The native menu otherwise pops over our own selection popover at
+    // the same anchor. We only swallow it when there's an active in-pane
+    // selection, so right-clicking elsewhere (and long-press to *start* a
+    // selection) still behaves normally.
+    const onContextMenu = (e: MouseEvent) => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
+      const anchor = sel.anchorNode;
+      const anchorEl = anchor instanceof Element ? anchor : anchor?.parentElement ?? null;
+      if (anchorEl && pane.contains(anchorEl)) e.preventDefault();
+    };
+
     const onSelectionChange = () => {
       // While the user is mid-drag, do nothing. Any state update fanning
       // out to the lookup panel here can cause jank that visibly disturbs
@@ -681,6 +693,7 @@ export default function App() {
 
     pane.addEventListener('pointerdown', onPointerDown);
     pane.addEventListener('dragstart', onDragStart);
+    pane.addEventListener('contextmenu', onContextMenu);
     // Listen on window so we still hear the release if the user drags
     // out of the reader pane before letting go.
     window.addEventListener('pointerup', onPointerUp);
@@ -689,6 +702,7 @@ export default function App() {
     return () => {
       pane.removeEventListener('pointerdown', onPointerDown);
       pane.removeEventListener('dragstart', onDragStart);
+      pane.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
       document.removeEventListener('selectionchange', onSelectionChange);
@@ -873,6 +887,16 @@ export default function App() {
     try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
   };
 
+  // Open the dock on its 纪年 view (mobile right-edge swipe entry point). On
+  // mobile applySubject({kind:'years'}) collapses the sheet to peek, so we
+  // re-raise it to half here to actually slide the drawer in.
+  const openDockYears = () => {
+    goToYears();
+    setSheetDetent('half');
+    setShowSidebar(false);
+  };
+  openDockYearsRef.current = openDockYears;
+
   // The single back/dismiss ladder: person → (from ?? years), lookup → years,
   // years → no-op (desktop) / collapse to peek (mobile). Always drops the live
   // selection. Routed by card ×, breadcrumb ‹, Esc, and the sheet swipe-down.
@@ -905,7 +929,7 @@ export default function App() {
     setSelectionPopover(null);
     setSelectionMatch('');
     applySubject({ kind: 'lookup', query: q, origin: 'unbound-pill' });
-    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+    if (isMobileWidth()) { setShowSidebar(false); }
   };
 
   // Jump from a lookup hit: may be same juan or another juan. On mobile,
@@ -1042,7 +1066,7 @@ export default function App() {
       from: subjectRef.current,
       clickedLabel,
     });
-    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+    if (isMobileWidth()) { setShowSidebar(false); }
   };
 
   // Promote the selection popover's 看人物身份 affordance: open the person with
@@ -1057,7 +1081,7 @@ export default function App() {
     setHighlightPid(null);
     setSearchCompose(false);
     applySubject({ kind: 'person', personId, atPid, origin: 'lookup-promoted', from: null, clickedLabel });
-    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+    if (isMobileWidth()) { setShowSidebar(false); }
   };
 
   // The currently open person object (card shown IFF subject.kind==='person').
@@ -1141,7 +1165,6 @@ export default function App() {
   }, []);
 
   // The header subject segmented control / legend availability.
-  const hasLookupCtx = subject.kind === 'lookup' || !!lastLookup.trim();
   const hasPersonCtx = subject.kind === 'person' || !!lastPerson;
   const legendText =
     subject.kind === 'lookup' ? `出处检索：「${subject.query}」`
@@ -1168,7 +1191,7 @@ export default function App() {
     setSelectionPopover(null);
     setSelectionMatch('');
     try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
-    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+    if (isMobileWidth()) { setShowSidebar(false); }
   };
 
   // Promote a lookup → person (from = the lookup, so Back returns to it).
@@ -1193,7 +1216,7 @@ export default function App() {
     setSearchCompose(true);
     if (q.trim()) applySubject({ kind: 'lookup', query: q, origin: 'typed' });
     else setSheetDetent('half');
-    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+    if (isMobileWidth()) { setShowSidebar(false); }
   };
 
   // Header seg: re-select the last person context.
@@ -1210,7 +1233,7 @@ export default function App() {
       from: subject.kind === 'years' ? null : subject,
       clickedLabel: lastPerson.clickedLabel,
     });
-    if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+    if (isMobileWidth()) { setShowSidebar(false); }
   };
 
   // Mobile drawer drag handling (grabber). The dock is a right slide-in drawer,
@@ -1241,7 +1264,7 @@ export default function App() {
   // (Spoiler filter is now juan-based, so no need to compute a year cutoff.)
 
   return (
-    <div className={`layout${showSidebar ? '' : ' sidebar-collapsed'}${detentClass}${sheetDetent !== 'peek' ? ' dock-open' : ''}${showYearDrawer ? ' year-drawer-open' : ''}`}>
+    <div className={`layout${showSidebar ? '' : ' sidebar-collapsed'}${detentClass}${sheetDetent !== 'peek' ? ' dock-open' : ''}`}>
       <Sidebar
         manifest={manifest}
         currentJuan={juanNo}
@@ -1251,7 +1274,6 @@ export default function App() {
           setJuanNo(n);
           if (isMobileWidth()) {
             setShowSidebar(false);
-            setShowYearDrawer(false);
           }
         }}
       />
@@ -1262,7 +1284,7 @@ export default function App() {
             className="sidebar-toggle"
             onClick={() => setShowSidebar(s => {
               const next = !s;
-              if (next && isMobileWidth()) { setSheetDetent('peek'); setShowYearDrawer(false); }
+              if (next && isMobileWidth()) { setSheetDetent('peek'); }
               return next;
             })}
             title={showSidebar ? '隐藏目录' : '显示目录'}
@@ -1391,7 +1413,7 @@ export default function App() {
                 if (subject.kind === 'person') goToYears();
                 setSearchCompose(true);
                 setSheetDetent('half');
-                if (isMobileWidth()) { setShowSidebar(false); setShowYearDrawer(false); }
+                if (isMobileWidth()) { setShowSidebar(false); }
               }
             }}
             title={searchCompose || subject.kind === 'lookup' ? '隐藏检索' : '出处检索'}
@@ -1465,7 +1487,6 @@ export default function App() {
                 type="button"
                 className={'seg-btn' + (subject.kind === 'lookup' ? ' is-on' : '')}
                 aria-pressed={subject.kind === 'lookup'}
-                disabled={!hasLookupCtx}
                 onClick={selectLookupSeg}
               >检索</button>
               <button
@@ -1607,29 +1628,10 @@ export default function App() {
           )}
         </div>
       </aside>
-      {/* Mobile-only right-side drawer for 本卷纪年. Opened by swiping left
-          from the right edge of the screen (no header button by design — the
-          gesture is the only opener). Backdrop tap closes it. */}
-      <aside className="year-drawer" aria-hidden={!showYearDrawer}>
-        {juan && (
-          <YearToc
-            years={juan.years}
-            activeParagraphId={activeParagraphId}
-            selectedYearPid={selectedYearPid}
-            onJump={pid => {
-              setHighlightPid(null);
-              setSelectedYearPid(pid);
-              jumpToParagraph(pid);
-              if (isMobileWidth()) setShowYearDrawer(false);
-            }}
-          />
-        )}
-      </aside>
       <div
         className="drawer-backdrop"
         onClick={() => {
           if (showSidebar) { setShowSidebar(false); return; }
-          if (showYearDrawer) { setShowYearDrawer(false); return; }
           // Mobile sheet backdrop: one tap returns to reading (纪年).
           goToYears();
         }}

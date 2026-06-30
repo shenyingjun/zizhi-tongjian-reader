@@ -44,7 +44,9 @@ const SIMPLIFIED_MARKERS = ['资', '诸侯', '为'];
   console.log('screenshot saved -> web/reader-screenshot.png');
 
   // --- Lookup verification ---
-  // Programmatically select a 4-char span from the first paragraph and dispatch mouseup.
+  // Selecting reader text surfaces a transient popover ("搜全部出处"); clicking
+  // it promotes the selection into a 出处检索 lookup. (There is no desktop
+  // auto-fill — the popover is the one explicit affordance on all devices.)
   await page.evaluate(() => {
     const p = document.querySelector('.reader-body [data-pid]');
     if (!p) return;
@@ -58,8 +60,13 @@ const SIMPLIFIED_MARKERS = ['资', '诸侯', '为'];
     const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
-    p.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    // Nudge listeners that key off pointerup / selectionchange.
+    document.dispatchEvent(new Event('selectionchange', { bubbles: true }));
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
   });
+  // The selection popover appears after a short debounce; click 搜全部出处.
+  await page.waitForSelector('.selection-action-btn', { timeout: 10000 });
+  await page.locator('.selection-action-btn').first().click();
   // Wait for lookup index to load and render.
   await page.waitForSelector('.lookup-summary, .lookup-empty p', { timeout: 30000 });
   const summary = await page.locator('.lookup-summary, .lookup-empty').first().textContent();
