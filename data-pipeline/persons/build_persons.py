@@ -1035,6 +1035,45 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                     continue
                 x_surf, y_surf = m.group(1), m.group(2)
                 pid_x = rule_map.get(x_surf)
+                if (not pid_x or pid_x not in by_id) and len(x_surf) == 1 \
+                        and _gloss_subject_ok(x_surf):
+                    # X written 省称 (bare given 收): resolve its surname from the NEAREST
+                    # preceding 姓+X / 复姓+X mention in THIS paragraph — the just-named
+                    # antecedent (…杨收同平章事。收，发之弟也) — NOT a 卷-wide card, which can
+                    # be a different 同名 person (姚详 vs the 省称 慕容详). When that full
+                    # name is carded, X is a KNOWN person, so take the FORWARD path and
+                    # mint the patrilineal relative Y (杨发); the old code dropped to the
+                    # INVERSE branch, which only re-mints the carded subject and loses Y.
+                    pre_txt = mtext[:m.start(1)]
+                    sname = None
+                    for i in range(len(pre_txt) - 1, 0, -1):
+                        if pre_txt[i] != x_surf:
+                            continue
+                        if i >= 2 and pre_txt[i - 2:i] in seed_mod.COMPOUND:
+                            sname = pre_txt[i - 2:i]
+                            break
+                        if pre_txt[i - 1] in seed_mod.SURNAMES:
+                            cand = pre_txt[i - 1]
+                            # 王/公/侯/君/主 double as princely titles: 「彭城王雄」 is the
+                            # prince named 雄 (姓 元/司马…), NOT surname 王. Accept these
+                            # only when the char starts a fresh name (preceded by a clause
+                            # boundary), so a fief+王 title (阳平王/襄阳王/高凉王) is rejected
+                            # and we never mint a bogus 王释 / 王玮 for 元释 / 司马玮.
+                            if cand in "王公侯君主" and not (
+                                    i == 1 or pre_txt[i - 2] in _GLOSS_BOUNDARY
+                                    or pre_txt[i - 2] in "「『（〈《【　 "):
+                                break
+                            sname = cand
+                            break
+                    if sname:
+                        cands = canon_to_pids.get(sname + x_surf)
+                        if cands:
+                            pid_x = min(cands, key=lambda pc: _juan_gap(pc[1], juan_no))[0]
+                            if x_surf not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
+                                carded_anaphora.setdefault(pid_x, (set(), x_surf))[0].add(juan_no)
+                            if len(y_surf) == 1 and y_surf not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
+                                for apid, _aj in canon_to_pids.get(sname + y_surf, []):
+                                    carded_anaphora.setdefault(apid, (set(), y_surf))[0].add(juan_no)
                 inverse = False
                 if pid_x and pid_x in by_id:
                     # FORWARD — X known, mint the 省姓 relative Y = 姓(X)+Y.
