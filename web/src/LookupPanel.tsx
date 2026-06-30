@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { LookupHit, Paragraph } from './corpus';
-import { loadJuan, loadLookup, searchCorpus } from './corpus';
+import { loadJuan, loadLookup, loadPersonMentions, searchCorpus, buildPersonHits } from './corpus';
 import { splitParagraph, findMatches, highlight, highlightWithRanges } from './highlight';
 
 interface Props {
@@ -133,6 +133,10 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [futureCount, setFutureCount] = useState(0);
+  // Distinct surface forms this person actually appears under (canonical name,
+  // aliases, anaphora 省称, and role 称谓), gathered from their NER spans. Used
+  // only to highlight the matched form inside the full-paragraph peek/sheet.
+  const [occSurfaces, setOccSurfaces] = useState<string[] | null>(null);
   const activeHitRef = useRef<HTMLLIElement | null>(null);
 
   // Hover-only full-paragraph peek. Popover is interactive so users can move
@@ -295,9 +299,13 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
 
   // Curated mode is active when a bound person supplied verified names + pids.
   const curated = !!(occurrenceNames && occurrenceNames.length > 0 && occurrencePids);
-  // Needles to highlight inside the full-paragraph peek/sheet: the person's
-  // name surfaces in curated mode, else the literal query.
-  const peekNeedles: string | string[] = curated ? occurrenceNames! : query;
+  // Needles to highlight inside the full-paragraph peek/sheet. In curated mode
+  // we prefer the person's actual surface forms (so an emperor's 上/帝 or a
+  // 省称 given name is highlighted, not just the full name); fall back to the
+  // card names until the spans have loaded. Literal mode uses the typed query.
+  const peekNeedles: string | string[] = curated
+    ? (occSurfaces && occSurfaces.length > 0 ? occSurfaces : occurrenceNames!)
+    : query;
 
   useEffect(() => {
     if (!query) {
@@ -312,29 +320,50 @@ export default function LookupPanel({ query, maxJuan, currentJuan, highlightPid,
     // flashing the loading state would just make the panel flicker.
     if (hits === null) setLoading(true);
     setError(null);
-    loadLookup()
-      .then(corpus => {
+    (async () => {
+      try {
+        const corpus = await loadLookup();
         if (cancelled) return;
         if (curated) {
-          // NER-accurate: restrict to the person's verified appearance pids and
-          // match any of their name surfaces (canonical + aliases).
-          const names = occurrenceNames!;
+          // NER-accurate: drive the occurrence list straight from this
+          // person's resolved mention spans (alias/anaphora/role), so every
+          // tagged occurrence appears — including role 称谓 and 省称 given
+          // names that the card's name list never contains.
+          const personId = occurrenceKey!;
           const pids = occurrencePids!;
-          const filtered = searchCorpus(names, corpus, { maxJuan, limit: 2000, restrictPids: pids });
-          const all = maxJuan === null
-            ? filtered
-            : searchCorpus(names, corpus, { limit: 5000, restrictPids: pids });
-          setHits(filtered);
-          setFutureCount(all.length - filtered.length);
+          const juans = Array.from(new Set(
+            Array.from(pids).map(k => parseInt(k.slice(0, k.indexOf(':')), 10)),
+          )).filter(n => Number.isFinite(n));
+          const perJuan = await Promise.all(juans.map(async j => ({
+            juan: j,
+            mentions: (await loadPersonMentions(j))?.mentions ?? [],
+          })));
+          if (cancelled) return;
+          const all = buildPersonHits(personId, corpus, perJuan, { limit: 5000 });
+          const visible = maxJuan === null ? all : all.filter(h => h.j <= maxJuan);
+          const surfs = new Set<string>();
+          for (const { mentions } of perJuan) {
+            for (const m of mentions) {
+              if (m.person_id === personId) surfs.add(m.surface);
+            }
+          }
+          if (cancelled) return;
+          setOccSurfaces(Array.from(surfs));
+          setHits(visible.slice(0, 2000));
+          setFutureCount(all.length - visible.length);
         } else {
           const filtered = searchCorpus(query, corpus, { maxJuan, limit: 500 });
           const all = maxJuan === null ? filtered : searchCorpus(query, corpus, { limit: 5000 });
+          if (cancelled) return;
           setHits(filtered);
           setFutureCount(all.length - filtered.length);
         }
-      })
-      .catch(e => !cancelled && setError(String(e)))
-      .finally(() => !cancelled && setLoading(false));
+      } catch (e) {
+        if (!cancelled) setError(String(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
     // hits intentionally omitted from deps: it's only read to decide whether
     // to show the loading skeleton on first fetch. occurrenceKey stands in for
