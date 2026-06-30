@@ -705,12 +705,17 @@ def extract_gloss(text, rule_map, canon_to_pids, juan_no, by_id, consumed):
     mentions, relations = [], []
     for m in _GLOSS_RE.finditer(text):
         x_surf, y_surf, z = m.group(1), m.group(2), m.group(3)
-        # require a real clause boundary just before X (start, or punctuation)
-        if m.start(1) > 0 and text[m.start(1) - 1] not in _GLOSS_BOUNDARY:
-            continue
         if not _gloss_y_ok(y_surf):
             continue
         pid_x = rule_map.get(x_surf)
+        # X must start a fresh clause — UNLESS it already resolves to a carded
+        # multi-char full name. The boundary guard exists only to reject a mid-word
+        # fragment of an UNKNOWN X; 「观察使崔彦曾，愼由之从子也」 sits mid-clause after an
+        # office title yet 崔彦曾 is unambiguously a known person, so demanding a
+        # boundary there silently drops the 愼由→崔愼由 glue.
+        x_carded = pid_x in by_id and len(x_surf) >= 2
+        if not x_carded and m.start(1) > 0 and text[m.start(1) - 1] not in _GLOSS_BOUNDARY:
+            continue
         x_emit = None
         if not pid_x or pid_x not in by_id:
             # subject unmapped (省称 not NER'd): if both subject 姓+X and ancestor 姓+Y
@@ -1492,6 +1497,43 @@ def main():
                         p["floruit"] = fl
                     lookback_rebriefed += 1
 
+    # Wave 44 — gloss-minted 家世胡注 / 官衔连写 cards are anchored ONLY to the 卷 where
+    # the office cue / gloss fired (萧复 → office-intro 卷 228); their full 姓名 recurs in
+    # nearby 卷 (萧复 also in 229/231) but the lookback pass above skips them (it requires a
+    # len>=3 surface and only probes 2 卷 backward), so a person card shows only part of its
+    # history. Fill the gap: around each existing card 卷, probe ±GAP 卷 (era-local, no
+    # century teleport) and register the full canonical wherever it literally occurs and is
+    # NOT already claimed by another person (homograph-safe, mirrors the lookback guard).
+    gloss_fill_added = 0
+    _NONNAME_GIVEN = set("以其与为有它出入师国甲天二三日所因既将须即乃则亦焉也矣者及自等")
+    for pid_, p in list(by_id.items()):
+        if not re.search(r"见于卷\d{3}（(?:家世胡注|官衔连写)）。$", p.get("brief", "")):
+            continue
+        cn = p["canonical_name"]
+        if not (2 <= len(cn) <= 3) or not seed_mod._surname_of(cn):
+            continue
+        # Precision guard: never EXTEND a card whose given-part is a single function
+        # word / common noun — those minted cards (王以/魏以/王师/王国/马甲 = 「王，以」
+        # 「royal army」「kingdom」「armor」) are 姓/封号+虚词 mis-slices, and the fill must
+        # not amplify them. A real person that happens to have such a given (司马师) merely
+        # forgoes the bonus fill (missing < wrong); its base mentions are untouched.
+        sn = seed_mod._surname_of(cn)
+        given = cn[len(sn):]
+        if len(given) == 1 and given in _NONNAME_GIVEN:
+            continue
+        cur = sorted(j for j in p.get("juans", []) if j in juan_set)
+        if not cur:
+            continue
+        probe = {jb for j in cur for jb in range(j - seed_mod.GAP, j + seed_mod.GAP + 1)
+                 if jb in juan_set and jb not in p["juans"]}
+        for jb in sorted(probe):
+            if RULES.get(jb, {}).get(cn) is not None:
+                continue  # claimed by another person here → homograph, skip
+            if cn in _juan_text(jb):
+                RULES.setdefault(jb, {})[cn] = pid_
+                p["juans"].append(jb)
+                gloss_fill_added += 1
+
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "mentions").mkdir(parents=True, exist_ok=True)
 
@@ -1504,6 +1546,29 @@ def main():
     gloss_emitted = 0
     feng_emitted = 0
     relations_all: list = []
+    # Wave 44 — `introduced` is the cumulative (NOT reset per 卷) set of pids whose
+    # full canonical name has already appeared in corpus reading order in some EARLIER
+    # 卷. Combined with the per-卷 first-occurrence position below, it drives the
+    # bare-given antecedent gate: a 省称 is suppressed ONLY when it is pre-debut — the
+    # full name has never been read yet AND appears later within the same 卷 (行及徐城
+    # at 251#10 precedes 刘行及 at 251#19). Once introduced anywhere, every later 省称
+    # (蒙逊/守光/勃勃/化及 across 卷) is kept; a person whose full name never appears in
+    # the corpus at all (沮渠牧犍 → only ever 牧犍) is never gated.
+    introduced: set = set()
+
+    # Wave 44 — bare-given (surname-stripped, ≥2-char) 省称 surfaces (刘行及→行及,
+    # 萧彦回→彦回 …) are antecedent-gated in the alias pass below: such a given can
+    # double as an ordinary verb phrase (行及徐城 = "marched and reached 徐城"), so it
+    # must not tag BEFORE the full name has been read in the same 卷. single-char 省称
+    # are already antecedent-gated by the anchored anaphora pass (given_of); this
+    # covers the 2+-char given the position-independent alias matcher would otherwise
+    # fire ahead of its antecedent.
+    bare_given_of: dict[str, str] = {}
+    for pid_, p in by_id.items():
+        cn = p["canonical_name"]
+        sn = seed_mod._surname_of(cn)
+        if sn and len(cn) - len(sn) >= 2:
+            bare_given_of[pid_] = cn[len(sn):]
 
     for juan_no in JUANS:
         jf = TEXT / f"juan_{juan_no:03d}.json"
@@ -1511,6 +1576,25 @@ def main():
             continue
         juan = json.loads(jf.read_text(encoding="utf-8"))
         surfaces = surfaces_for(juan_no)
+        # Wave 44 — first reading-order position (para_idx, char_start) at which each
+        # candidate person's FULL canonical name literally appears in this 卷. Used
+        # below to suppress a bare-given 省称 that precedes its own full name (the
+        # 行及徐城-before-刘行及 case). Position-based (not surface-registration based) so
+        # it is robust when the full 4-char name is not itself a matchable surface.
+        juan_blob = "\n".join(p.get("main", "") for p in juan["paragraphs"])
+        intro_pos: dict[str, tuple] = {}
+        cand_pids = {pid_ for _surf, pid_ in surfaces
+                     if bare_given_of.get(pid_)
+                     and by_id[pid_]["canonical_name"] in juan_blob}
+        if cand_pids:
+            for cp_idx, cpara in enumerate(juan["paragraphs"]):
+                ct = cpara.get("main", "")
+                for pid_ in cand_pids:
+                    if pid_ in intro_pos:
+                        continue
+                    pos = ct.find(by_id[pid_]["canonical_name"])
+                    if pos >= 0:
+                        intro_pos[pid_] = (cp_idx, pos)
         admitted = ANAPHORA_RULES.get(juan_no, set()) | minted_admit.get(juan_no, set())
         char_anchor: dict[str, str] = {
             gch: pid_ for gch, pid_ in minted_anchor.get(juan_no, {}).items()
@@ -1543,11 +1627,25 @@ def main():
             # single-char alias surfaces are never trusted (元胄→胄 etc. flow through
             # the anaphora/gloss passes which pin them to an antecedent); a bare given
             # char as a standalone alias is a precision storm.
-            alias_hits = [h for h in extract(main_text, surfaces)
-                          if not any(consumed[h[0]:h[1]]) and (h[1] - h[0]) >= 2]
-            for (s, e, pid_, surf) in alias_hits:
+            alias_hits = []
+            for (s, e, pid_, surf) in sorted(
+                    (h for h in extract(main_text, surfaces)
+                     if (h[1] - h[0]) >= 2), key=lambda h: h[0]):
+                if any(consumed[s:e]):
+                    continue
+                # Wave 44 antecedent gate: a bare-given 省称 (行及 for 刘行及) is dropped
+                # only when PRE-DEBUT — its person was not introduced in an earlier 卷
+                # AND its full name appears later (in reading order) within THIS 卷. A
+                # given that doubles as a verb phrase (行及徐城) thus cannot tag ahead of
+                # — or in place of — the real person. Cross-卷 and post-introduction 省称
+                # (蒙逊/守光/化及) and full-name-never-appears persons (牧犍) are kept.
+                if surf == bare_given_of.get(pid_) and pid_ not in introduced:
+                    ip = intro_pos.get(pid_)
+                    if ip is not None and (p_idx, s) < ip:
+                        continue
                 for k in range(s, e):
                     consumed[k] = True
+                alias_hits.append((s, e, pid_, surf))
                 mentions.append({"pid": pid, "ce_year": ce, "source": "main",
                                  "start": s, "end": e, "surface": surf,
                                  "person_id": pid_, "kind": "alias",
@@ -1620,6 +1718,10 @@ def main():
                 slot[key] = {"juan": juan_no, "pid": m["pid"],
                              "ce_year": m["ce_year"], "source": m["source"]}
 
+        # Wave 44 — every person whose full name appeared in this 卷 is now "introduced"
+        # for all subsequent 卷, so their 省称 are never re-gated downstream.
+        introduced.update(intro_pos)
+
         para_ids = {m["pid"] for m in mentions}
         per_juan_counts[juan_no] = (len(mentions), len(para_ids))
         _write_text_retry(OUT / "mentions" / f"juan_{juan_no:03d}.json",
@@ -1691,6 +1793,7 @@ def main():
     print(f"rc5 谥号/封号 fragment cards dropped: {_FRAG_DROPPED}")
     print(f"title-misread (王/公/侯/君/主) cards dropped: {_TITLE_DROPPED}")
     print(f"lookback 卷 surfaces registered: {lookback_added}")
+    print(f"gloss/office card 卷 surfaces filled: {gloss_fill_added}")
     print(f"lookback brief/floruit re-anchored: {lookback_rebriefed}")
     print(f"xref window-merge (见N卷): {xref_merged} later windows folded")
     print(f"book-enrich 字 briefs: {briefs_enriched}")
