@@ -676,6 +676,14 @@ def extract_titleglue(text, ce, consumed, rule_map, by_id, alias_map=None):
                 pid_w = rule_map.get(fsurf) or (alias_map.get(fsurf) if alias_map else None)
                 if not pid_w or any(consumed[false_s:false_e]):
                     continue
+                # 袁公弁 looks like 封号(会稽王昱-style)+given, but here the char just before the
+                # 爵 (公) is the surname 袁 and 袁公弁 (姓+爵medial+given) IS this person's canonical
+                # — a 公/王-in-given misread, not a wrong-era homograph. Don't reserve; let the
+                # alias pass tag the real person. (会稽王昱: char before 爵 is 稽, a 封号 char, so
+                # 稽王昱 ≠ 王昱 → still reserved, and the 司马昱 occurrence is never mis-tagged.)
+                cn = by_id[pid_w].get("canonical_name")
+                if cn and rank_pos >= 1 and text[rank_pos - 1:false_e] == cn and rule_map.get(cn) == pid_w:
+                    continue
                 fl = by_id[pid_w].get("floruit") or [None, None]
                 undated = fl[0] is None and fl[1] is None
                 if _lifespan_outside(by_id[pid_w], ce) or undated:
