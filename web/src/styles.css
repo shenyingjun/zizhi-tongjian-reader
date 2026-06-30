@@ -343,6 +343,10 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .seg-btn:disabled { color: var(--muted); cursor: default; }
 .seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .reader-body { max-width: 720px; margin: 0 auto; padding: 1.5rem 2rem 5rem; }
+/* Suppress the iOS/WebKit long-press selection callout (Copy / Look Up / Search
+   Web). It pops over our own selection popover at the same anchor; our popover
+   provides the search affordance instead. Text selection itself still works. */
+.reader-body { -webkit-touch-callout: none; }
 /* Apply the user-selected font scale to all reader text. Paragraphs inherit
    font-size from .reader-body, so a single declaration covers main text,
    embedded 胡注 (which uses em-based sizing), and special paragraph types. */
@@ -759,11 +763,6 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 
 .year-toc { flex-shrink: 0; }
 
-/* The dedicated 本卷纪年 drawer only exists on mobile (see the
-   @media (max-width: 900px) block). Hide it on desktop where the
-   YearToc is already shown inside .person-pane. */
-.year-drawer { display: none; }
-
 .lookup-section {
   margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border);
   flex: 1; min-height: 0; display: flex; flex-direction: column;
@@ -1135,18 +1134,19 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .selection-action-btn svg { width: 14px; height: 14px; }
 .selection-action-person { background: rgba(244, 236, 216, 0.12); }
 
-/* Desktop / anchored variant: a small popover positioned just above the
+/* Desktop / anchored variant: a small popover positioned just below the
    selection rather than pinned to the bottom edge. JS supplies left/top from
-   the selection's bounding rect; we translate to center horizontally and lift
-   it clear of the text. */
+   the selection's bounding rect (top = selection bottom); we translate to
+   center horizontally and drop it clear of the text. Anchoring below keeps it
+   from colliding with the Edge mini menu / native selection toolbar above. */
 .selection-action-bar.is-anchored {
   left: 0; top: 0; bottom: auto;
-  transform: translate(-50%, -100%);
+  transform: translate(-50%, 0);
   animation: selection-action-pop-anchored 0.16s var(--ease-out);
 }
 @keyframes selection-action-pop-anchored {
-  from { opacity: 0; transform: translate(-50%, calc(-100% + 6px)); }
-  to   { opacity: 1; transform: translate(-50%, -100%); }
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1293,8 +1293,7 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
     transition: opacity 0.2s ease;
   }
   .layout:not(.sidebar-collapsed) .drawer-backdrop,
-  .layout.dock-open .drawer-backdrop,
-  .layout.year-drawer-open .drawer-backdrop {
+  .layout.dock-open .drawer-backdrop {
     display: block;
     opacity: 1;
     pointer-events: auto;
@@ -1302,51 +1301,6 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 
   @media (prefers-reduced-motion: reduce) {
     .person-pane { transition: none; }
-  }
-
-  /* 本卷纪年 lives in its own slide-in drawer on mobile. Opened only by an
-     edge-swipe from the right edge of the screen — there is no header
-     button for it (the search drawer already owns the right toolbar slot
-     and we don't want to make landscape any more cramped). */
-  .year-drawer {
-    display: flex;
-    flex-direction: column;
-    position: fixed;
-    top: 0; right: 0; bottom: 0;
-    width: 70%;
-    max-width: 260px;
-    z-index: 60;
-    background: var(--bg);
-    border-left: 1px solid var(--border);
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.25);
-    transform: translateX(100%);
-    transition: transform 0.22s ease;
-    padding-top: env(safe-area-inset-top, 0px);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    padding-right: env(safe-area-inset-right, 0px);
-    overflow: hidden;
-  }
-  .layout.year-drawer-open .year-drawer {
-    transform: translateX(0);
-  }
-  /* Inside the year drawer, the YearToc must be visible (overriding the
-     person-pane rule below) and fill the drawer. */
-  .year-drawer .year-toc {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-    padding: 0.75rem 0.9rem;
-  }
-  /* The default 160px-tall scrolling list isn't right here — the whole
-     drawer is the scroll surface. */
-  .year-drawer .year-toc ul {
-    height: auto;
-    max-height: none;
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
   }
 
   /* Show the lookup-toggle button only on mobile. */
