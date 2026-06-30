@@ -84,6 +84,27 @@ COMMON_WORD_NONPERSON: set[str] = {
     "杜姥宅",  # 建康地名 (a place), not a person — 杜(姓)-headed glue
     "魏博留",  # 魏博留后 (藩镇官) truncation, not a person
     "于智",   # 明于智略 — "明于智(谋)", not the surname 于
+    # Wave 47 — noise surfaces admitted by the new 康/浑/来/鱼/游 surnames. Each verified
+    # in-corpus as a non-person (place / 谥/庙号 / 封号 / idiom / 省称-fragment of another姓).
+    "康居",   # 康居 — 西域康居国 (Sogdiana), a kingdom, not a person
+    "康居候",  # 康居候 — 康居 + 候, place-glue fragment
+    "康乐",   # 康乐 — 谢灵运's 封号 (康乐公/康乐侯), not surname 康
+    "康强",   # 康强 — "robust/in good health", common word
+    "康薨",   # 康薨 — surname-given + 薨 verb fragment
+    "康献",   # 康献 — 谥号 (晋康献褚皇后), not a person card
+    "康福奏",  # 康福奏 — 康福(real)+奏 verb fragment
+    "康生",   # 康生 — 奚康生 (本姓达奚) 省称 / 少康生于… verb, never surname 康
+    "康宗",   # 康宗 — 闽 庙号康宗 (王继鹏), a temple name
+    "康祖",   # 康祖 — 刘康祖 (姓刘) 省称 fragment
+    "康君",   # 康君 — 康君立 (后唐) truncated fragment
+    "来历",   # 来历 — "origin/background", common word
+    "鱼龙",   # 鱼龙 — 鱼龙百戏 / 鱼龙曼延, not a person
+    "鱼贯",   # 鱼贯 — 鱼贯而入/而出, idiom
+    "游畋",   # 游畋 — "to hunt/roam", common word
+    "游侠",   # 游侠 — "knight-errant", common word
+    "游燕",   # 游燕 — 游宴 (idle feasting) / 燕赵地名, not a person
+    "游长安",  # 游长安 — 游[于]长安, verb-place fragment
+    "孙右渠",  # 孙右渠 — 「传子至孙右渠」 kinship mis-slice (孙=grandson); the person is 卫右渠
     "王国",   # 王国 — 诸侯/封地之"国"（皆以州名为王国名）, the common noun "principality";
               # the only carded mentions were a 家世胡注 mis-mint in j225 胡注 (not a person).
               # The j59 凉州 rebel 王国 is uncarded regardless; precision-first: wrong > missing.
@@ -556,7 +577,13 @@ SURNAMES_EXTRA = set(
     "裴项翟奚褚岑应隗郁娄柴路闵甄滕赖仇靳舒毕禹冉焦祝梅湛贡乔竺谯茹习裘席祁嵇"
     "蔺扈倪缪瞿阚茅夔巩支俞巢包查逄姬缑訾池乜鞠贲党喻柯滑钦逯佟璩芮郜酆浦钭傅"
     "景房阎时羊章索庄邢辛盖牧班鄂申柏葛甘季法皮解边刁庾蒲霍费颜廉狄卓阮骆殷温"
-    "符管苗麻单纪吉")
+    "符管苗麻单纪吉"
+    # Wave 47 corpus-scored expansion. Each admits dominantly-real names with only a
+    # handful of noise surfaces (banned below in COMMON_WORD_NONPERSON):
+    #   康 — 康承训/康义诚/康待宾/康延孝/康福/康楚元/康日知/康绚/康宁/康儒 (粟特·后唐 康姓)
+    #   浑 — 浑瑊(唐名将)/浑镐  ·  来 — 来歙/来济  ·  鱼 — 鱼朝恩/鱼遵/鱼承晔/鱼崇远
+    #   游 — 游明根/游肇/游雅/游邃/游楷 (河间游氏)
+    "康浑来鱼游")
 SURNAMES |= SURNAMES_EXTRA
 
 # Compound (2-char) surnames → a 3-char auto name must begin with one of these.
@@ -776,6 +803,16 @@ def load_model_ner_people(hand_people):
         for k in (1, 2):
             if len(fn) - k >= 2:
                 tails.add(fn[k:])
+    # given-name -> [(leading-surname, 卷-set)] over surname-headed MODEL surfaces only, used
+    # by the 省称-corroboration rescue below to detect a same-卷 namesake (the 克用 = 李克用 /
+    # 全忠 = 朱全忠 class). Built from raw (not full_names) so bogus title-misslice surfaces
+    # (王休范 ← 桂阳王休范) can't poison a real rescue (刘休范).
+    model_given: dict[str, list] = collections.defaultdict(list)
+    for _s, _inf in raw.items():
+        if surname_headed(_s) and 3 <= len(_s) <= 6:
+            _sn = _surname_of(_s)
+            if _sn and len(_s[len(_sn):]) >= 2:
+                model_given[_s[len(_sn):]].append((_s[:len(_sn)], set(_inf.get("j", []))))
 
     def prefix_blocked(s: str) -> bool:
         return any(len(s) > k and s[:k] in WIKI_NONPERSON for k in (2, 3))
@@ -827,6 +864,25 @@ def load_model_ner_people(hand_people):
             ok = True
         elif is_single_surname:
             ok = len(surf) >= 3 and n >= 2
+            # 省称-corroboration rescue: a 3-char 姓名 the model saw only once (康道伟 n=1)
+            # is reliable when its bare given name recurs as its own model surface in the
+            # SAME 卷 (道伟 n≥3). That bare given is the surname-elided 省称 of THIS full name
+            # (资治通鉴 drops the 姓 on later mention); promoting the full name lets the 省姓
+            # 回指 pass re-bind the given as anaphora instead of leaving a truncated card.
+            # Guard: only when the bare given is UNAMBIGUOUS — no other carded/model full name
+            # carries the same given under a different surname (else 余克用 would hijack 克用's
+            #李克用 anaphora, 谢全忠→朱全忠, 蔡建德→窦建德, …). Ambiguous given → drop (precision).
+            if not ok and len(surf) >= 3 and n >= 1 and surf[0] not in "王公侯君主":
+                sur = _surname_of(surf)
+                tail = surf[len(sur):] if sur else ""
+                ti = raw.get(tail)
+                myj = set(info.get("j", []))
+                mylead = surf[:len(sur)] if sur else ""
+                conflict = any(lead != mylead and (js & myj)
+                               for lead, js in model_given.get(tail, []))
+                if (len(tail) >= 2 and ti and ti.get("n", 0) >= 3
+                        and (set(ti.get("j", [])) & myj) and not conflict):
+                    ok = True
         else:
             ok = n >= 3 or (len(surf) >= 4 and n >= 2)
         if not ok:
