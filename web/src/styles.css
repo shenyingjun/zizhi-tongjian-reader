@@ -1134,18 +1134,19 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 .selection-action-btn svg { width: 14px; height: 14px; }
 .selection-action-person { background: rgba(244, 236, 216, 0.12); }
 
-/* Desktop / anchored variant: a small popover positioned just above the
+/* Desktop / anchored variant: a small popover positioned just below the
    selection rather than pinned to the bottom edge. JS supplies left/top from
-   the selection's bounding rect; we translate to center horizontally and lift
-   it clear of the text. */
+   the selection's bounding rect (top = selection bottom); we translate to
+   center horizontally and drop it clear of the text. Anchoring below keeps it
+   from colliding with the Edge mini menu / native selection toolbar above. */
 .selection-action-bar.is-anchored {
   left: 0; top: 0; bottom: auto;
-  transform: translate(-50%, -100%);
+  transform: translate(-50%, 0);
   animation: selection-action-pop-anchored 0.16s var(--ease-out);
 }
 @keyframes selection-action-pop-anchored {
-  from { opacity: 0; transform: translate(-50%, calc(-100% + 6px)); }
-  to   { opacity: 1; transform: translate(-50%, -100%); }
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
 @media (prefers-reduced-motion: reduce) {

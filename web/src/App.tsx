@@ -592,13 +592,14 @@ export default function App() {
         return;
       }
       setSelectionMatch(prev => (prev === txt ? prev : txt));
-      // Desktop anchors the popover above the selection rect; mobile keeps the
-      // bottom pill (rect == null).
+      // Desktop anchors the popover BELOW the selection rect (so it doesn't
+      // collide with the Edge "mini menu" / native selection toolbar, which
+      // sits above the selection). Mobile keeps the bottom pill (rect == null).
       let rect: { cx: number; top: number } | null = null;
       if (!isMobileWidth()) {
         try {
           const r = sel.getRangeAt(sel.rangeCount - 1).getBoundingClientRect();
-          if (r && (r.width || r.height)) rect = { cx: r.left + r.width / 2, top: r.top };
+          if (r && (r.width || r.height)) rect = { cx: r.left + r.width / 2, top: r.bottom };
         } catch { /* noop */ }
       }
       const personId = exactPersonRef.current(txt);
@@ -1641,7 +1642,7 @@ export default function App() {
         <div
           className={'selection-action-bar' + (selectionPopover.rect ? ' is-anchored' : '')}
           style={selectionPopover.rect
-            ? { left: `${selectionPopover.rect.cx}px`, top: `${Math.max(8, selectionPopover.rect.top - 10)}px`, bottom: 'auto' }
+            ? { left: `${selectionPopover.rect.cx}px`, top: `${selectionPopover.rect.top + 10}px`, bottom: 'auto' }
             : undefined}
           role="toolbar"
           aria-label="选词检索"
