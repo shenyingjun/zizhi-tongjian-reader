@@ -163,7 +163,81 @@ def _drop_fragment_cards():
     return len(drop_ids)
 
 
+# Title-vs-surname precision slice — drop 王/公/侯/君/主 TITLE-MISREAD auto cards.
+# 王公侯君主 double as princely titles, so NER segments 「{封地}王{名}」 (河南王炽磐,
+# 临川王义庆, 南阳王宝炬) into a bogus surname-王 card (王炽磐=乞伏炽磐, 王义庆=刘义庆,
+# 王宝炬=元宝炬). This is a corpus-wide, source-agnostic centralization of the per-pass
+# title guards: scan every occurrence of a title-headed AUTO card's canonical surface and
+# classify the char immediately to its left. A surname START is legitimate only after a
+# clause boundary, an appointment/action cue (以/为/拜/除/封/遣/诏…), or an office-name
+# final char (尚书令王导, 大将军王敦 → 令/军). Drop the card only when it NEVER appears in
+# such a clean context AND appears ≥1 time inside a fief/title context. Real 王/公/侯
+# surnames (王导/王敦/王猛/王景/刘义庆) always have ≥1 clean start, so they are spared;
+# precision-first means a princely-title misread is dropped (missing < wrong), not
+# re-attributed. Pure data-driven, no hand-list, mirrors _drop_fragment_cards.
+_TITLE_SURNAME_CHARS = set("王公侯君主")
+_TITLE_CLEAN_BOUNDARY = set("。！？；、，：「」『』（）〈〉《》【】　 \n\t")
+_TITLE_CLEAN_CUE = set("以为與与及拜除封署領领迁徙赠谥遣诏召命立使遣徵征辟用授进进黜废")
+# office-name FINAL chars: a surname after 尚书令/大将军/太常博士/金紫光禄大夫/右补阙
+# is a real name start (令/军/史/士/夫/阙…), never a fief title.
+_TITLE_CLEAN_OFFICE = set("令史书郎军尉丞卿牧守相傅师保监将中仆射镇空徒马尹卫士夫阙议詹")
+_TITLE_CLEAN_LEFT = _TITLE_CLEAN_BOUNDARY | _TITLE_CLEAN_CUE | _TITLE_CLEAN_OFFICE
+_TITLE_BANNED: set = set()  # title-headed surfaces proven to be princely-title misreads
+
+
+def _drop_title_misreads():
+    # Corpus-wide enumeration: every [王/公/侯/君/主]+given surface (len 2–3) that
+    # occurs in the text. Classify the char immediately to the left of each occurrence.
+    # A surname START is legitimate only after a clause boundary, an appointment/action
+    # cue, an office-name final char, or at chunk start. A surface that NEVER starts a
+    # name that way (always 「{封地}王{名}」: 河南王炽磐, 平阿侯仁, 邵陵王纶) is a
+    # princely-title misread → ban it everywhere. This is source-agnostic: it drops the
+    # seed/NER cards AND blocks the gloss pass from re-minting the same surface in main().
+    HANZI_LO, HANZI_HI = "\u4e00", "\u9fff"
+    clean: dict = collections.defaultdict(int)
+    title: dict = collections.defaultdict(int)
+    for j in JUANS:
+        jf = TEXT / f"juan_{j:03d}.json"
+        if not jf.exists():
+            continue
+        juan = json.loads(jf.read_text(encoding="utf-8"))
+        for para in juan["paragraphs"]:
+            chunks = [para.get("main", "")]
+            chunks += [n.get("text", "") for n in para.get("notes", [])]
+            for t in chunks:
+                n = len(t)
+                for i in range(n):
+                    if t[i] not in _TITLE_SURNAME_CHARS:
+                        continue
+                    left = t[i - 1] if i > 0 else ""
+                    is_clean = (left == "" or left in _TITLE_CLEAN_LEFT)
+                    for L in (2, 3):
+                        if i + L <= n:
+                            s = t[i:i + L]
+                            if all(HANZI_LO <= c <= HANZI_HI for c in s):
+                                (clean if is_clean else title)[s] += 1
+    banned = {s for s in title if clean[s] == 0 and title[s] > 0}
+    # title-char + a kinship word (王弟/公兄 = "the king's younger brother") is never a
+    # given name. 子/孙 are excluded: 王孙/公孙 are real 复姓, 公子/王子 real names.
+    for s in list(clean) + list(title):
+        if len(s) == 2 and s[1] in "弟兄":
+            banned.add(s)
+    _TITLE_BANNED.update(banned)
+    # drop the seed/NER cards whose canonical is a banned surface
+    drop_ids = {p["id"] for p in PEOPLE_MERGED
+                if str(p["id"]).startswith("a:") and p["canonical_name"] in banned}
+    if not drop_ids:
+        return 0
+    PEOPLE_MERGED[:] = [p for p in PEOPLE_MERGED if p["id"] not in drop_ids]
+    for surf_map in RULES.values():
+        for surf in list(surf_map):
+            if surf_map[surf] in drop_ids:
+                del surf_map[surf]
+    return len(drop_ids)
+
+
 _FRAG_DROPPED = _drop_fragment_cards()
+_TITLE_DROPPED = _drop_title_misreads()
 
 
 def extract_roles(text, ce, consumed, by_id, para_idx=0, cue_idx=None):
@@ -1130,7 +1204,8 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                                 carded_anaphora.setdefault(pcid, (set(), anchor_given))[0].add(juan_no)
                     continue
                 if seed_mod.bad_auto_surface(new_full) or \
-                        new_full in seed_mod.COMMON_WORD_NONPERSON:
+                        new_full in seed_mod.COMMON_WORD_NONPERSON or \
+                        new_full in _TITLE_BANNED:
                     continue
                 xref = _hu_xref_juan(para.get("notes"), new_full, allowed)
                 if new_full in created:
@@ -1614,6 +1689,7 @@ def main():
           f"   new cards minted: {gloss_new_cards}")
     print(f"rc4 封号-glue (titleglue) emitted: {feng_emitted}")
     print(f"rc5 谥号/封号 fragment cards dropped: {_FRAG_DROPPED}")
+    print(f"title-misread (王/公/侯/君/主) cards dropped: {_TITLE_DROPPED}")
     print(f"lookback 卷 surfaces registered: {lookback_added}")
     print(f"lookback brief/floruit re-anchored: {lookback_rebriefed}")
     print(f"xref window-merge (见N卷): {xref_merged} later windows folded")
