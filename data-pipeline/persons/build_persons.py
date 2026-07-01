@@ -30,6 +30,10 @@ REPO = Path(__file__).resolve().parents[2]
 TEXT = REPO / "web" / "public" / "text"
 OUT = TEXT / "persons"
 LLM_ANN = Path(__file__).resolve().parent / "llm_annotations"
+# Real surnames that are absent from seed.SURNAMES (kept out of the general alias
+# pass to avoid FP-storms — 云/凌/洪 also mean say/encroach/flood), but safe to admit
+# in the LLM tier, which re-verifies text-occurrence and mints the specific full name.
+LLM_EXTRA_SURNAMES = set("元凌楼洪云柳")
 
 
 def _write_text_retry(path, text, tries=8, delay=0.5):
@@ -1199,7 +1203,7 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
     # minted ONLY when it literally occurs in that 卷's text and clears every non-person
     # guard. Offsets/enumeration stay deterministic (the mention scan below), so the LLM
     # contributes detection only — never coordinates. Cache is authored once, never re-run.
-    _llm_surname = seed_mod.SURNAMES | seed_mod.AMBIGUOUS_SURNAMES | set("元")
+    _llm_surname = seed_mod.SURNAMES | seed_mod.AMBIGUOUS_SURNAMES | LLM_EXTRA_SURNAMES
     for juan_no in juans:
         af = LLM_ANN / f"juan_{juan_no:03d}.tsv"
         if not af.exists():
