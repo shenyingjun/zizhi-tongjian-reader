@@ -29,6 +29,7 @@ JUANS = list(range(1, 295))  # all 294 卷 (hand 'reviewed' + auto seed layer)
 REPO = Path(__file__).resolve().parents[2]
 TEXT = REPO / "web" / "public" / "text"
 OUT = TEXT / "persons"
+LLM_ANN = Path(__file__).resolve().parent / "llm_annotations"
 
 
 def _write_text_retry(path, text, tries=8, delay=0.5):
@@ -1191,6 +1192,58 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
         created[new_full] = card
         for j in juans_c:
             rules.setdefault(j, {}).setdefault(new_full, card["id"])
+
+    # ── LLM-annotation recall tier (durable cache; hybrid with pipeline) ──
+    # Consumes precomputed per-卷 person annotations from llm_annotations/juan_NNN.tsv
+    # (produced once by run_llm_pass.py). Precision-first: an LLM-asserted surface is
+    # minted ONLY when it literally occurs in that 卷's text and clears every non-person
+    # guard. Offsets/enumeration stay deterministic (the mention scan below), so the LLM
+    # contributes detection only — never coordinates. Cache is authored once, never re-run.
+    _llm_surname = seed_mod.SURNAMES | seed_mod.AMBIGUOUS_SURNAMES | set("元")
+    for juan_no in juans:
+        af = LLM_ANN / f"juan_{juan_no:03d}.tsv"
+        if not af.exists():
+            continue
+        jf = text_dir / f"juan_{juan_no:03d}.json"
+        if not jf.exists():
+            continue
+        juan = json.loads(jf.read_text(encoding="utf-8"))
+        blob = []
+        for para in juan["paragraphs"]:
+            blob.append(para.get("main", ""))
+            for nt in para.get("notes", []):
+                blob.append(nt.get("text", ""))
+        fulltext = "\n".join(blob)
+        for raw in af.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            surface = line.split("\t", 1)[0].strip()
+            if not (2 <= len(surface) <= 4) or not all(_han(c) for c in surface):
+                continue
+            if surface[:1] not in _llm_surname and surface[:2] not in seed_mod.COMPOUND:
+                continue                       # must start with a known surname / 复姓
+            if not _strong_ok(surface):
+                continue                       # already carded or a banned non-person
+            if surface not in fulltext:
+                continue                       # precision-first: must occur in this 卷
+            dyn = (meta.get(juan_no, {}).get("dynasty") or "").strip()
+            cs = meta.get(juan_no, {}).get("ce_start")
+            card = {
+                "id": seed_mod._auto_id(surface, 9500 + len(created)),
+                "canonical_name": surface,
+                "names": [],
+                "dynasty": dyn or "—",
+                "era_hint": f"{dyn}人物" if dyn else "人物",
+                "floruit": [cs, cs] if cs else [None, None],
+                "brief": f"{dyn + '·' if dyn else ''}见于卷{juan_no:03d}（LLM 校补）。",
+                "identity": f"{dyn + '·' if dyn else ''}见于卷{juan_no:03d}（LLM 校补）。",
+                "match": [surface],
+                "juans": [juan_no],
+                "confidence": "high",
+            }
+            created[surface] = card
+            rules.setdefault(juan_no, {}).setdefault(surface, card["id"])
 
     for juan_no in juans:
         jf = text_dir / f"juan_{juan_no:03d}.json"
