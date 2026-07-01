@@ -33,7 +33,7 @@ LLM_ANN = Path(__file__).resolve().parent / "llm_annotations"
 # Real surnames that are absent from seed.SURNAMES (kept out of the general alias
 # pass to avoid FP-storms — 云/凌/洪 also mean say/encroach/flood), but safe to admit
 # in the LLM tier, which re-verifies text-occurrence and mints the specific full name.
-LLM_EXTRA_SURNAMES = set("元凌楼洪云柳")
+LLM_EXTRA_SURNAMES = set("元凌楼洪云柳鲁穆归楚")
 
 
 def _write_text_retry(path, text, tries=8, delay=0.5):
