@@ -31,9 +31,53 @@ TEXT = REPO / "web" / "public" / "text"
 OUT = TEXT / "persons"
 LLM_ANN = Path(__file__).resolve().parent / "llm_annotations"
 # Real surnames that are absent from seed.SURNAMES (kept out of the general alias
-# pass to avoid FP-storms — 云/凌/洪 also mean say/encroach/flood), but safe to admit
-# in the LLM tier, which re-verifies text-occurrence and mints the specific full name.
-LLM_EXTRA_SURNAMES = set("元凌楼洪云柳鲁穆归楚")
+# pass to avoid FP-storms — 云/凌/洪 also mean say/encroach/flood, 许 = "to allow"),
+# but safe to admit in the LLM tier, which re-verifies text-occurrence and mints the
+# specific full name.
+LLM_EXTRA_SURNAMES = set("元凌楼洪云柳鲁穆归楚许")
+
+
+def _load_llm_ann(juan_no):
+    """Load per-卷 LLM annotations. Preferred format is JSONL (juan_NNN.jsonl), one
+    person per line: {"name", "aliases"[], "role", "confidence", "evidence"}. Falls
+    back to the legacy TSV (name<TAB>confidence<TAB>evidence) when no JSONL exists.
+    Returns a list of normalized dicts with keys name/aliases/role/confidence."""
+    jl = LLM_ANN / f"juan_{juan_no:03d}.jsonl"
+    if jl.exists():
+        out = []
+        for raw in jl.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            name = (rec.get("name") or "").strip()
+            if not name:
+                continue
+            out.append({
+                "name": name,
+                "aliases": [a.strip() for a in rec.get("aliases", []) if a and a.strip()],
+                "role": (rec.get("role") or "").strip(),
+                "confidence": (rec.get("confidence") or "high").strip(),
+            })
+        return out
+    tsv = LLM_ANN / f"juan_{juan_no:03d}.tsv"
+    if tsv.exists():
+        out = []
+        for raw in tsv.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            cols = line.split("\t")
+            name = cols[0].strip()
+            if not name:
+                continue
+            conf = cols[1].strip() if len(cols) > 1 else "high"
+            out.append({"name": name, "aliases": [], "role": "", "confidence": conf})
+        return out
+    return []
 
 
 def _write_text_retry(path, text, tries=8, delay=0.5):
@@ -1198,15 +1242,17 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
             rules.setdefault(j, {}).setdefault(new_full, card["id"])
 
     # ── LLM-annotation recall tier (durable cache; hybrid with pipeline) ──
-    # Consumes precomputed per-卷 person annotations from llm_annotations/juan_NNN.tsv
-    # (produced once by run_llm_pass.py). Precision-first: an LLM-asserted surface is
-    # minted ONLY when it literally occurs in that 卷's text and clears every non-person
-    # guard. Offsets/enumeration stay deterministic (the mention scan below), so the LLM
-    # contributes detection only — never coordinates. Cache is authored once, never re-run.
+    # Consumes precomputed per-卷 annotations from llm_annotations/juan_NNN.jsonl
+    # (preferred) or legacy juan_NNN.tsv. Each record: {name, aliases[], role,
+    # confidence}. Precision-first: a name is minted ONLY when it literally occurs in
+    # that 卷 and clears every non-person guard. Declared aliases (省称/别名) are registered
+    # in THIS 卷's RULES only (per-卷 scope) so 道伟→康道伟 resolves deterministically and the
+    # alias pass never fires ahead of the full name. Offsets/enumeration stay
+    # deterministic (the mention scan later); the LLM contributes detection only.
     _llm_surname = seed_mod.SURNAMES | seed_mod.AMBIGUOUS_SURNAMES | LLM_EXTRA_SURNAMES
     for juan_no in juans:
-        af = LLM_ANN / f"juan_{juan_no:03d}.tsv"
-        if not af.exists():
+        recs = _load_llm_ann(juan_no)
+        if not recs:
             continue
         jf = text_dir / f"juan_{juan_no:03d}.json"
         if not jf.exists():
@@ -1218,36 +1264,57 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
             for nt in para.get("notes", []):
                 blob.append(nt.get("text", ""))
         fulltext = "\n".join(blob)
-        for raw in af.read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
-            surface = line.split("\t", 1)[0].strip()
+        for rec in recs:
+            surface = rec["name"]
+            if rec.get("confidence", "high") != "high":
+                continue                       # only high-confidence names are minted
             if not (2 <= len(surface) <= 4) or not all(_han(c) for c in surface):
                 continue
             if surface[:1] not in _llm_surname and surface[:2] not in seed_mod.COMPOUND:
                 continue                       # must start with a known surname / 复姓
-            if not _strong_ok(surface):
-                continue                       # already carded or a banned non-person
-            if surface not in fulltext:
-                continue                       # precision-first: must occur in this 卷
-            dyn = (meta.get(juan_no, {}).get("dynasty") or "").strip()
-            cs = meta.get(juan_no, {}).get("ce_start")
-            card = {
-                "id": seed_mod._auto_id(surface, 9500 + len(created)),
-                "canonical_name": surface,
-                "names": [],
-                "dynasty": dyn or "—",
-                "era_hint": f"{dyn}人物" if dyn else "人物",
-                "floruit": [cs, cs] if cs else [None, None],
-                "brief": f"{dyn + '·' if dyn else ''}见于卷{juan_no:03d}（LLM 校补）。",
-                "identity": f"{dyn + '·' if dyn else ''}见于卷{juan_no:03d}（LLM 校补）。",
-                "match": [surface],
-                "juans": [juan_no],
-                "confidence": "high",
-            }
-            created[surface] = card
+            card = created.get(surface)
+            if card is None:
+                if not _strong_ok(surface):
+                    continue                   # already carded or a banned non-person
+                if surface not in fulltext:
+                    continue                   # precision-first: must occur in this 卷
+                dyn = (meta.get(juan_no, {}).get("dynasty") or "").strip()
+                cs = meta.get(juan_no, {}).get("ce_start")
+                role = rec.get("role", "")
+                tag = (f"{dyn + '·' if dyn else ''}"
+                       f"{role + '，' if role else ''}"
+                       f"见于卷{juan_no:03d}（LLM 校补）。")
+                card = {
+                    "id": seed_mod._auto_id(surface, 9500 + len(created)),
+                    "canonical_name": surface,
+                    "names": [],
+                    "dynasty": dyn or "—",
+                    "era_hint": f"{dyn}人物" if dyn else "人物",
+                    "floruit": [cs, cs] if cs else [None, None],
+                    "brief": tag,
+                    "identity": tag,
+                    "match": [surface],
+                    "juans": [juan_no],
+                    "confidence": "high",
+                }
+                created[surface] = card
             rules.setdefault(juan_no, {}).setdefault(surface, card["id"])
+            # per-卷 aliases (省称/别名): register ONLY in this 卷's RULES. setdefault keeps
+            # the table collision-free — an alias already owned by another surface is not
+            # overridden. The ≥2-char alias pass will then tag e.g. 道伟 as 康道伟 here.
+            for alias in rec.get("aliases", []):
+                if not alias or alias == surface or not all(_han(c) for c in alias):
+                    continue
+                if alias not in fulltext:
+                    continue                   # must occur in this 卷
+                if alias in canon_to_pids:
+                    continue                   # a seed/earlier card owns this name
+                other = created.get(alias)
+                if other is not None and other is not card:
+                    continue                   # another minted card owns it
+                if alias in seed_mod.COMMON_WORD_NONPERSON:
+                    continue
+                rules.setdefault(juan_no, {}).setdefault(alias, card["id"])
 
     for juan_no in juans:
         jf = text_dir / f"juan_{juan_no:03d}.json"
