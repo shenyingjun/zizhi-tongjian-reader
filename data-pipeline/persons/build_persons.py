@@ -1105,6 +1105,93 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
         for j in juans_c:
             rules.setdefault(j, {}).setdefault(new_full, card["id"])
 
+    # ── strong-office recall (Wave 48) — an office/身份 title glued directly to a
+    # 姓名 is a high-precision anchor even for hapax names the NER model missed
+    # (都将王仲甫, 观察使李丛, 都押牙李雅, 押牙张琯…). Length rule, precision-first:
+    # if the char after 姓+g1 is a hard terminator (punct or a pure verb) the name is
+    # 2-char (观察使李丛移 → 李丛; 太守韩歆降 → 韩歆); a 3-char name is minted ONLY when
+    # 姓+g1+g2 is immediately followed by PUNCTUATION (都将王仲甫， → 王仲甫), never on a
+    # verb — this avoids truncating homograph-surname middles (陈少游, 李彝殷, 姚彦章) or
+    # 之-names (沈攸之) into wrong 2-char underlines. n≥1 is safe: office + surname +
+    # hard boundary + non-person guards beat a bare NER hit for personhood.
+    strong_office_cues = tuple(sorted({
+        "观察使", "节度使", "团练使", "防御使", "经略使", "招讨使", "都统",
+        "刺史", "太守", "都督", "都将", "大将", "牙将", "衙将", "其将",
+        "都押牙", "押牙", "都虞候", "虞候", "都知兵马使", "兵马使",
+        "镇遏使", "团练判官", "节度判官", "行军司马", "都指挥使",
+    }, key=len, reverse=True))
+    strong_cue_alt = "|".join(re.escape(c) for c in strong_office_cues)
+    # office cue disambiguates AMBIGUOUS surnames (高/严/任/武…) → add the clearly-real
+    # ones back for this pass so 「刺史高锡望」 (高 is dropped from CLEAN_SURNAMES) is caught.
+    strong_sur_set = seed_mod.CLEAN_SURNAMES | set("高严任武史田文安万华成牛丁乐金时后")
+    strong_sur = "".join(sorted(re.escape(c) for c in strong_sur_set))
+    _strong_ban = {"来受祸", "来难信", "习武事", "来降"}  # proven verb phrases, not names
+    _punct = set("，。；、：︰！？「」『』（）〈〉《》【】　 ")
+    _hard_stop = _punct | set(
+        "移迁拜除薨卒贬曰奏遣督统据击拒追讨入放患破攻杀败走叛请将为知以"
+        "有奉素设代镇率兼领加复夺弃斩执获召徙"
+        "降反怒惧坐死书离战等陷溃遁逃奔亡诏贪饮言谋营也")
+    _g2_block = office_glue_given_block | set("中外内东西南北城郡县也")
+    strong_re = re.compile(
+        rf"(?:{strong_cue_alt})({compound_alt}|[{strong_sur}])([\u4e00-\u9fff])")
+    strong_hits: dict[str, set] = collections.defaultdict(set)
+
+    def _strong_ok(chosen):
+        return not (chosen in canon_to_pids or chosen in created
+                    or chosen in _strong_ban
+                    or seed_mod.bad_auto_surface(chosen)
+                    or chosen in seed_mod.COMMON_WORD_NONPERSON
+                    or chosen in seed_mod.COMPOUND or chosen in _TITLE_BANNED)
+
+    for juan_no in juans:
+        jf = text_dir / f"juan_{juan_no:03d}.json"
+        if not jf.exists():
+            continue
+        juan = json.loads(jf.read_text(encoding="utf-8"))
+        for para in juan["paragraphs"]:
+            scan = [para.get("main", "")] + [
+                nt.get("text", "") for nt in para.get("notes", [])]
+            for mtext in scan:
+                for m in strong_re.finditer(mtext):
+                    sur, g1 = m.group(1), m.group(2)
+                    if g1 in _g2_block:
+                        continue
+                    p2 = m.end()                       # index just past g1
+                    g2 = mtext[p2:p2 + 1]
+                    r3 = mtext[p2 + 1:p2 + 2]
+                    chosen = None
+                    if g2 in _hard_stop:
+                        chosen = sur + g1              # 姓 + 1 given
+                    elif (g2 and _han(g2) and g2 not in _g2_block
+                          and r3 in _punct):
+                        chosen = sur + g1 + g2         # 姓 + 2 given (punct-bounded)
+                    if chosen and _strong_ok(chosen):
+                        strong_hits[chosen].add(juan_no)
+
+    for new_full, jset in strong_hits.items():
+        if new_full in created:
+            continue
+        juans_c = sorted(jset)
+        j0 = min(juans_c)
+        dyn = (meta.get(j0, {}).get("dynasty") or "").strip()
+        cs = meta.get(j0, {}).get("ce_start")
+        card = {
+            "id": seed_mod._auto_id(new_full, 9000 + len(created)),
+            "canonical_name": new_full,
+            "names": [],
+            "dynasty": dyn or "—",
+            "era_hint": f"{dyn}人物" if dyn else "人物",
+            "floruit": [cs, cs] if cs else [None, None],
+            "brief": f"{dyn + '·' if dyn else ''}见于卷{j0:03d}（官衔连写）。",
+            "identity": f"{dyn + '·' if dyn else ''}见于卷{j0:03d}（官衔连写）。",
+            "match": [new_full],
+            "juans": juans_c,
+            "confidence": "high",
+        }
+        created[new_full] = card
+        for j in juans_c:
+            rules.setdefault(j, {}).setdefault(new_full, card["id"])
+
     for juan_no in juans:
         jf = text_dir / f"juan_{juan_no:03d}.json"
         if not jf.exists():
