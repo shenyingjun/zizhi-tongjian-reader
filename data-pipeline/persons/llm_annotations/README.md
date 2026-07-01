@@ -14,13 +14,18 @@ NER 漏掉的孤例人名（如 元密 8 次、卢望回）。因此混合策略
 
 LLM 给出人名表面形（及别名），流水线在该卷正文里精确定位。LLM 从不产生坐标。
 
-## 文件格式（JSONL，v2）
+## 文件格式（JSONL，v3 — FULL CAST）
 
 每卷一个文件 `juan_NNN.jsonl`（NNN = 三位卷号，如 `juan_253.jsonl`）。
-UTF-8，**一行一个 JSON 对象**（一个人），`#` 开头的行是注释：
+UTF-8，**一行一个 JSON 对象**（一个人），`#` 开头的行是注释。
+
+**v3 起，每个文件是本卷的“全体人物名单”（full cast）**，而不仅是 LLM 相对流水线的
+增量。这样缓存本身即是**自洽的模型级 ground truth**：不依赖流水线当前状态，流水线
+改动也不会使它失效，且可直接据它测流水线的精度/召回（漏标 = 在名单但流水线没有；
+误标 = 反之）。
 
 ```json
-{"name":"康道伟","aliases":["道伟"],"role":"高品·宦官使者","confidence":"high","evidence":"遣高品康道伟赍敕书抚慰之"}
+{"name":"康道伟","aliases":["道伟"],"role":"高品·宦官使者","confidence":"high","carded":false,"evidence":"遣高品康道伟赍敕书抚慰之"}
 ```
 
 字段：
@@ -33,7 +38,13 @@ UTF-8，**一行一个 JSON 对象**（一个人），`#` 开头的行是注释�
   （勋=庞勋 只在该语境成立）。
 - **role**（可选）：官职 / 身份。→ 写进卡片 `brief`/`identity`，替代泛泛的“见于卷NNN”。
 - **confidence**：`high` / `med`（目前只采纳 high；med 供人工复核）。
+- **carded**（v3 新增）：`true` = 流水线本卷已识别此人（名单的既有部分）；
+  `false` = LLM 新增、流水线漏掉。构建时忽略此字段，仅用于审计与混合分析。
 - **evidence**（可选）：正文上下文片段，便于审计。
+
+> 兼容性：`build_persons.py` 的加载器忽略 `carded` 及任何未知字段，且 LLM 召回层
+> 会跳过已建卡的名字，所以 full-cast 文件对构建是 drop-in 兼容的——只有 `carded:false`
+> 的新增项会真正建卡。
 
 ## 构建时如何被消费（build_persons.py 的护栏）
 
@@ -55,4 +66,5 @@ UTF-8，**一行一个 JSON 对象**（一个人），`#` 开头的行是注释�
 主用法是**在会话内**由 LLM 直接逐卷标注（$0）。批量 API 方案见同目录
 `../run_llm_pass.py`（OpenAI 兼容 endpoint，断点续跑，全书一次约 $40–70）。
 
-当前已种子化：`juan_250` `juan_251` `juan_252` `juan_253`。
+当前已种子化（v3 full cast）：`juan_250` `juan_251` `juan_252` `juan_253`
+`juan_254` `juan_255`。回填/合并工具见同目录 `_fullcast.py`。
