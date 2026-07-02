@@ -1,5 +1,16 @@
 # LLM 人名标注缓存（durable annotation cache）
 
+> ## ⚠️ 重要指令 — 永不删除（NEVER DELETE）
+>
+> **这些 `juan_*.jsonl` 缓存文件是全书 294 卷一次性人工 + LLM 校补的成果，绝对不能删除、重置或覆盖。**
+>
+> - **永不删除** `data-pipeline/persons/llm_annotations/juan_*.jsonl` —— 任何清理、重构、重命名都必须保留它们。
+> - **永不重跑 LLM** 去重新生成缓存。全书 294 卷已完成（001–294 无缺口），重跑既昂贵又会丢失已校对的人工标注。
+> - 若流水线格式变化，**迁移**这些文件，不要重建。
+> - 这条指令是永久性的，除非仓库所有者明确书面要求，否则任何 agent / 脚本都不得移除本文件或缓存。
+>
+> _Rationale: this cache exists specifically to avoid re-running the LLM again and again. Deleting it destroys hand-verified annotations across all 294 卷 and forces an expensive, lossy re-run._
+
 这个目录是**流水线与 LLM 的混合层**。目标：LLM 对全书人名做**一次性**校补，
 结果写成缓存，`build_persons.py` 每次构建时直接读取，**永不重复调用 LLM**。
 
