@@ -118,3 +118,20 @@
 {"name": "魏征", "aliases": ["征"], "role": "隋·见于卷184（622年）。", "confidence": "high", "carded": true, "evidence": ""}
 {"name": "魏王泰", "aliases": [], "role": "唐·见于卷194（632年）。", "confidence": "high", "carded": true, "evidence": ""}
 {"name": "齐善行", "aliases": [], "role": "唐·见于卷189。", "confidence": "high", "carded": true, "evidence": ""}
+# ── R30 precision veto (LLM audit): 非人名/边界截断，本卷抑制该表面串 ──
+{"type": "veto", "surface": "陈述", "reason": "「恣其陈述」陈述为动词，非人名"}
+{"type": "veto", "surface": "边远", "reason": "「边远之处」偏远，非人名"}
+{"type": "veto", "surface": "马镫", "reason": "「及马镫」马具，非人名"}
+{"type": "veto", "surface": "英贤", "reason": "「以为英贤」贤才，非人名"}
+{"type": "veto", "surface": "马二", "reason": "「盗马二十余匹」马+二，非人名"}
+{"type": "veto", "surface": "孙武", "reason": "「折冲孙武开」人物为孙武开，截断末字开"}
+{"type": "veto", "surface": "王元景", "reason": "「荆王元景」荆王李元景，王元景为封号截断"}
+{"type": "veto", "surface": "薛延陀真珠", "reason": "「薛延陀真珠可汗」部族+尊号，人物是夷男"}
+{"type": "veto", "surface": "弩失毕", "reason": "「五弩失毕」突厥部落名，非人物"}
+# ── R31 recall binding (LLM audit): 封号/省称→姓名，本卷登记该表面串 ──
+{"type": "binding", "surface": "文泰", "canonical": "曲文泰", "dynasty": "唐", "role": "高昌王", "evidence": "高昌王曲文泰…文泰蔽匿不遣（省称）"}
+{"type": "binding", "surface": "晋王治", "canonical": "李治", "dynasty": "唐", "role": "唐晋王，太宗子，后为高宗", "evidence": "谋因晋王治四鼓出宫"}
+{"type": "binding", "surface": "吴王恪", "canonical": "李恪", "dynasty": "唐", "role": "唐吴王，太宗子", "evidence": "安州都督吴王恪数出畋猎"}
+# ── R32 card curation：省姓合并 + 朝代重标 (LLM audit) ──
+{"type": "card", "canonical": "万纪", "merge_into": "权万纪", "evidence": "权万纪省姓作万纪，同一人"}
+{"type": "card", "canonical": "曲文泰", "dynasty": "高昌", "brief": "高昌国王，贞观十四年为唐侯君集所灭。"}

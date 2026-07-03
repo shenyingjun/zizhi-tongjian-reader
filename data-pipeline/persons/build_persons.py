@@ -35,6 +35,21 @@ LLM_ANN = Path(__file__).resolve().parent / "llm_annotations"
 # but safe to admit in the LLM tier, which re-verifies text-occurrence and mints the
 # specific full name.
 LLM_EXTRA_SURNAMES = set("元凌楼洪云柳鲁穆归楚许")
+_BIND_STATS = {"bound": 0, "minted": 0, "para_scoped": 0, "anaphora": 0}
+# Populated by the binding tier (build_gloss_cards) for context-dependent 封号 that are
+# reassigned within a single 卷 (胶东王=刘雄渠 in the 七国之乱 paras, 刘彻/刘寄 in the
+# accession paras). Maps juan_no -> [(lo, hi, surface, person_id)] with inclusive
+# paragraph-id range [lo,hi]; consumed by the emission loop as a paragraph-scoped
+# overlay so a rotating 封号 never mislinks outside its window (precision-first).
+_PARA_BINDINGS: dict[int, list] = {}
+# Populated by the binding tier for SINGLE-CHAR 省称 bindings (bare given char 卬→刘卬,
+# 省姓 single 戣→孔戣). List of (juan_no, char, person_id). These are NOT registered as
+# whole-卷 alias surfaces (the alias pass skips <2-char and a bare char like 遂/农 is a
+# homograph storm); instead they feed the GATED single-char anaphora pass via
+# minted_admit/minted_anchor — the LLM supplies the antecedent identity while the
+# deterministic context / COMMON_BIGRAMS / lifespan / section-reset gates still decide
+# which occurrences actually bind (precision-first).
+_BIND_ANAPHORA: list = []
 
 
 def _load_llm_ann(juan_no):
@@ -78,6 +93,124 @@ def _load_llm_ann(juan_no):
             out.append({"name": name, "aliases": [], "role": "", "confidence": conf})
         return out
     return []
+
+
+def _load_llm_binding(juan_no):
+    """Load per-卷 recall BINDING records from llm_annotations/juan_NNN.jsonl.
+
+    A binding record ({"type":"binding","surface":"吴王","canonical":"刘濞",
+    "dynasty":"汉","role":"吴王，七国之乱首","para_range":[lo,hi]?,"evidence":...})
+    tells the build to register the SURFACE (a 封号/官职/省称 the deterministic scanner
+    misses) as pointing at CANONICAL — the person's real 姓名 — in THIS 卷 only. This
+    is what recovers 封号-only persons (吴王→刘濞, where 刘濞 never appears literally) and
+    context 省称 (文泰→曲文泰). Offsets stay deterministic: the pipeline scans `surface`
+    in the 卷 text and re-verifies every hit; the LLM only supplies the surface→person
+    identity. `para_range` (inclusive [lo,hi] paragraph ids) scopes context-dependent
+    封号 (广川王=刘越 in one 段, 刘彭祖 elsewhere); omit for a whole-卷-stable binding.
+
+    Returns a list of normalized dicts. The `name`-tier `_load_llm_ann` loader ignores
+    these lines (no `name`), so persons + bindings + vetoes coexist in one v4 file."""
+    jl = LLM_ANN / f"juan_{juan_no:03d}.jsonl"
+    if not jl.exists():
+        return []
+    out = []
+    for raw in jl.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if rec.get("type") != "binding":
+            continue
+        surf = (rec.get("surface") or "").strip()
+        canon = (rec.get("canonical") or "").strip()
+        if not surf or not canon:
+            continue
+        pr = rec.get("para_range")
+        if isinstance(pr, list) and len(pr) == 2:
+            pr = (int(pr[0]), int(pr[1]))
+        else:
+            pr = None
+        out.append({"surface": surf, "canonical": canon,
+                    "dynasty": (rec.get("dynasty") or "").strip(),
+                    "role": (rec.get("role") or "").strip(),
+                    "para_range": pr})
+    return out
+
+
+def _load_llm_veto(juan_no):
+    """Load per-卷 precision VETO surfaces from llm_annotations/juan_NNN.jsonl.
+
+    A veto record ({"type":"veto","surface":"胡可","reason":...}) tells the build to
+    SUPPRESS every mention of that surface in THIS 卷 — used to kill audit-confirmed
+    non-person spans (文言 phrases like 胡可/王必欲, title/verb-boundary garbage) and
+    context-local mis-binds. Veto is delete-only and 卷-scoped, so it can never remove
+    a surface from a 卷 where the LLM did not audit it — the precision-first guarantee
+    (a missing underline beats a wrong one) is preserved by construction.
+
+    The regular `_load_llm_ann` minting loader ignores these lines (they carry no
+    `name`), so a v4 full-cast file mixing person + veto records stays drop-in
+    compatible. Returns a set of vetoed surface strings for this 卷."""
+    jl = LLM_ANN / f"juan_{juan_no:03d}.jsonl"
+    if not jl.exists():
+        return set()
+    out = set()
+    for raw in jl.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if rec.get("type") == "veto" or rec.get("veto"):
+            surf = (rec.get("surface") or rec.get("name") or "").strip()
+            if surf:
+                out.add(surf)
+    return out
+
+
+def _load_llm_card(juan_no):
+    """Load per-卷 CARD-curation records from llm_annotations/juan_NNN.jsonl (v4).
+
+    A card record ({"type":"card","canonical":"慕容德","dynasty":"后燕","brief":"...",
+    "merge_into":"慕容盛"?,"evidence":...}) carries metadata-only fixes for the audit's
+    card-quality gaps: a **dynasty** relabel (十六国 actors first seen in a 晋 卷 are
+    mislabeled 晋), a **book-only one-line brief** (replaces the placeholder 见于卷NNN),
+    and an evidence-gated **merge_into** (fold a duplicate/省称 card into the survivor
+    named by `merge_into`). Card records touch ONLY card fields — never spans/offsets —
+    so the precision-first offset guarantee is untouched by construction. Keyed by the
+    person's `canonical` name (resolved to the nearest in-卷 card at apply time).
+
+    The minting loader `_load_llm_ann` ignores these lines (no `name`), so person / veto
+    / binding / card records coexist in one v4 file. Returns a list of normalized dicts."""
+    jl = LLM_ANN / f"juan_{juan_no:03d}.jsonl"
+    if not jl.exists():
+        return []
+    out = []
+    for raw in jl.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if rec.get("type") != "card":
+            continue
+        canon = (rec.get("canonical") or "").strip()
+        if not canon:
+            continue
+        out.append({
+            "canonical": canon,
+            "dynasty": (rec.get("dynasty") or "").strip(),
+            "brief": (rec.get("brief") or "").strip(),
+            "merge_into": (rec.get("merge_into") or "").strip(),
+            "juan": juan_no,
+        })
+    return out
 
 
 def _write_text_retry(path, text, tries=8, delay=0.5):
@@ -1316,6 +1449,87 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                     continue
                 rules.setdefault(juan_no, {}).setdefault(alias, card["id"])
 
+    # ── LLM binding tier (recall): 封号/官职/省称 surface → canonical person ──
+    # Registers an explicit 卷-local RULES surface for a form the deterministic scan
+    # misses (吴王→刘濞, 辽西王农→慕容农, 文泰→曲文泰). The person's real 姓名 (canonical) is
+    # resolved to an existing card / name-tier mint, or a fresh card is minted. The 封号
+    # surface then binds to it in THIS 卷 only. Offsets stay deterministic (extract()
+    # longest-match + re-verify in the emission loop); the LLM supplies only the
+    # surface→identity mapping. Precision gates: the surface must occur in the 卷; a
+    # surface already owned in this 卷's RULES is never overridden (setdefault); a minted
+    # canonical must head with a real 姓/复姓. A record with `para_range` [lo,hi] binds
+    # the surface only within those paragraph ids (rotating 封号) — registered into
+    # _PARA_BINDINGS for the emission-time overlay instead of the whole-卷 RULES.
+    _bind_surname = seed_mod.SURNAMES | seed_mod.AMBIGUOUS_SURNAMES | LLM_EXTRA_SURNAMES
+    for juan_no in juans:
+        recs = _load_llm_binding(juan_no)
+        if not recs:
+            continue
+        jf = text_dir / f"juan_{juan_no:03d}.json"
+        if not jf.exists():
+            continue
+        juan = json.loads(jf.read_text(encoding="utf-8"))
+        blob = []
+        for para in juan["paragraphs"]:
+            blob.append(para.get("main", ""))
+            for nt in para.get("notes", []):
+                blob.append(nt.get("text", ""))
+        fulltext = "\n".join(blob)
+        rule_map = rules.setdefault(juan_no, {})
+        for rec in recs:
+            surf, canon, pr = rec["surface"], rec["canonical"], rec["para_range"]
+            if surf not in fulltext:
+                continue                       # precision-first: surface must occur
+            if pr is None and surf in rule_map:
+                continue                       # this 卷 already binds the surface whole-卷
+            # resolve canonical → pid: seed card, name-tier mint, or a fresh mint
+            pid = None
+            cands = canon_to_pids.get(canon)
+            if cands:
+                pid = min(cands, key=lambda pc: _juan_gap(pc[1], juan_no))[0]
+            elif canon in created:
+                pid = created[canon]["id"]
+                if juan_no not in created[canon]["juans"]:
+                    created[canon]["juans"].append(juan_no)
+            else:
+                if not (2 <= len(canon) <= 4) or not all(_han(c) for c in canon):
+                    continue
+                if canon[:1] not in _bind_surname and canon[:2] not in seed_mod.COMPOUND:
+                    continue                   # canonical must head with a real 姓/复姓
+                dyn = rec["dynasty"] or (meta.get(juan_no, {}).get("dynasty") or "").strip()
+                cs = meta.get(juan_no, {}).get("ce_start")
+                role = rec["role"]
+                tag = (f"{dyn + '·' if dyn else ''}"
+                       f"{role + '，' if role else ''}"
+                       f"见于卷{juan_no:03d}（LLM 校补）。")
+                card = {
+                    "id": seed_mod._auto_id(canon, 9700 + len(created)),
+                    "canonical_name": canon,
+                    "names": [surf] if surf != canon else [],
+                    "dynasty": dyn or "—",
+                    "era_hint": f"{dyn}人物" if dyn else "人物",
+                    "floruit": [cs, cs] if cs else [None, None],
+                    "brief": tag, "identity": tag,
+                    "match": [canon], "juans": [juan_no], "confidence": "high",
+                }
+                created[canon] = card
+                pid = card["id"]
+                _BIND_STATS["minted"] += 1
+            if len(surf) == 1 and _han(surf):
+                # single-char 省称 → gated anaphora channel (never a blanket alias)
+                _BIND_ANAPHORA.append((juan_no, surf, pid))
+                _BIND_STATS["anaphora"] += 1
+            elif pr is None:
+                rule_map.setdefault(surf, pid)
+                # Also expose the canonical as a 卷-surface so rc4 titleglue can bind
+                # 封号+given (范阳王德→慕容德) via its primary clan+given path — otherwise
+                # an undated target card makes titleglue reserve-and-drop the glued span.
+                rule_map.setdefault(canon, pid)
+                _BIND_STATS["bound"] += 1
+            else:
+                _PARA_BINDINGS.setdefault(juan_no, []).append((pr[0], pr[1], surf, pid))
+                _BIND_STATS["para_scoped"] += 1
+
     for juan_no in juans:
         jf = text_dir / f"juan_{juan_no:03d}.json"
         if not jf.exists():
@@ -1616,6 +1830,24 @@ def main():
         for j, cmap in minted_anchor_candidates.items()
     }
 
+    # LLM single-char 省称 bindings (卬→刘卬): admit the char + anchor it whole-卷 to the
+    # LLM-named person, then let the GATED anaphora pass decide which occurrences bind.
+    # setdefault so a gloss-derived anchor for the same char is never overridden; a char
+    # already carrying a different anchor in this 卷 is a conflict and skipped (precision).
+    for (j, ch, pid_) in _BIND_ANAPHORA:
+        if pid_ not in by_id or ch in seed_mod.ANAPHORA_CHAR_EXCLUDE:
+            continue
+        given_of[pid_] = ch
+        minted_admit.setdefault(j, set()).add(ch)
+        minted_anchor.setdefault(j, {}).setdefault(ch, pid_)
+    # LLM 省称 bindings are whole-卷 authoritative — unlike gloss-derived anchors they
+    # must SURVIVE the per-section char_anchor reset (a 七国之乱 卷 has ①②… sections but
+    # 卬→刘卬 holds across all of them). Keep them in a separate map re-applied on reset.
+    llm_anchor: dict[int, dict[str, str]] = {}
+    for (j, ch, pid_) in _BIND_ANAPHORA:
+        if pid_ in by_id and ch not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
+            llm_anchor.setdefault(j, {})[ch] = pid_
+
     # book-enrich — courtesy-name apposition into briefs (after gloss cards exist so
     # newly-minted 家世 cards also get their 字 when the text introduces one).
     briefs_enriched = enrich_briefs(JUANS, TEXT, PEOPLE_MERGED)
@@ -1632,6 +1864,61 @@ def main():
     if xref_dropped:
         for nm_, lst in list(canon_to_pids.items()):
             canon_to_pids[nm_] = [t for t in lst if t[0] not in xref_dropped]
+
+    # ── Phase 3: LLM card curation (dynasty relabel / book brief / evidence-gated merge) ──
+    # Metadata-only fixes for the audit's card-quality gaps. Runs BEFORE the emission /
+    # lookback passes so a merge's surviving pid aggregates all downstream mentions.
+    # Never touches spans — offset precision is untouched. Keyed by canonical, resolved
+    # to the nearest in-卷 card.
+    card_relabeled = card_rebriefed = card_merged = 0
+    _card_recs = []
+    for _jn in JUANS:
+        _card_recs.extend(_load_llm_card(_jn))
+
+    def _pick_card(canon, juan):
+        cands = [c for c in canon_to_pids.get(canon, []) if c[0] in by_id]
+        if not cands:
+            return None
+        return by_id.get(min(cands, key=lambda pc: _juan_gap(pc[1], juan))[0])
+
+    for _rec in _card_recs:                      # merges first (survivor then gets relabel)
+        if not _rec["merge_into"]:
+            continue
+        drop = _pick_card(_rec["canonical"], _rec["juan"])
+        keep = _pick_card(_rec["merge_into"], _rec["juan"])
+        if not drop or not keep or drop["id"] == keep["id"]:
+            continue
+        _merge_xref_card(keep, drop, RULES, gloss_meta)
+        _did = drop["id"]
+        by_id.pop(_did, None)
+        PEOPLE_MERGED[:] = [p for p in PEOPLE_MERGED if p["id"] != _did]
+        given_of.pop(_did, None)
+        for _nm, _lst in list(canon_to_pids.items()):
+            canon_to_pids[_nm] = [t for t in _lst if t[0] != _did]
+        for _jm in minted_anchor.values():       # re-point any 省称 anchor to the survivor
+            for _ch, _pp in list(_jm.items()):
+                if _pp == _did:
+                    _jm[_ch] = keep["id"]
+        for _lm in llm_anchor.values():
+            for _ch, _pp in list(_lm.items()):
+                if _pp == _did:
+                    _lm[_ch] = keep["id"]
+        card_merged += 1
+
+    for _rec in _card_recs:                      # dynasty / brief (field edits only)
+        if _rec["merge_into"]:
+            continue
+        card = _pick_card(_rec["canonical"], _rec["juan"])
+        if not card:
+            continue
+        if _rec["dynasty"]:
+            card["dynasty"] = _rec["dynasty"]
+            card["era_hint"] = f"{_rec['dynasty']}人物"
+            card_relabeled += 1
+        if _rec["brief"]:
+            card["brief"] = _rec["brief"]
+            card["identity"] = _rec["brief"]
+            card_rebriefed += 1
 
     # ── lookback pass — recover 官衔-glued earlier appearances ──
     # An auto-card's 卷 set comes from NER, which can't split a name glued to a long
@@ -1765,6 +2052,8 @@ def main():
     gloss_emitted = 0
     feng_emitted = 0
     relations_all: list = []
+    veto_dropped = 0                 # LLM precision-veto: mentions suppressed
+    vetoed_pids: set = set()         # pids touched by veto (orphan-dropped below)
     # Wave 44 — `introduced` is the cumulative (NOT reset per 卷) set of pids whose
     # full canonical name has already appeared in corpus reading order in some EARLIER
     # 卷. Combined with the per-卷 first-occurrence position below, it drives the
@@ -1795,6 +2084,8 @@ def main():
             continue
         juan = json.loads(jf.read_text(encoding="utf-8"))
         surfaces = surfaces_for(juan_no)
+        pbind_list = _PARA_BINDINGS.get(juan_no, [])   # rotating 封号: (lo,hi,surf,pid)
+        veto_set = _load_llm_veto(juan_no)   # LLM precision-veto surfaces for this 卷
         # Wave 44 — first reading-order position (para_idx, char_start) at which each
         # candidate person's FULL canonical name literally appears in this 卷. Used
         # below to suppress a bare-given 省称 that precedes its own full name (the
@@ -1831,6 +2122,8 @@ def main():
             # a bare given char (云 in 云大破蛮 ≠ 张云). Full names recur per section.
             if main_text[:1] and "\u2460" <= main_text[0] <= "\u2473":
                 char_anchor.clear()
+                for _gch, _pid in llm_anchor.get(juan_no, {}).items():
+                    char_anchor[_gch] = _pid   # LLM 省称 anchors are whole-卷 durable
             # rc4 封号-glue runs FIRST: reserve 「封号+given」 spans (任城王澄→元澄) so the
             # alias matcher cannot form the false 王X glue over the same characters.
             feng_hits = extract_titleglue(main_text, ce, consumed,
@@ -1842,7 +2135,25 @@ def main():
                                  "confidence": by_id[pid_].get("confidence", "reviewed")})
                 seen_ids.add(pid_)
                 feng_emitted += 1
-            # alias matches that overlap a reserved 封号 span are the suppressed glue.
+            # LLM para-scoped 封号 bindings — a rotating title (赵王=刘遂 in the 七国之乱
+            # paras, 刘彭祖 after the 徙…为赵王 paras) bound only inside its [lo,hi] window.
+            # Runs right after 封号-glue so the specific title claims its span before the
+            # whole-卷 alias pass; offsets stay deterministic (extract + consumed guard).
+            if pbind_list:
+                extra = [(s2, pp) for (lo, hi, s2, pp) in pbind_list if lo <= pid <= hi]
+                if extra:
+                    extra.sort(key=lambda t: len(t[0]), reverse=True)
+                    for (s, e, pid_, surf) in extract(main_text, extra):
+                        if any(consumed[s:e]):
+                            continue
+                        for k in range(s, e):
+                            consumed[k] = True
+                        mentions.append({"pid": pid, "ce_year": ce, "source": "main",
+                                         "start": s, "end": e, "surface": surf,
+                                         "person_id": pid_, "kind": "feng",
+                                         "confidence": by_id[pid_].get("confidence", "reviewed")})
+                        seen_ids.add(pid_)
+                        feng_emitted += 1
             # single-char alias surfaces are never trusted (元胄→胄 etc. flow through
             # the anaphora/gloss passes which pin them to an antecedent); a bare given
             # char as a standalone alias is a precision storm.
@@ -1928,6 +2239,21 @@ def main():
                                      "confidence": by_id[pid_].get("confidence", "reviewed")})
                     seen_ids.add(pid_)
 
+        # ── LLM precision-veto (delete-only) ──────────────────────────────
+        # Drop every mention whose surface the 卷's LLM audit flagged as a
+        # non-person / boundary-error span. Runs after ALL passes so it uniformly
+        # covers alias/anaphora/role/gloss/feng and 胡注 mentions. Delete-only: it
+        # can shrink recall but never mis-bind, so precision-first is preserved.
+        if veto_set:
+            kept = []
+            for m in mentions:
+                if m["surface"] in veto_set:
+                    veto_dropped += 1
+                    vetoed_pids.add(m["person_id"])
+                else:
+                    kept.append(m)
+            mentions = kept
+
         # Per-(person, paragraph) appearance row, 原文 preferred over 胡注.
         for m in mentions:
             key = (juan_no, m["pid"])
@@ -1948,6 +2274,10 @@ def main():
                        ensure_ascii=False, indent=2))
 
     # ── people.json — only people actually matched somewhere ──
+    # A card whose every mention was vetoed no longer appears anywhere → drop it
+    # from the shipped set so it does not pollute search / people.json.
+    veto_orphaned = {pid for pid in vetoed_pids if pid not in appearances}
+    seen_ids -= veto_orphaned
     missing_brief = [pid for pid in seen_ids if not by_id[pid].get("brief")]
     if missing_brief:
         raise SystemExit(f"BRIEF missing for shipped people (would leak spoilers): {sorted(missing_brief)}")
@@ -2011,6 +2341,13 @@ def main():
     print(f"rc4 封号-glue (titleglue) emitted: {feng_emitted}")
     print(f"rc5 谥号/封号 fragment cards dropped: {_FRAG_DROPPED}")
     print(f"title-misread (王/公/侯/君/主) cards dropped: {_TITLE_DROPPED}")
+    print(f"llm precision-veto: {veto_dropped} mentions suppressed, "
+          f"{len(veto_orphaned)} orphaned cards dropped")
+    print(f"llm recall-binding: {_BIND_STATS['bound']} whole-卷 + "
+          f"{_BIND_STATS['para_scoped']} para-scoped + {_BIND_STATS['anaphora']} 省称 "
+          f"surfaces, {_BIND_STATS['minted']} cards minted")
+    print(f"llm card curation: {card_relabeled} dynasty relabel + "
+          f"{card_rebriefed} book brief + {card_merged} merged")
     print(f"lookback 卷 surfaces registered: {lookback_added}")
     print(f"gloss/office card 卷 surfaces filled: {gloss_fill_added}")
     print(f"lookback brief/floruit re-anchored: {lookback_rebriefed}")

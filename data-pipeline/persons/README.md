@@ -159,6 +159,36 @@ a precision-first trade-off, revisited per-case.
 
 ---
 
+## LLM layers (v4 — two passes, then rebuild)
+
+The LLM never touches offsets. It contributes two kinds of durable, checked-in
+annotations under `llm_annotations/juan_NNN.jsonl` (schema **v4**; see that folder's
+README for the record schemas). The deterministic build re-verifies every asserted span.
+
+| Script | Role | Input | Output records |
+|--------|------|-------|----------------|
+| `run_llm_pass.py`  | **detection** — lists full 姓名 it sees | raw 卷 text (6k-char batches) | person lines |
+| `run_llm_audit.py` | **audit** — fixes the build's own output | a compact **digest** of `people.json` + `mentions/` (no full re-read) | `veto` / `binding` / `card` |
+
+The audit pass is the cheap one: it feeds the model a per-卷 digest (candidate cards,
+distinct tagged surfaces + ±windows, unbound 封号/官职 spans) — ~5k input tokens/卷, so a
+blanket **all-294** audit is well under US$1 on a mini-class model (batched). Records are
+appended dedup-guarded; a 卷 that already carries v4 audit records is skipped unless
+`--force`, so hand-authored pilots (016/108/195) are never clobbered.
+
+```powershell
+set LLM_API_KEY=sk-...            # OpenAI-compatible; LLM_API_BASE / LLM_MODEL optional
+python run_llm_audit.py --measure          # no API: print digest sizes / cost estimate
+python run_llm_audit.py --dry-run --juans 100   # no API: eyeball one 卷's prompt
+python run_llm_audit.py                     # all 294 卷 (blanket), skip already-audited
+python build_persons.py ; python validate_persons.py   # re-verify + re-emit
+```
+
+Precision channels the audit relies on: **veto** is delete-only; **binding** offsets are
+placed + re-checked by the build; a **single-char** binding (卬→刘卬) routes through the
+gated anaphora pass, never a blanket alias; **card** edits are metadata-only and a
+`merge_into` is accepted only when the survivor is a real card in that 卷.
+
 ## Build & validate
 
 ```powershell

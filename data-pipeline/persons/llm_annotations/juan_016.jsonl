@@ -76,3 +76,28 @@
 {"name": "韩安国", "aliases": ["安国"], "role": "汉·见于卷016（前148年）。", "confidence": "high", "carded": true, "evidence": ""}
 {"name": "魏其侯", "aliases": [], "role": "汉·见于卷016（前148年）。", "confidence": "high", "carded": true, "evidence": ""}
 {"name": "鼌错", "aliases": ["错"], "role": "汉·见于卷015（前169年）。", "confidence": "high", "carded": true, "evidence": ""}
+# ── R30 precision veto (LLM audit): 非人名/边界截断，本卷抑制该表面串 ──
+{"type": "veto", "surface": "胡可", "reason": "文言「岂能」，非人名（忘道之人，胡可与久处）"}
+{"type": "veto", "surface": "王专", "reason": "「王专幷将兵」王独揽兵权，专为动词"}
+{"type": "veto", "surface": "王薄", "reason": "「王薄之，不任」王轻视之，薄为动词"}
+{"type": "veto", "surface": "王必欲", "reason": "「王必欲应吴」王若坚持，非人名"}
+{"type": "veto", "surface": "王尚", "reason": "「大王尚谁攀乎」尚为副词，非人名"}
+{"type": "veto", "surface": "萧然", "reason": "「天下萧然」凋敝貌，非人名"}
+{"type": "veto", "surface": "吴通", "reason": "「遂与吴通谋」与吴国通谋，通为动词"}
+{"type": "veto", "surface": "吴相", "reason": "「吴相袁盎」吴国丞相为官称，人物是袁盎"}
+{"type": "veto", "surface": "王孙", "reason": "胡注「戊，元王孙」元王之孙，王孙为「王+孙」非人名"}
+# ── R31 recall binding (LLM audit): 封号/省称→姓名，本卷登记该表面串 ──
+{"type": "binding", "surface": "吴王", "canonical": "刘濞", "dynasty": "汉", "role": "吴王，七国之乱首", "evidence": "para6-31 皆指吴王刘濞（前154国除）"}
+{"type": "binding", "surface": "楚元王", "canonical": "刘交", "dynasty": "汉", "role": "楚元王，高帝异母弟", "evidence": "楚元王交，高祖异母弟"}
+{"type": "binding", "surface": "梁王", "canonical": "刘武", "dynasty": "汉", "role": "梁孝王，景帝母弟", "evidence": "梁王来朝…与梁王宴饮"}
+{"type": "binding", "surface": "梁孝王", "canonical": "刘武", "dynasty": "汉", "role": "梁孝王，景帝母弟", "evidence": "梁孝王薨，窦太后哭极哀"}
+{"type": "binding", "surface": "菑川王", "canonical": "刘贤", "dynasty": "汉", "role": "菑川王，七国之一", "evidence": "菑川王贤…皆文帝封"}
+{"type": "binding", "surface": "济南王", "canonical": "刘辟光", "dynasty": "汉", "role": "济南王，七国之一", "evidence": "济南王辟光反，国除为郡"}
+{"type": "binding", "surface": "赵王", "canonical": "刘遂", "dynasty": "汉", "role": "赵王，七国之一", "evidence": "赵王有罪…赵王引兵还邯郸城守", "para_range": [7, 26]}
+{"type": "binding", "surface": "赵王", "canonical": "刘彭祖", "dynasty": "汉", "role": "赵王，景帝子", "evidence": "徙广川王彭祖为赵王；生赵王彭祖", "para_range": [43, 60]}
+{"type": "binding", "surface": "胶西王", "canonical": "刘卬", "dynasty": "汉", "role": "胶西王，七国之一", "evidence": "胶西王卬…胶西王徒跣谢太后", "para_range": [7, 25]}
+{"type": "binding", "surface": "胶东王", "canonical": "刘雄渠", "dynasty": "汉", "role": "胶东王，七国之一", "evidence": "胶东王为渠率…皆伏诛", "para_range": [10, 25]}
+# ── R32 single-char 省称 + card curation (LLM audit) ──
+{"type": "binding", "surface": "卬", "canonical": "刘卬", "dynasty": "汉", "role": "胶西王，七国之一，省称作卬", "evidence": "胶西王卬…卬亲序之，单字省称归刘卬"}
+{"type": "card", "canonical": "魏其侯", "merge_into": "窦婴", "evidence": "魏其侯窦婴，同一人，魏其侯为封号"}
+{"type": "card", "canonical": "窦婴", "dynasty": "汉", "brief": "汉外戚，窦太后从兄子，封魏其侯，景帝时为大将军。"}

@@ -57,6 +57,106 @@ UTF-8，**一行一个 JSON 对象**（一个人），`#` 开头的行是注释�
 > 会跳过已建卡的名字，所以 full-cast 文件对构建是 drop-in 兼容的——只有 `carded:false`
 > 的新增项会真正建卡。
 
+## veto 记录（JSONL，v4 — 精度否决层）
+
+除人物行外，文件可含 **veto 记录**，用于抑制流水线在**本卷**误标的表面串（非人名的
+文言词/官衔·动词边界截断/部族名等）。这是**只删不增**的精度手段，作用域限于声明它的
+那一卷——LLM 从未审计的卷不受影响，故"宁缺勿错"的精度承诺由构造保证。
+
+```json
+{"type":"veto","surface":"胡可","reason":"文言「岂能」，非人名"}
+```
+
+字段：
+
+- **type**（必填）：固定为 `"veto"`。（等价写法：任意行带 `"veto": true`。）
+- **surface**（必填）：要在**本卷**抑制的表面串。构建时该串的**所有** mention
+  （不论 alias/anaphora/role/gloss/feng 或胡注）都被丢弃；若某卡因此在全书零登场，
+  该卡不再进入 `people.json`。
+- **reason**（可选）：判为非人名 / 边界错的依据，便于审计。
+
+> 消费点：`build_persons.py` 的 `_load_llm_veto(juan)` 读取本表；人物行的
+> `_load_llm_ann` 铸卡加载器**忽略** veto 行（无 `name`），故二者可同文件共存。
+> 边界截断（孙武→孙武开、石真若→石真若留）在本层先 veto 掉截断串，正确的完整名
+> 由后续 **binding** 层（v4 recall）重新绑定。
+
+## binding 记录（JSONL，v4 — 召回绑定层）
+
+除人物行与 veto 行外，文件可含 **binding 记录**，把确定性扫描漏掉的**封号 / 官职 /
+省称**表面串（吴王、辽西王农、文泰）在**本卷**登记为它所指的真实姓名（canonical）。
+偏移仍由流水线确定：构建时扫描 `surface` 命中并逐条校验 `text[start:end]==surface`，
+LLM 只负责“表面串→人物”这一映射。这样能召回**只以封号出现、正文从不写本名**的人物
+（吴王→刘濞，刘濞在卷016从未字面出现）与语境省称（文泰→曲文泰）。
+
+```json
+{"type":"binding","surface":"吴王","canonical":"刘濞","dynasty":"汉","role":"吴王，七国之乱首","evidence":"para6-31 皆指刘濞"}
+{"type":"binding","surface":"赵王","canonical":"刘遂","dynasty":"汉","role":"赵王，七国之一","para_range":[7,26],"evidence":"赵王有罪…赵王引兵还邯郸"}
+```
+
+字段：
+
+- **type**（必填）：固定为 `"binding"`。
+- **surface**（必填）：要在**本卷**登记的封号/官职/省称串。必须在本卷正文出现，
+  否则跳过（精度优先）。同一卷若该串已被占用则不覆盖（`setdefault`，无冲突）。
+- **canonical**（必填）：该串所指人物的真实姓名。优先解析到既有卡；否则要求以真实
+  姓/复姓打头且为 2–4 汉字时**新建**卡（`见于卷NNN（LLM 校补）` 简介，dynasty/role
+  取自本记录或卷元数据）。canonical 同时被登记为卷内表面串，使 rc4 titleglue 能一致
+  地绑定「封号+名」诸形（范阳王德/琅邪王德/阳平王德→慕容德），不受目标卡是否有生卒
+  年影响。
+- **dynasty / role**（可选）：新建卡时写入朝代与一句话身份（书内依据）。
+- **para_range**（可选）：`[lo,hi]`（含端点，段 id 即 0 基段序）。用于**同卷轮换的
+  封号**——赵王在七国之乱诸段指刘遂，景帝子受封后诸段指刘彭祖；胶西王卬（段7–25）与
+  刘端（段31）分属两人。带 `para_range` 的绑定只在该段窗口内生效（emission 段级 overlay），
+  不做整卷登记。
+
+### 单字省称 → 省称/anaphora 通道（精度关键）
+
+`surface` 为**单个汉字**的 binding（如 `卬→刘卬`、`戣→孔戣`）**不**走整卷别名登记，而是
+喂入**受门控的 anaphora 通道**：构建时把该字登记为本卷可用省称（`minted_admit`）并把它锚
+定到 LLM 指定的人物（`minted_anchor` + `llm_anchor`），再由确定性 anaphora pass 逐处判定
+是否绑定。原因是单字极易撞词——`遂`多为副词“于是”、`农`见于弘农/务农、`隆`见于姚熙隆——
+盲目整卷别名会是精度灾难。省称门控（antecedent 存在、左邻非姓、`COMMON_BIGRAMS`、须有人称
+语境 `_ANAPHORA_RIGHT/LEFT`/亲属、生卒在范围）仍逐处把关；LLM 只提供“此字→此人”的锚点。
+故只 seed **干净的**单字（卬→刘卬），刻意**不** seed 遂/农/隆。
+
+> 单字锚点为**整卷权威**：不同于 gloss 家世锚点会被分节标记（①②…）逐节清空，LLM 单字
+> 省称锚点在每次分节重置后**重新注入**（`llm_anchor`），故 016 卬 在跨节的 p25「卬等」
+> 仍能绑定到刘卬。
+
+## card 记录（JSONL，v4 — 卡片修缮层）
+
+除以上各类外，文件可含 **card 记录**，对既有卡做**仅元数据**的修缮（不动任何 span/偏移，
+故精度承诺不受影响）。对应审计的三类卡片问题：朝代误标、占位简介、同人多卡。
+
+```json
+{"type":"card","canonical":"慕容德","dynasty":"后燕","brief":"后燕宗室，慕容垂弟，封范阳王，后自立为南燕主。"}
+{"type":"card","canonical":"魏其侯","merge_into":"窦婴","evidence":"魏其侯窦婴，同一人"}
+```
+
+字段：
+
+- **type**（必填）：固定为 `"card"`。
+- **canonical**（必填）：目标卡的真实姓名，按名解析到离本卷最近的一张卡。
+- **dynasty**（可选）：朝代重标（十六国实为后燕/后秦者初见于晋卷会被误标为晋；拓跋珪→北魏）。
+  同时刷新 `era_hint`。
+- **brief**（可选）：**书内一句话**简介，替换 `见于卷NNN` 占位（须为通鉴叙事事实，非维基文本）。
+- **merge_into**（可选）：把本卡并入 `merge_into` 命名的幸存卡（`_merge_xref_card`：合并
+  juans/names/match、把 RULES 表面串改指幸存 pid、清理 `given_of`/`canon_to_pids`/锚点）。
+  **仅用于证据确凿的异名同人**（魏其侯≡窦婴、万纪≡权万纪省姓）；跨代同名（姚兴@108 后秦 vs
+  @162 梁、袁盎跨魏宋）为**同形异人**，保持分立。
+
+> 消费点：`build_persons.py` 的 `_load_llm_card(juan)`；在 xref 合并之后、emission 之前
+> apply（先并卡再改朝代/简介，使幸存卡承接全部下游 mention）。铸卡加载器忽略 card 行（无 `name`）。
+- **para_range**（可选）：`[lo,hi]` 闭区间段落 id。用于**卷内改封**的封号（赵王在
+  前段=刘遂、改封段后=刘彭祖；胶西王=刘卬 而非后段的刘端）。带此字段者不进整卷 RULES，
+  而登记进 `_PARA_BINDINGS`，由发射循环按段落 id 做范围叠加，越界绝不误绑（精度优先）。
+- **evidence**（可选）：书内佐证，便于审计。
+
+> 消费点：`build_persons.py` 的 `_load_llm_binding(juan)`（在 `build_gloss_cards`
+> 内消费）。整卷绑定写入 `RULES[juan]`，段落绑定写入 `_PARA_BINDINGS[juan]`。人物行
+> 的 `_load_llm_ann` 忽略 binding 行（无 `name`），三类记录（person / veto / binding）
+> 同文件共存。发射统计见构建日志 `llm recall-binding: N whole-卷 + M para-scoped …`。
+
 ## 构建时如何被消费（build_persons.py 的护栏）
 
 `build_gloss_cards` 里的 **LLM-annotation recall tier** 通过 `_load_llm_ann(juan)`
