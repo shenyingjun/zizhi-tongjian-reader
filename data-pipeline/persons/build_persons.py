@@ -1919,6 +1919,197 @@ def enrich_briefs(juans, text_dir, people_merged):
     return len(enriched)
 
 
+# ── Narrow R1 — truncation-repair discovery ───────────────────────────────────
+# The NER/seed layer sometimes truncates a 姓+双名 (张禹谟) to a carded 姓+单名
+# (张禹) plus a stranded tail (禹谟 — occasionally itself minted as a phantom
+# auto-card). This pre-pass re-mints the full 3-char person, registers 张禹谟 in the
+# 卷's RULES (longest-match then beats the 2-char truncation inside extract()), binds
+# the recurring bare tail, and folds any phantom tail card into the new one. Validated
+# corpus-wide at 13 hits / ~92% precision (ref session files/narrow_r1.py). The
+# POS Giv+Giv gate reuses the pos_giv cache, so a warm build stays torch-free.
+_R1_KIN_G2 = set("子孙女弟兄父母妻姊妹")
+_R1_STOPC = set("之而其以为于与也者乎则乃因故不无有莫皆各此是所曰云谓将欲今日时"
+                "上下中大天地国家军兵民人道州县城门内外东西南北左右前后等已来")
+_R1_OFFICE_TAIL = set("尉令史使夫将军卿相守牧刺郎丞尹帅监正长牧簿")
+_R1_VERBS = set("为以拜授除召见斩杀立命封进用擢领判集遣纳戮诛贬黜召署补迁")
+_R1_KIN = "子孙弟兄父祖甥侄婿"
+# 爵号/官职-glue guard heads: chars that are BOTH a rare surname AND a common title/
+# office head (王=爵号, 牧=州牧, 守=太守, 令=县令, 尉=都尉, 尹=京兆尹, 史=刺史). When such a
+# head is glued after a place/noun (凉州牧·轲弹) the token is office+name, not 姓+名, so we
+# reject unless the head is introduced by an office tail / appointment verb / punctuation.
+_R1_GUARD_HEADS = set("王牧守令尉尹史")
+
+
+def _r1_clean_given2(g):
+    return (len(g) == 2 and all("\u4e00" <= c <= "\u9fff" for c in g)
+            and not any(c in _R1_STOPC for c in g))
+
+
+def _r1_pos_giv_ok(tail, surname, sec_pids, ptext, giv_map):
+    """POS gate: at the FIRST bare occurrence of `tail` (a T not preceded by its
+    surname) within the section, both chars must be tagged PROPN|Giv per the cache."""
+    for pid in sec_pids:
+        txt = ptext.get(pid, "")
+        j = txt.find(tail)
+        while j >= 0:
+            prev = txt[j - 1] if j > 0 else ""
+            if prev != surname:  # a bare occurrence
+                gset = giv_map.get(pid, set())
+                return (j in gset) and (j + 1 in gset)
+            j = txt.find(tail, j + 1)
+    return False
+
+
+def build_truncation_cards(juans, text_dir, rules, canon_to_pids, by_id,
+                           people_merged, meta, pos_dir):
+    """Mint 姓+双名 cards for NER truncations; returns (n_created, n_phantoms_merged)."""
+    carded: set[str] = set()
+    owned_tails: set[str] = set()  # trailing given of any carded person (王勃勃=赫连勃勃)
+    for p in by_id.values():
+        nms = [p.get("canonical_name", "")]
+        nms += [(n if isinstance(n, str) else n.get("text", ""))
+                for n in p.get("names", [])]
+        nms += list(p.get("match", []))
+        for nm in nms:
+            if not nm:
+                continue
+            carded.add(nm)
+            sn = seed_mod._surname_of(nm)
+            if sn and len(nm) - len(sn) == 2:
+                owned_tails.add(nm[len(sn):])
+            if len(nm) >= 3:
+                owned_tails.add(nm[-2:])
+    created: dict[tuple, dict] = {}
+    phantoms_merged = 0
+    for juan_no in juans:
+        jf = text_dir / f"juan_{juan_no:03d}.json"
+        if not jf.exists():
+            continue
+        rule_map = rules.get(juan_no)
+        if not rule_map:
+            continue
+        paras = json.loads(jf.read_text(encoding="utf-8"))["paragraphs"]
+        ptext = {p["id"]: p.get("main", "") for p in paras}
+        cur = 0
+        sec_of: dict = {}
+        for p in paras:
+            m0 = p.get("main", "")
+            if m0 and "\u2460" <= m0[0] <= "\u2473":
+                cur = ord(m0[0]) - 0x2460 + 1
+            sec_of[p["id"]] = cur
+        sec_pids: dict = {}
+        sec_text: dict = {}
+        for p in paras:
+            s = sec_of[p["id"]]
+            sec_pids.setdefault(s, []).append(p["id"])
+            sec_text[s] = sec_text.get(s, "") + p.get("main", "")
+        # anchors: carded 2-char 姓+单名 surfaces registered in this 卷
+        anchors = []
+        for surf in rule_map:
+            if len(surf) != 2:
+                continue
+            sn = seed_mod._surname_of(surf)
+            if sn and len(sn) == 1 and surf.startswith(sn):
+                anchors.append(surf)
+        if not anchors:
+            continue
+        giv_map = None  # POS cache — loaded lazily only when a candidate reaches the gate
+        seen: set = set()
+        for surf in anchors:
+            for p in paras:
+                txt = ptext[p["id"]]
+                pos = txt.find(surf)
+                while pos >= 0:
+                    end = pos + 2
+                    g2 = txt[end] if end < len(txt) else ""
+                    if not ("\u4e00" <= g2 <= "\u9fff") or g2 in _R1_KIN_G2:
+                        pos = txt.find(surf, pos + 1)
+                        continue
+                    full3 = surf + g2
+                    T = surf[1] + g2
+                    if (not _r1_clean_given2(T) or full3 in carded
+                            or T in owned_tails or (juan_no, full3) in seen):
+                        pos = txt.find(surf, pos + 1)
+                        continue
+                    if surf[0] in _R1_GUARD_HEADS:  # 爵号/官职-glue guard (楚王景驹, 凉州牧轲弹)
+                        prev = txt[pos - 1] if pos > 0 else ""
+                        if (prev and "\u4e00" <= prev <= "\u9fff"
+                                and prev not in _R1_OFFICE_TAIL
+                                and prev not in _R1_VERBS):
+                            pos = txt.find(surf, pos + 1)
+                            continue
+                    sec = sec_of[p["id"]]
+                    stext = sec_text[sec]
+                    bare = 0
+                    idx = stext.find(T)
+                    while idx >= 0:
+                        if (stext[idx - 1] if idx > 0 else "") != surf[0]:
+                            bare += 1
+                        idx = stext.find(T, idx + 1)
+                    gloss = bool(re.search(
+                        "，?" + re.escape(T) + r"，[\u4e00-\u9fff]{1,6}之["
+                        + _R1_KIN + r"]也?", stext)) or bool(re.search(
+                        re.escape(T) + r"，[\u4e00-\u9fff]{1,6}之[" + _R1_KIN + r"]",
+                        stext))
+                    if bare < 1 and not gloss:
+                        pos = txt.find(surf, pos + 1)
+                        continue
+                    if giv_map is None:
+                        giv_map = pos_giv.giv_for_juan(juan_no, paras, pos_dir)
+                    if not _r1_pos_giv_ok(T, surf[0], sec_pids[sec], ptext, giv_map):
+                        pos = txt.find(surf, pos + 1)
+                        continue
+                    seen.add((juan_no, full3))
+                    _r1_mint(full3, T, juan_no, meta, created, rules, canon_to_pids,
+                             by_id, people_merged, carded)
+                    pos = txt.find(surf, pos + 1)
+    # Fold phantom tail cards (canonical == a minted T, confined to that 卷) into the
+    # new 3-char card so bare-T mentions aggregate onto one person (禹谟 → 张禹谟).
+    for (juan_no, full3), card in created.items():
+        T = card["_r1_tail"]
+        for pid_, jset in list(canon_to_pids.get(T, [])):
+            ph = by_id.get(pid_)
+            if (ph and pid_.startswith("a:") and set(jset) <= {juan_no}
+                    and ph is not card):
+                _merge_xref_card(card, ph, rules, meta)
+                by_id.pop(pid_, None)
+                people_merged[:] = [q for q in people_merged if q["id"] != pid_]
+                canon_to_pids[T] = [t for t in canon_to_pids.get(T, [])
+                                    if t[0] != pid_]
+                phantoms_merged += 1
+    for card in created.values():
+        card.pop("_r1_tail", None)
+    return len(created), phantoms_merged
+
+
+def _r1_mint(full3, tail, juan_no, meta, created, rules, canon_to_pids, by_id,
+             people_merged, carded):
+    dyn = (meta.get(juan_no, {}).get("dynasty") or "").strip()
+    cs = meta.get(juan_no, {}).get("ce_start")
+    card = {
+        "id": seed_mod._auto_id(full3, 7000 + len(created)),
+        "canonical_name": full3,
+        "names": [tail],
+        "dynasty": dyn or "—",
+        "era_hint": f"{dyn}人物" if dyn else "人物",
+        "floruit": [cs, cs] if cs else [None, None],
+        "brief": f"{dyn + '·' if dyn else ''}见于卷{juan_no:03d}（断名修复）。",
+        "identity": f"{dyn + '·' if dyn else ''}见于卷{juan_no:03d}（断名修复）。",
+        "match": [full3, tail],
+        "juans": [juan_no],
+        "confidence": "high",
+        "_r1_tail": tail,
+    }
+    created[(juan_no, full3)] = card
+    people_merged.append(card)
+    by_id[card["id"]] = card
+    carded.add(full3)
+    carded.add(tail)
+    canon_to_pids.setdefault(full3, []).append((card["id"], {juan_no}))
+    rules.setdefault(juan_no, {}).setdefault(full3, card["id"])
+    rules.setdefault(juan_no, {}).setdefault(tail, card["id"])
+
+
 def main():
     by_id = {p["id"]: p for p in PEOPLE_MERGED}
     # Duplicate-id guard — a copy/paste slip would silently drop a person.
@@ -1964,6 +2155,14 @@ def main():
         j: {gch: next(iter(cids)) for gch, cids in cmap.items() if len(cids) == 1}
         for j, cmap in minted_anchor_candidates.items()
     }
+
+    # Narrow R1 pre-pass — repair NER truncations (张禹 → 张禹谟) by minting the full
+    # 姓+双名 card, registering it in RULES (longest-match beats the truncation), and
+    # folding the stranded phantom tail (禹谟) into it. Runs after the gloss mint so
+    # its carded set / owned-tails reflect gloss cards too. See build_truncation_cards.
+    r1_new, r1_phantoms = build_truncation_cards(
+        JUANS, TEXT, RULES, canon_to_pids, by_id,
+        PEOPLE_MERGED, gloss_meta, OUT / "pos_giv")
 
     # LLM single-char 省称 bindings (卬→刘卬): admit the char + anchor it whole-卷 to the
     # LLM-named person, then let the GATED anaphora pass decide which occurrences bind.
@@ -2495,6 +2694,8 @@ def main():
     print(f"RC-2b gloss recall emitted: {gloss_emitted}"
           f"   kinship relations: {len(relations_out)}"
           f"   new cards minted: {gloss_new_cards}")
+    print(f"narrow R1 truncation-repair: {r1_new} cards minted, "
+          f"{r1_phantoms} phantom tails folded")
     print(f"rc4 封号-glue (titleglue) emitted: {feng_emitted}")
     print(f"rc5 谥号/封号 fragment cards dropped: {_FRAG_DROPPED}")
     print(f"title-misread (王/公/侯/君/主) cards dropped: {_TITLE_DROPPED}")
