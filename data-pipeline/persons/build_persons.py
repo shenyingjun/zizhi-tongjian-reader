@@ -21,11 +21,19 @@ from __future__ import annotations
 import json, datetime, hashlib, re, collections
 from pathlib import Path
 
+import os
+
 from cast import PEOPLE
 import seed as seed_mod
 import reigns as reigns_mod
+import pos_giv
 
 JUANS = list(range(1, 295))  # all 294 卷 (hand 'reviewed' + auto seed layer)
+# Iteration hook: ZTJ_ONLY_JUANS="251,252" limits the build to a few 卷 for fast
+# validation. Leave UNSET for a real full build (it also shrinks people.json).
+_only = os.environ.get("ZTJ_ONLY_JUANS")
+if _only:
+    JUANS = [int(x) for x in _only.replace(",", " ").split() if x.strip()]
 REPO = Path(__file__).resolve().parents[2]
 TEXT = REPO / "web" / "public" / "text"
 OUT = TEXT / "persons"
@@ -732,6 +740,133 @@ def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events, ce, b
             continue
         out.append((i, i + 1, pid_, ch))
         char_anchor[ch] = pid_   # a resolved 省称 refreshes recency for this char
+    return out
+
+
+# ── Wave 6 · POS-gated structural 省称 resolver ──────────────────────────────
+# A recall-forward second 省称 pass that complements the curated extract_anaphora
+# above. For EVERY person whose full name appears in a 卷 it binds their bare given
+# to the closest antecedent, sidestepping disambiguation structurally:
+#   * antecedent = closest full name in the SAME paragraph (同段), else the UNIQUE
+#     owner of that given within the 节 (跨段, single-owner only);
+#   * never crosses a 节 (a ①..⑳ numbered paragraph opens a fresh 节);
+#   * a single-char given (元胄→胄) is admitted ONLY where the Classical-Chinese
+#     UPOS tagger labels PROPN|NameType=Giv at that offset (giv_map) — this is what
+#     separates the real 省称 from homograph function words / verbs;
+#   * a clean 双名 given (行密→行密, no 封号 tail) is admitted without POS.
+# It is purely additive: every span already emitted by the alias/feng/curated-
+# anaphora/gloss passes (exist_span) is skipped, so it never mis-binds an existing
+# mention — it only fills the recall gap the curated allow-list left behind.
+_TITLE_END_CHARS = set("王侯公伯子男君后主帝卿相将")
+
+# Bare appellations that are titles, not given names. A person carded under a
+# royal/posthumous style (窦太后, 魏惠王, 秦武王, 成侯) has a surname-stripped
+# "given" that is really a title — binding it as a bare 省称 is both ambiguous and
+# rejected by validate_persons. Kept in sync with that validator's BANNED set.
+_BANNED_APPELLATIONS = {
+    "王", "公", "侯", "君", "太子", "公子", "孝公", "惠王", "武王", "文王",
+    "威王", "成侯", "太后", "大王", "上", "帝",
+}
+
+
+def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span):
+    """Return [(para_id, ce_year, start, end, person_id, given)] new 省称 hits.
+
+    present_pids — person_ids whose full name matched in this 卷.
+    giv_map      — {para_id: set(offsets)} POS·Giv positions (single-char gate).
+    exist_span   — {para_id: set((start,end))} spans already emitted (dedup)."""
+    pid2 = {}                                   # pid -> (canon, given, cls)
+    given_to_pids = collections.defaultdict(set)
+    two_char_givens = set()
+    for pid in present_pids:
+        card = by_id.get(pid)
+        canon = card.get("canonical_name") if card else None
+        if not canon or not (2 <= len(canon) <= 4):
+            continue
+        sn = seed_mod._surname_of(canon)
+        if not sn:
+            continue
+        g = canon[len(sn):]
+        if len(g) not in (1, 2):
+            continue
+        if g in _BANNED_APPELLATIONS:            # 太后/惠王/武王… are titles, not 省称
+            continue
+        cls = "s1" if len(g) == 1 else ("title" if g[-1] in _TITLE_END_CHARS else "clean2")
+        pid2[pid] = (canon, g, cls)
+        given_to_pids[g].add(pid)
+        if len(g) == 2:
+            two_char_givens.add(g)
+    if not pid2:
+        return []
+
+    # split into 节 at circled-number paragraphs (same boundary the curated pass resets on)
+    sections, cur = [], []
+    for p in paras:
+        mt = p.get("main", "")
+        if mt[:1] and "\u2460" <= mt[0] <= "\u2473" and cur:
+            sections.append(cur)
+            cur = []
+        cur.append(p)
+    if cur:
+        sections.append(cur)
+
+    cur_year = None
+    year_of = {}
+    for p in paras:
+        if p.get("ce_year") is not None:
+            cur_year = p["ce_year"]
+        year_of[p["id"]] = cur_year
+
+    out = []
+    for sec in sections:
+        sec_full = {}                           # given -> most-recent full-name pid in 节
+        sec_owners = collections.defaultdict(set)
+        for p in sec:
+            mt = p.get("main", "")
+            if not mt:
+                continue
+            pid_para = p["id"]
+            raw_ce = p.get("ce_year")
+            eff_ce = year_of.get(pid_para)
+            events, fullspans = [], collections.defaultdict(list)
+            for pid, (canon, g, cls) in pid2.items():
+                for s in find_all(mt, canon):
+                    events.append((s, 0, pid, g))
+                    fullspans[pid].append((s, s + len(canon)))
+            for g, pids in given_to_pids.items():
+                for s in find_all(mt, g):
+                    e = s + len(g)
+                    if any(a <= s and e <= b for pid in pids for (a, b) in fullspans.get(pid, [])):
+                        continue
+                    events.append((s, 1, None, g))
+            events.sort(key=lambda t: (t[0], t[1]))
+            para_full = {}
+            done = set(exist_span.get(pid_para, ()))
+            giv_here = giv_map.get(pid_para, ())
+            for (s, typ, pid, g) in events:
+                if typ == 0:
+                    para_full[g] = pid
+                    sec_full[g] = pid
+                    sec_owners[g].add(pid)
+                    continue
+                e = s + len(g)
+                if g in para_full:
+                    rpid = para_full[g]
+                elif g in sec_full and len(sec_owners[g]) == 1:
+                    rpid = sec_full[g]
+                else:
+                    continue
+                if (s, e) in done or any(a <= s and e <= b for (a, b) in done):
+                    continue
+                if pid2[rpid][2] == "s1":
+                    if mt[s:s + 2] in two_char_givens:   # 胄 that opens a 双名 given → defer
+                        continue
+                    if s not in giv_here:                 # POS·Giv gate
+                        continue
+                if _lifespan_outside(by_id[rpid], eff_ce):
+                    continue
+                out.append((pid_para, raw_ce, s, e, rpid, g))
+                done.add((s, e))
     return out
 
 
@@ -2238,6 +2373,28 @@ def main():
                                      "surface": surf, "person_id": pid_, "kind": "alias",
                                      "confidence": by_id[pid_].get("confidence", "reviewed")})
                     seen_ids.add(pid_)
+
+        # ── Wave 6 — POS-gated structural 省称 resolver (recall-forward) ────
+        # Runs after every per-paragraph pass so it can dedup against all main-text
+        # spans emitted above (alias/feng/curated-anaphora/gloss). Binds each present
+        # person's bare given to the closest antecedent in-节; single-char givens are
+        # gated by the Classical-Chinese POS·Giv cache. Purely additive.
+        present_pids = {m["person_id"] for m in mentions
+                        if m.get("source") == "main" and m.get("person_id") in by_id}
+        if present_pids:
+            exist_span_main: dict = collections.defaultdict(set)
+            for m in mentions:
+                if m.get("source") == "main":
+                    exist_span_main[m["pid"]].add((m["start"], m["end"]))
+            giv_map = pos_giv.giv_for_juan(juan_no, juan["paragraphs"], OUT / "pos_giv")
+            for (pid_para, ce_y, s, e, rpid, surf) in resolve_anaphora_pos(
+                    juan["paragraphs"], present_pids, by_id, giv_map, exist_span_main):
+                mentions.append({"pid": pid_para, "ce_year": ce_y, "source": "main",
+                                 "start": s, "end": e, "surface": surf,
+                                 "person_id": rpid, "kind": "anaphora",
+                                 "confidence": by_id[rpid].get("confidence", "reviewed")})
+                seen_ids.add(rpid)
+                anaphora_emitted += 1
 
         # ── LLM precision-veto (delete-only) ──────────────────────────────
         # Drop every mention whose surface the 卷's LLM audit flagged as a
