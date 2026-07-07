@@ -1509,6 +1509,7 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
         "刺史", "太守", "都督", "都将", "大将", "牙将", "衙将", "其将",
         "都押牙", "押牙", "都虞候", "虞候", "都知兵马使", "兵马使",
         "镇遏使", "团练判官", "节度判官", "行军司马", "都指挥使",
+        "宣徽使", "枢密使",
     }, key=len, reverse=True))
     strong_cue_alt = "|".join(re.escape(c) for c in strong_office_cues)
     # office cue disambiguates AMBIGUOUS surnames (高/严/任/武…) → add the clearly-real
@@ -1522,6 +1523,11 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
         "有奉素设代镇率兼领加复夺弃斩执获召徙"
         "降反怒惧坐死书离战等陷溃遁逃奔亡诏贪饮言谋营也")
     _g2_block = office_glue_given_block | set("中外内东西南北城郡县也")
+    # A handful of _g2_block chars double as real given-name characters (公锷/公著/
+    # 公弼); when preceded by a strong office cue AND POS·Giv-confirmed on BOTH the
+    # blocked char and the next, 姓+公+X is a genuine 2-char given (押牙田公锷), not
+    # 封号/office glue (王公, 都督使). Everything else in _g2_block stays hard-blocked.
+    _G2_BLOCK_GIV_OK = set("公")
     strong_re = re.compile(
         rf"(?:{strong_cue_alt})({compound_alt}|[{strong_sur}])([\u4e00-\u9fff])")
     strong_hits: dict[str, set] = collections.defaultdict(set)
@@ -1547,34 +1553,53 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                 is_main = si == 0
                 for m in strong_re.finditer(mtext):
                     sur, g1 = m.group(1), m.group(2)
-                    if g1 in _g2_block:
-                        continue
                     p2 = m.end()                       # index just past g1
                     g2 = mtext[p2:p2 + 1]
                     r3 = mtext[p2 + 1:p2 + 2]
+                    if is_main and giv_map is None:
+                        giv_map = pos_giv.giv_for_juan(
+                            juan_no, juan["paragraphs"], OUT / "pos_giv")
+                    giv_pos = giv_map.get(para["id"], ()) if (is_main and giv_map) else ()
+                    rescue3 = None
+                    if g1 in _g2_block:
+                        # #6 押牙田公锷 / 经略使严公素: rescue a 封号-homograph given (公)
+                        # ONLY when a strong cue precedes and POS·Giv confirms BOTH 公 and
+                        # the next char → a real 2-char given. Mint the 3-char directly so
+                        # a hard_stop g2 (素 ∈ _hard_stop) can't truncate 严公素 → 严公.
+                        if g1 in _G2_BLOCK_GIV_OK and (p2 - 1) in giv_pos \
+                                and g2 and _han(g2) and g2 not in _g2_block \
+                                and p2 in giv_pos:
+                            rescue3 = sur + g1 + g2
+                        else:
+                            continue
                     chosen = None
-                    if g2 in _hard_stop:
+                    if rescue3:
+                        chosen = rescue3
+                    elif g2 in _hard_stop:
                         chosen = sur + g1              # 姓 + 1 given
-                    elif (g2 and _han(g2) and g2 not in _g2_block
-                          and r3 in _punct):
-                        # 姓+g1+g2 (3-char) vs (姓+g1 + 边界词): decide by POS·Giv on
-                        # g2 + 卷-recurrence of the bare 姓+g1 form, not a hard stop-list.
-                        # 「都虞候郭昢家。」— 家 is a NOUN (not Giv) and 郭昢 recurs bare
-                        # elsewhere (张锴、郭昢), so the name is 郭昢 and 家=household.
+                    elif g2 and _han(g2) and g2 not in _g2_block:
                         cand3 = sur + g1 + g2
                         cand2 = sur + g1
-                        keep3 = True
-                        if is_main:
-                            if giv_map is None:
-                                giv_map = pos_giv.giv_for_juan(
-                                    juan_no, juan["paragraphs"], OUT / "pos_giv")
-                            g2_is_giv = p2 in giv_map.get(para["id"], ())
-                            rec3 = juan_text.count(cand3)
-                            rec2_only = juan_text.count(cand2) - rec3
-                            if (not g2_is_giv) and rec2_only >= 1 \
-                                    and _strong_ok(cand2):
-                                keep3 = False    # bare 姓+g1 exists → g2 is a word
-                        chosen = cand3 if keep3 else cand2
+                        if r3 in _punct:
+                            # clean right boundary → default 3-char, truncate to 2-char
+                            # only on strong evidence (g2 not Giv AND 姓+g1 recurs bare):
+                            # 「都虞候郭昢家。」— 家 is a NOUN and 郭昢 recurs → 郭昢.
+                            keep3 = True
+                            if is_main:
+                                g2_is_giv = p2 in giv_pos
+                                rec3 = juan_text.count(cand3)
+                                rec2_only = juan_text.count(cand2) - rec3
+                                if (not g2_is_giv) and rec2_only >= 1 \
+                                        and _strong_ok(cand2):
+                                    keep3 = False
+                            chosen = cand3 if keep3 else cand2
+                        elif p2 in giv_pos:
+                            # #3/#1 verb/word-terminated 3-char (大将高文集守朔州 →
+                            # 高文集; 宣徽使李顺融为枢密使 → 李顺融): the r3-in-punct gate
+                            # used to drop these. Mint the 3-char name ONLY when g2 is
+                            # POS·Giv, so a hapax 2-char name + non-stop verb (张镒表)
+                            # is not wrongly glued into a 3-char surface.
+                            chosen = cand3
                     if chosen and _strong_ok(chosen):
                         strong_hits[chosen].add(juan_no)
 

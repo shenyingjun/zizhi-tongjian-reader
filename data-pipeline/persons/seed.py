@@ -75,6 +75,7 @@ COMMON_WORD_NONPERSON: set[str] = {
     "徐行",   # 称疾徐行 — to walk slowly
     "顾托",   # 猥蒙顾托 — to entrust
     "陈谢",   # 陈情谢罪 — to apologise
+    "任事",   # 枢密使任事 — "to take/handle office", a verb phrase, not 任+单名事
     "黄龙",   # 黄龙兵 / 年号 / 地名 — never a person here
     "阿衡",   # 伊尹's office, used allusively (阿衡之任)
     "神武",   # 爵号 (神武公) / 谥 / adjective — too ambiguous as a standalone card
