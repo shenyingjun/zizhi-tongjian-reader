@@ -783,13 +783,18 @@ def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span):
         canon = card.get("canonical_name") if card else None
         if not canon or not (2 <= len(canon) <= 4):
             continue
-        sn = seed_mod._surname_of(canon)
+        sn = seed_mod._surname_of_known(canon)
         if not sn:
             continue
         g = canon[len(sn):]
         if len(g) not in (1, 2):
             continue
         if g in _BANNED_APPELLATIONS:            # 太后/惠王/武王… are titles, not 省称
+            continue
+        # 封号 guard for the newly-enabled ambiguous-surname path: 平阳君 (阳君) is a
+        # fief-lord title, not a 姓名 — its "given" is a 封号 tail, never a 省称. Only
+        # applies to single-char ambiguous 姓 (clean-surname behaviour unchanged).
+        if len(sn) == 1 and sn not in seed_mod.CLEAN_SURNAMES and g[-1] in "君王公侯":
             continue
         cls = "s1" if len(g) == 1 else ("title" if g[-1] in _TITLE_END_CHARS else "clean2")
         pid2[pid] = (canon, g, cls)

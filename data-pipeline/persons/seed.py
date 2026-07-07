@@ -907,6 +907,21 @@ def _surname_of(full: str):
     return None
 
 
+def _surname_of_known(full: str):
+    """Leading 姓 of an ALREADY-CARDED canonical. Like _surname_of but also accepts
+    a single-char AMBIGUOUS 姓 (高/田/安/于/严…). Ambiguity (高=tall, 田=field) is only
+    dangerous during DISCOVERY of new names from raw text; splitting a CONFIRMED card
+    is safe, so 田令孜→令孜 and 高騈→騈 correctly yield 省称. Use ONLY where the input is
+    a known canonical and the emit path is otherwise guarded (resolve_anaphora_pos is
+    节-local single-owner + POS·Giv-gated); keep _surname_of STRICT on discovery paths."""
+    sn = _surname_of(full)
+    if sn:
+        return sn
+    if len(full) >= 2 and full[0] in AMBIGUOUS_SURNAMES and (len(full) - 1) in (1, 2):
+        return full[0]
+    return None
+
+
 # RC-2 — 省姓回指 (surname-elided anaphora). On second mention 资治通鉴 routinely drops
 # the surname — 「于仲文…仲文」, 「庾季才…季才」, 「崔仲方…仲方」 — so the bare given name
 # splits off as its own spurious 2-char card. Fix: within a single 卷, if a 2-char auto
