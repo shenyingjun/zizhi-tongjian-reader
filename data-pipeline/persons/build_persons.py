@@ -2110,6 +2110,143 @@ def _r1_mint(full3, tail, juan_no, meta, created, rules, canon_to_pids, by_id,
     rules.setdefault(juan_no, {}).setdefault(tail, card["id"])
 
 
+# ── R2 — gloss subject (X) discovery ──────────────────────────────────────────
+# 「X，Y之{子孙弟…}也」 names a NEW person X whose ancestor Y is already carded. When
+# the NER/seed layer missed X (宫苑使李瑑，西平王晟之孙 → 李瑑 dropped because the greedy
+# 3-char grab 「使李瑑」 fails the clause-boundary guard), mint X here. Four boundary
+# fixes over the raw gloss: (1) peel a 官职/爵号 prefix by taking the surname-anchored
+# suffix before the comma (使李瑑→李瑑); (2) reject an 氏-tail (clan, not a person);
+# (3) resolve Y by BORROWING X's surname (西平王·晟 → 李晟) and require that
+# reconstruction to be an existing CANONICAL card — shared-surname patrilineal proof,
+# which drops echo-Y false positives (王绰→义庆=刘义庆, 审晖→审琦 alias-of-王审琦);
+# (4) POS-gate X's given (瑑 must be NameType=Giv) to drop non-name fragments
+# (来赴难→赴难, 吴攻具→攻具). Validated against session files/r2_probe.py.
+_R2_COMMA_KIN = re.compile(r"，([\u4e00-\u9fff]{1,4})之([" + _R1_KIN + r"])也?")
+# relation nouns that legitimately introduce a person by kinship right before a name
+# (兄子壻王磐) plus office-institution chars (三司王颁) — an escape for the 爵号-glue
+# guard so real 王-姓 first-mentions survive. FPs are glued after fief chars (临川/邵).
+_R2_REL_NOUNS = set("壻婿子弟兄父孙甥侄妻女母祖司")
+
+
+def _r2_peel_x(mt, c):
+    """Surname-anchored X ending right before comma `c`: try 3- then 2-char suffix,
+    return (full, surname, given) for the longest that is a clean 姓+名, else None."""
+    for L in (3, 2):
+        if c - L < 0:
+            continue
+        cand = mt[c - L:c]
+        if not all("\u4e00" <= ch <= "\u9fff" for ch in cand):
+            continue
+        sn = seed_mod._surname_of(cand)
+        if sn and cand.startswith(sn):
+            g = cand[len(sn):]
+            if 1 <= len(g) <= 2 and not any(ch in _R1_STOPC for ch in g):
+                return cand, sn, g
+    return None
+
+
+def build_gloss_subject_cards(juans, text_dir, rules, canon_to_pids, by_id,
+                              people_merged, meta, pos_dir):
+    """Mint NEW gloss-subject cards (李瑑). Returns (n_created, subj_inv_anaphora)
+    where subj_inv_anaphora = [(card_id, [juan], given_char)] for bare-given binding."""
+    canon_names = {p.get("canonical_name", "") for p in by_id.values()}
+    canon_names.discard("")
+    carded = set(canon_names)
+    for p in by_id.values():
+        for n in p.get("names", []):
+            carded.add(n if isinstance(n, str) else n.get("text", ""))
+        for mm in p.get("match", []):
+            carded.add(mm)
+    created: dict[tuple, dict] = {}
+    inv: list = []
+    for juan_no in juans:
+        jf = text_dir / f"juan_{juan_no:03d}.json"
+        if not jf.exists():
+            continue
+        paras = json.loads(jf.read_text(encoding="utf-8"))["paragraphs"]
+        giv_map = None
+        for p in paras:
+            mt = p.get("main", "")
+            for m in _R2_COMMA_KIN.finditer(mt):
+                c = m.start()
+                yseg = m.group(1)
+                xr = _r2_peel_x(mt, c)
+                if not xr:
+                    continue
+                x_full, xsn, xg = xr
+                if x_full in carded or x_full[-1] == "氏":
+                    continue
+                if (juan_no, x_full) in created:
+                    continue
+                if any(ch in _GLOSS_Y_BLOCK for ch in xg):
+                    continue
+                # 爵号-glue guard: 「临川王绰」/「邵王友诲」 peel 王 as surname, but 王 is a
+                # 封号 (real 姓 is the ancestor's). Reject when a GUARD_HEAD surname is
+                # glued after a place/fief char — legit 王-姓 first-mentions are
+                # introduced by an office tail, an appointment verb, or a relation noun.
+                if xsn in _R1_GUARD_HEADS:
+                    sp = c - len(x_full)  # offset of the surname char
+                    prev = mt[sp - 1] if sp > 0 else ""
+                    if (prev and "\u4e00" <= prev <= "\u9fff"
+                            and prev not in _R1_OFFICE_TAIL and prev not in _R1_VERBS
+                            and prev not in _R2_REL_NOUNS):
+                        continue
+                # (3) resolve Y by borrowing X's surname → require a canonical card
+                yres = None
+                tails = [yseg]
+                if len(yseg) >= 2:
+                    tails += [yseg[-2:], yseg[-1:]]
+                for yg in tails:
+                    if not _gloss_y_ok(yg):
+                        continue
+                    if (xsn + yg) in canon_names:
+                        yres = xsn + yg
+                        break
+                if not yres:
+                    continue
+                # (4) POS-gate X's given at the gloss occurrence
+                if giv_map is None:
+                    giv_map = pos_giv.giv_for_juan(juan_no, paras, pos_dir)
+                gset = giv_map.get(p["id"], set())
+                g_start = c - len(xg)
+                if not all((g_start + k) in gset for k in range(len(xg))):
+                    continue
+                gid = _r2_mint(x_full, xg, juan_no, meta, created, rules,
+                               canon_to_pids, by_id, people_merged, carded, canon_names)
+                if len(xg) == 1 and xg not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
+                    inv.append((gid, [juan_no], xg))
+    return len(created), inv
+
+
+def _r2_mint(x_full, given, juan_no, meta, created, rules, canon_to_pids, by_id,
+             people_merged, carded, canon_names):
+    dyn = (meta.get(juan_no, {}).get("dynasty") or "").strip()
+    cs = meta.get(juan_no, {}).get("ce_start")
+    card = {
+        "id": seed_mod._auto_id(x_full, 8000 + len(created)),
+        "canonical_name": x_full,
+        "names": [given] if len(given) == 1 else [],
+        "dynasty": dyn or "—",
+        "era_hint": f"{dyn}人物" if dyn else "人物",
+        "floruit": [cs, cs] if cs else [None, None],
+        "brief": f"{dyn + '·' if dyn else ''}见于卷{juan_no:03d}（家世胡注）。",
+        "identity": f"{dyn + '·' if dyn else ''}见于卷{juan_no:03d}（家世胡注）。",
+        "match": [x_full],
+        "juans": [juan_no],
+        "confidence": "high",
+    }
+    created[(juan_no, x_full)] = card
+    people_merged.append(card)
+    by_id[card["id"]] = card
+    carded.add(x_full)
+    canon_names.add(x_full)
+    canon_to_pids.setdefault(x_full, []).append((card["id"], {juan_no}))
+    rules.setdefault(juan_no, {}).setdefault(x_full, card["id"])
+    if len(given) == 1 and given not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
+        rules.setdefault(juan_no, {}).setdefault(given, card["id"])
+    return card["id"]
+
+
 def main():
     by_id = {p["id"]: p for p in PEOPLE_MERGED}
     # Duplicate-id guard — a copy/paste slip would silently drop a person.
@@ -2155,6 +2292,19 @@ def main():
         j: {gch: next(iter(cids)) for gch, cids in cmap.items() if len(cids) == 1}
         for j, cmap in minted_anchor_candidates.items()
     }
+
+    # R2 pre-pass — mint NEW gloss subjects (李瑑) from 「X，Y之孙也」 where Y is carded.
+    # Peels 官职/爵号 off X, borrows X's surname to resolve Y, POS-gates X's given.
+    # Runs after the gloss ancestor mint so canon_names includes those cards.
+    r2_new, r2_inv = build_gloss_subject_cards(
+        JUANS, TEXT, RULES, canon_to_pids, by_id,
+        PEOPLE_MERGED, gloss_meta, OUT / "pos_giv")
+    for cid, cjuans, gch in r2_inv:  # bind the bare 省称 given (瑑 → 李瑑)
+        if gch and gch not in seed_mod.ANAPHORA_CHAR_EXCLUDE:
+            given_of[cid] = gch
+            for j in cjuans:
+                minted_admit.setdefault(j, set()).add(gch)
+                minted_anchor.setdefault(j, {}).setdefault(gch, cid)
 
     # Narrow R1 pre-pass — repair NER truncations (张禹 → 张禹谟) by minting the full
     # 姓+双名 card, registering it in RULES (longest-match beats the truncation), and
@@ -2696,6 +2846,7 @@ def main():
           f"   new cards minted: {gloss_new_cards}")
     print(f"narrow R1 truncation-repair: {r1_new} cards minted, "
           f"{r1_phantoms} phantom tails folded")
+    print(f"R2 gloss-subject discovery: {r2_new} cards minted")
     print(f"rc4 封号-glue (titleglue) emitted: {feng_emitted}")
     print(f"rc5 谥号/封号 fragment cards dropped: {_FRAG_DROPPED}")
     print(f"title-misread (王/公/侯/君/主) cards dropped: {_TITLE_DROPPED}")
