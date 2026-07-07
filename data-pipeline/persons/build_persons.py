@@ -1465,10 +1465,13 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
         if not jf.exists():
             continue
         juan = json.loads(jf.read_text(encoding="utf-8"))
+        juan_text = "".join(p.get("main", "") for p in juan["paragraphs"])
+        giv_map = None   # POS·Giv, lazy per juan (warm cache = cheap JSON read)
         for para in juan["paragraphs"]:
             scan = [para.get("main", "")] + [
                 nt.get("text", "") for nt in para.get("notes", [])]
-            for mtext in scan:
+            for si, mtext in enumerate(scan):
+                is_main = si == 0
                 for m in strong_re.finditer(mtext):
                     sur, g1 = m.group(1), m.group(2)
                     if g1 in _g2_block:
@@ -1481,7 +1484,24 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                         chosen = sur + g1              # 姓 + 1 given
                     elif (g2 and _han(g2) and g2 not in _g2_block
                           and r3 in _punct):
-                        chosen = sur + g1 + g2         # 姓 + 2 given (punct-bounded)
+                        # 姓+g1+g2 (3-char) vs (姓+g1 + 边界词): decide by POS·Giv on
+                        # g2 + 卷-recurrence of the bare 姓+g1 form, not a hard stop-list.
+                        # 「都虞候郭昢家。」— 家 is a NOUN (not Giv) and 郭昢 recurs bare
+                        # elsewhere (张锴、郭昢), so the name is 郭昢 and 家=household.
+                        cand3 = sur + g1 + g2
+                        cand2 = sur + g1
+                        keep3 = True
+                        if is_main:
+                            if giv_map is None:
+                                giv_map = pos_giv.giv_for_juan(
+                                    juan_no, juan["paragraphs"], OUT / "pos_giv")
+                            g2_is_giv = p2 in giv_map.get(para["id"], ())
+                            rec3 = juan_text.count(cand3)
+                            rec2_only = juan_text.count(cand2) - rec3
+                            if (not g2_is_giv) and rec2_only >= 1 \
+                                    and _strong_ok(cand2):
+                                keep3 = False    # bare 姓+g1 exists → g2 is a word
+                        chosen = cand3 if keep3 else cand2
                     if chosen and _strong_ok(chosen):
                         strong_hits[chosen].add(juan_no)
 

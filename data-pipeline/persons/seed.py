@@ -533,6 +533,12 @@ def bad_auto_surface(s: str) -> bool:
         return True
     if len(s) <= 3 and s.endswith("氏"):  # 王氏 / 窦氏 clan reference
         return True
+    # 钱 + 大额数词: 钱千 / 钱万 / 钱百 — 「出库钱千五百缗」中 钱=库钱(cash noun), 千=numeral。
+    # 钱 既是姓又是「钱财」的同形词, 故 char-NER 把 钱+数量词 误粘为人名。凡 钱+大额数词 皆非
+    # 人名。(钱万/钱百 此前逐个硬禁; 此处泛化到 钱千 及未来 钱+大额数词。) 仅限 钱 首字 —
+    # 谢万/李万/桑千 等真人不受影响, 因其首字非「钱财」同形词。
+    if len(s) == 2 and s[0] == "钱" and s[1] in "千百万亿":
+        return True
     # 姓 + 官/后妃称号: 曹尚书 / 梁贵人 / 赵倢伃 — a person referred to by office or
     # consort rank, not a fixed personal name (the model glues 姓 onto the title).
     if len(s) >= 3 and any(s.endswith(suf) for suf in _ROLE_SUFFIX):
