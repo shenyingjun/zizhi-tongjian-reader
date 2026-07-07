@@ -533,11 +533,12 @@ def bad_auto_surface(s: str) -> bool:
         return True
     if len(s) <= 3 and s.endswith("氏"):  # 王氏 / 窦氏 clan reference
         return True
-    # 钱 + 大额数词: 钱千 / 钱万 / 钱百 — 「出库钱千五百缗」中 钱=库钱(cash noun), 千=numeral。
-    # 钱 既是姓又是「钱财」的同形词, 故 char-NER 把 钱+数量词 误粘为人名。凡 钱+大额数词 皆非
-    # 人名。(钱万/钱百 此前逐个硬禁; 此处泛化到 钱千 及未来 钱+大额数词。) 仅限 钱 首字 —
-    # 谢万/李万/桑千 等真人不受影响, 因其首字非「钱财」同形词。
-    if len(s) == 2 and s[0] == "钱" and s[1] in "千百万亿":
+    # 钱 + 数词/货物字: 钱千 / 钱万 / 钱布 / 钱帛 / 钱绢 — 「出库钱千五百缗」钱=库钱(cash),
+    # 「铸作钱布」钱布=钱与布帛(currency)。钱 既是姓又是「钱财」同形词, char-NER 把 钱+数量词
+    # 或 钱+货物字 误粘为人名。凡 钱+大额数词 或 钱+货物量词(布帛绢粟米锦彩缯纩) 皆非人名 —
+    # 语料中全部 7 例 钱布 及 钱帛/钱绢/钱米 均为经济语境。仅限 钱 首字, 真人 钱镠/钱徽/钱凤/
+    # 钱肃 等单名非货物字, 不受影响。(此前仅禁 钱+数词; 此处泛化到货物字。)
+    if len(s) == 2 and s[0] == "钱" and s[1] in "千百万亿布帛绢粟米锦彩缯纩":
         return True
     # 姓 + 官/后妃称号: 曹尚书 / 梁贵人 / 赵倢伃 — a person referred to by office or
     # consort rank, not a fixed personal name (the model glues 姓 onto the title).

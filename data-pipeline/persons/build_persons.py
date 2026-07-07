@@ -2753,7 +2753,19 @@ def main():
                      if (h[1] - h[0]) >= 2), key=lambda h: h[0]):
                 if any(consumed[s:e]):
                     continue
-                # Wave 44 antecedent gate: a bare-given 省称 (行及 for 刘行及) is dropped
+                # #2 仆射 office-truncation guard: a discovered 姓+单名 whose tail char
+                # + the following char spell 仆射 (a 官名, púyè) is office-glue, not a
+                # name — 「诈称陈仆射」→ 陈仆[射]. Context-scoped: the same card's other
+                # occurrence 「黟帅陈仆、祖山」 (射 does NOT follow) is untouched.
+                if surf[-1:] == "仆" and main_text[e:e + 1] == "射":
+                    continue
+                # #4 谥号 guard: 谥曰X / 谥为X / 谥X — by classical grammar X is ALWAYS a
+                # posthumous title (谥曰景庄皇帝 → 景庄 = 南诏王 世隆's 谥, not a person).
+                # Left-cue only: the real-person homographs (汉使者文忠, 何文敬, 李景庄,
+                # 性忠壮) never sit right after a 谥-cue, so they stay intact.
+                if main_text[max(0, s - 2):s] in ("谥曰", "谥为") \
+                        or main_text[max(0, s - 1):s] == "谥":
+                    continue
                 # only when PRE-DEBUT — its person was not introduced in an earlier 卷
                 # AND its full name appears later (in reading order) within THIS 卷. A
                 # given that doubles as a verb phrase (行及徐城) thus cannot tag ahead of
