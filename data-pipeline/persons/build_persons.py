@@ -760,19 +760,37 @@ def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events, ce, b
 _TITLE_END_CHARS = set("王侯公伯子男君后主帝卿相将")
 
 
-def _is_sec_lead(ch: str) -> bool:
-    """True if ch is a circled section number ①..㊿ that opens a fresh 节.
+def _sec_num(mt: str):
+    """Section (节) number 1..N from a paragraph lead, or None if not a section head.
 
-    The corpus numbers 节 1..50 with three contiguous Unicode blocks; the older
-    resolver only recognised ①..⑳ (U+2460..2473), so every 节 numbered ㉑..㊿
-    was invisible and collapsed into the preceding section — producing incorrect
-    cross-节 省称 binds. All three ranges are now honoured."""
-    if not ch:
-        return False
-    o = ord(ch)
-    return (0x2460 <= o <= 0x2473        # ①..⑳
-            or 0x3251 <= o <= 0x325F     # ㉑..㉟
-            or 0x32B1 <= o <= 0x32BF)    # ㊱..㊿
+    资治通鉴 numbers 节 within each year. The digitiser uses circled glyphs where
+    Unicode provides them — ①..⑳ (U+2460..2473), ㉑..㉟ (U+3251..325F), ㊱..㊿
+    (U+32B1..32BF), i.e. 1..50 — and falls back to plain ASCII digits for 51+
+    (a single year can reach 节90), written as the number immediately followed by a
+    Chinese character (e.g. 「51陇西处士王嘉…」). The old resolver saw only ①..⑳, so
+    everything from ㉑ on — and every ASCII 51+ 节 — collapsed into the preceding
+    section, producing incorrect cross-节 省称 references."""
+    if not mt:
+        return None
+    o = ord(mt[0])
+    if 0x2460 <= o <= 0x2473:
+        return o - 0x2460 + 1        # ①..⑳
+    if 0x3251 <= o <= 0x325F:
+        return o - 0x3251 + 21       # ㉑..㉟
+    if 0x32B1 <= o <= 0x32BF:
+        return o - 0x32B1 + 36       # ㊱..㊿
+    m = _SEC_ASCII_RE.match(mt)      # 51.. — ASCII digits directly before a 汉字
+    if m:
+        return int(m.group(1))
+    return None
+
+
+_SEC_ASCII_RE = re.compile(r"^([0-9]{1,3})[\u4e00-\u9fff]")
+
+
+def _is_sec_lead(mt: str) -> bool:
+    """True if the paragraph text opens a fresh 节 (see _sec_num)."""
+    return _sec_num(mt) is not None
 
 # Bare appellations that are titles, not given names. A person carded under a
 # royal/posthumous style (窦太后, 魏惠王, 秦武王, 成侯) has a surname-stripped
@@ -825,13 +843,13 @@ def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span, full_a
     if not pid2:
         return []
 
-    # split into 节 at circled-number paragraphs ①..㊿ (all three Unicode ranges;
-    # the same boundary the curated pass resets on). A bare given never binds an
-    # antecedent in a different 节 — cross-节 reference is treated as incorrect.
+    # split into 节 at numbered paragraphs ①..㊿ and ASCII 51.. (see _sec_num).
+    # A bare given never binds an antecedent in a different 节 — cross-节 reference
+    # is treated as incorrect.
     sections, cur = [], []
     for p in paras:
         mt = p.get("main", "")
-        if _is_sec_lead(mt[:1]) and cur:
+        if _is_sec_lead(mt) and cur:
             sections.append(cur)
             cur = []
         cur.append(p)
@@ -2146,8 +2164,9 @@ def build_truncation_cards(juans, text_dir, rules, canon_to_pids, by_id,
         sec_of: dict = {}
         for p in paras:
             m0 = p.get("main", "")
-            if m0 and "\u2460" <= m0[0] <= "\u2473":
-                cur = ord(m0[0]) - 0x2460 + 1
+            n0 = _sec_num(m0)
+            if n0 is not None:
+                cur = n0
             sec_of[p["id"]] = cur
         sec_pids: dict = {}
         sec_text: dict = {}
@@ -2766,10 +2785,10 @@ def main():
             ce = para.get("ce_year")
             main_text = para.get("main", "")
             consumed = [False] * len(main_text)
-            # Section-local anaphora gate: a numbered section (①②…⑳) resets the
-            # 省称 anchor table so a stale full name in an earlier section can't bind
-            # a bare given char (云 in 云大破蛮 ≠ 张云). Full names recur per section.
-            if main_text[:1] and "\u2460" <= main_text[0] <= "\u2473":
+            # Section-local anaphora gate: a numbered 节 (①②…㊿ or ASCII 51…) resets
+            # the 省称 anchor table so a stale full name in an earlier section can't
+            # bind a bare given char (云 in 云大破蛮 ≠ 张云). Full names recur per section.
+            if _is_sec_lead(main_text):
                 char_anchor.clear()
                 for _gch, _pid in llm_anchor.get(juan_no, {}).items():
                     char_anchor[_gch] = _pid   # LLM 省称 anchors are whole-卷 durable
