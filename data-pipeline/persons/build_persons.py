@@ -759,6 +759,21 @@ def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events, ce, b
 # mention — it only fills the recall gap the curated allow-list left behind.
 _TITLE_END_CHARS = set("王侯公伯子男君后主帝卿相将")
 
+
+def _is_sec_lead(ch: str) -> bool:
+    """True if ch is a circled section number ①..㊿ that opens a fresh 节.
+
+    The corpus numbers 节 1..50 with three contiguous Unicode blocks; the older
+    resolver only recognised ①..⑳ (U+2460..2473), so every 节 numbered ㉑..㊿
+    was invisible and collapsed into the preceding section — producing incorrect
+    cross-节 省称 binds. All three ranges are now honoured."""
+    if not ch:
+        return False
+    o = ord(ch)
+    return (0x2460 <= o <= 0x2473        # ①..⑳
+            or 0x3251 <= o <= 0x325F     # ㉑..㉟
+            or 0x32B1 <= o <= 0x32BF)    # ㊱..㊿
+
 # Bare appellations that are titles, not given names. A person carded under a
 # royal/posthumous style (窦太后, 魏惠王, 秦武王, 成侯) has a surname-stripped
 # "given" that is really a title — binding it as a bare 省称 is both ambiguous and
@@ -769,12 +784,18 @@ _BANNED_APPELLATIONS = {
 }
 
 
-def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span):
+def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span, full_anchor=None):
     """Return [(para_id, ce_year, start, end, person_id, given)] new 省称 hits.
 
     present_pids — person_ids whose full name matched in this 卷.
     giv_map      — {para_id: set(offsets)} POS·Giv positions (single-char gate).
-    exist_span   — {para_id: set((start,end))} spans already emitted (dedup)."""
+    exist_span   — {para_id: set((start,end))} spans already emitted (dedup).
+    full_anchor  — {para_id: [(start,end,person_id,surface)]} already-tagged
+                   full / title forms (e.g. 封号 后秦王苌) of present people. These
+                   seed a 节-local antecedent even when the bare canonical (姚苌)
+                   is absent from the section, so a 节 re-introduced only by a
+                   title+given form still binds its bare givens. Stays 节-local."""
+    full_anchor = full_anchor or {}
     pid2 = {}                                   # pid -> (canon, given, cls)
     given_to_pids = collections.defaultdict(set)
     two_char_givens = set()
@@ -804,11 +825,13 @@ def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span):
     if not pid2:
         return []
 
-    # split into 节 at circled-number paragraphs (same boundary the curated pass resets on)
+    # split into 节 at circled-number paragraphs ①..㊿ (all three Unicode ranges;
+    # the same boundary the curated pass resets on). A bare given never binds an
+    # antecedent in a different 节 — cross-节 reference is treated as incorrect.
     sections, cur = [], []
     for p in paras:
         mt = p.get("main", "")
-        if mt[:1] and "\u2460" <= mt[0] <= "\u2473" and cur:
+        if _is_sec_lead(mt[:1]) and cur:
             sections.append(cur)
             cur = []
         cur.append(p)
@@ -838,6 +861,17 @@ def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span):
                 for s in find_all(mt, canon):
                     events.append((s, 0, pid, g))
                     fullspans[pid].append((s, s + len(canon)))
+            # Seed anchors from already-tagged title/full forms (后秦王苌 …) whose
+            # surface ends in the person's given, so the 节 they appear in gains a
+            # 苌->pid antecedent even without the bare canonical 姚苌 present. Their
+            # span is registered in fullspans so the given INSIDE the title is not
+            # itself re-emitted as a bare 省称.
+            for (a_s, a_e, a_pid, a_surf) in full_anchor.get(pid_para, ()):
+                info = pid2.get(a_pid)
+                if not info or not a_surf.endswith(info[1]):
+                    continue
+                events.append((a_s, 0, a_pid, info[1]))
+                fullspans[a_pid].append((a_s, a_e))
             for g, pids in given_to_pids.items():
                 for s in find_all(mt, g):
                     e = s + len(g)
@@ -2875,12 +2909,18 @@ def main():
                         if m.get("source") == "main" and m.get("person_id") in by_id}
         if present_pids:
             exist_span_main: dict = collections.defaultdict(set)
+            full_anchor_main: dict = collections.defaultdict(list)
             for m in mentions:
                 if m.get("source") == "main":
                     exist_span_main[m["pid"]].add((m["start"], m["end"]))
+                    # title/full forms (not bare 省称) become 节-local anchors
+                    if m.get("kind") != "anaphora" and m.get("person_id") in present_pids:
+                        full_anchor_main[m["pid"]].append(
+                            (m["start"], m["end"], m["person_id"], m["surface"]))
             giv_map = pos_giv.giv_for_juan(juan_no, juan["paragraphs"], OUT / "pos_giv")
             for (pid_para, ce_y, s, e, rpid, surf) in resolve_anaphora_pos(
-                    juan["paragraphs"], present_pids, by_id, giv_map, exist_span_main):
+                    juan["paragraphs"], present_pids, by_id, giv_map,
+                    exist_span_main, full_anchor_main):
                 mentions.append({"pid": pid_para, "ce_year": ce_y, "source": "main",
                                  "start": s, "end": e, "surface": surf,
                                  "person_id": rpid, "kind": "anaphora",
