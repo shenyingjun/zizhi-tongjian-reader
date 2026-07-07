@@ -1273,6 +1273,74 @@ def merge_xref_windows(by_id, people_list, rules, juans, text_dir, meta=None):
     if dropped_ids:
         people_list[:] = [p for p in people_list if p["id"] not in dropped_ids]
     return merged, dropped_ids
+
+
+# 异体/繁简 character equivalences: a rare variant char → its standard-form
+# representative. Deliberately CURATED and tiny — each entry was corpus-verified to
+# denote ONE historical person split into two AUTO cards whose canonicals differ only
+# by this glyph: 高騈/高骈 (Gao Pian), 张须陀/张须陁 (Zhang Xutuo), 晁错/鼌错 (Chao Cuo),
+# 李谷/李榖 (Li Gu). NOT a general trad→simp table: a blanket same-length merge would
+# wrongly fold 封号/官衔 glue (太傅懿≈司马懿, 夏王勃勃≈赫连勃勃 — real dup people but era-
+# gated, deferred) and outright homograph traps (何承天 vs 何承之 — different people;
+# 李严→李平 — a rename). Add a glyph here only after confirming the two cards are the
+# same person and differ solely by an orthographic variant.
+_VARIANT_CHAR = {"騈": "骈", "陁": "陀", "鼌": "晁", "榖": "谷"}
+
+
+def _variant_key(s: str) -> str:
+    return "".join(_VARIANT_CHAR.get(c, c) for c in s)
+
+
+def merge_variant_cards(by_id, people_list, rules, juans, text_dir, meta=None):
+    """Fold AUTO cards whose canonicals are equal under _variant_key (same person,
+    orthographic-variant glyph) into one, reusing _merge_xref_card so RULES surfaces
+    re-point and the dropped canonical survives as a resolvable name. Keeper = the
+    variant the MAIN TEXT actually writes most (that is the glyph readers see
+    underlined — 高騈 over 高骈, 鼌错 over 晁错, 李谷 over 李榖), then widest 卷 coverage."""
+    juan_cache: dict[int, str] = {}
+
+    def main_of(j):
+        if j not in juan_cache:
+            jf = text_dir / f"juan_{j:03d}.json"
+            paras = (json.loads(jf.read_text(encoding="utf-8"))["paragraphs"]
+                     if jf.exists() else [])
+            juan_cache[j] = "".join(p.get("main", "") for p in paras)
+        return juan_cache[j]
+
+    def text_freq(card):
+        cn = card["canonical_name"]
+        return sum(main_of(j).count(cn) for j in (card.get("juans") or [])
+                   if j in juans)
+
+    groups: dict[str, list] = collections.defaultdict(list)
+    for pid_, p in by_id.items():
+        if str(pid_).startswith("a:"):
+            groups[_variant_key(p["canonical_name"])].append(p)
+    merged = 0
+    dropped_ids: set = set()
+    for key, cards in groups.items():
+        if len(cards) < 2 or len(key) < 2:
+            continue
+        if len({c["canonical_name"] for c in cards}) < 2:
+            continue  # all identical — a same-canonical case, not a variant split
+        cards.sort(key=lambda c: (-text_freq(c), -len(c.get("juans") or []),
+                                  min(c["juans"]) if c.get("juans") else 10 ** 9,
+                                  str(c["id"])))
+        keep = cards[0]
+        for C in cards[1:]:
+            if C["canonical_name"] == keep["canonical_name"]:
+                continue  # sibling instance of the keeper's own form — leave it
+            _merge_xref_card(keep, C, rules, meta)
+            have = {(n["text"] if isinstance(n, dict) else n)
+                    for n in keep.get("names", [])}
+            if C["canonical_name"] not in have:
+                keep.setdefault("names", []).append(C["canonical_name"])
+            dropped_ids.add(C["id"])
+            del by_id[C["id"]]
+            merged += 1
+    if dropped_ids:
+        people_list[:] = [p for p in people_list if p["id"] not in dropped_ids]
+    return merged, dropped_ids
 # OBJECT Y is the KNOWN ancestor (谱，珪之六世孙也 → 谱 = 王珪's 6th-gen descendant).
 # The forward path mints the relative Y from a known X; this inverse path mints the
 # subject X from a known ancestor Y, inheriting Y's surname (patrilineal). The
@@ -2373,6 +2441,19 @@ def main():
     if xref_dropped:
         for nm_, lst in list(canon_to_pids.items()):
             canon_to_pids[nm_] = [t for t in lst if t[0] not in xref_dropped]
+
+    # ── Wave B.2: 异体/繁简 variant card merge ──
+    # A person written with a variant glyph in different windows/annotations splits into
+    # two AUTO cards (高騈/高骈, 张须陀/张须陁, 晁错/鼌错, 李谷/李榖). Fold them via the same
+    # primitive so RULES + mentions aggregate onto one card. Curated glyph table only —
+    # 封号 glue / homograph traps are excluded by construction. Runs before emission.
+    var_merged, var_dropped = merge_variant_cards(
+        by_id, PEOPLE_MERGED, RULES, set(JUANS), TEXT, gloss_meta)
+    for did in var_dropped:
+        given_of.pop(did, None)
+    if var_dropped:
+        for nm_, lst in list(canon_to_pids.items()):
+            canon_to_pids[nm_] = [t for t in lst if t[0] not in var_dropped]
 
     # ── Phase 3: LLM card curation (dynasty relabel / book brief / evidence-gated merge) ──
     # Metadata-only fixes for the audit's card-quality gaps. Runs BEFORE the emission /
