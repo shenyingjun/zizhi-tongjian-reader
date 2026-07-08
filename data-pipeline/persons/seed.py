@@ -614,7 +614,15 @@ SURNAMES_EXTRA = set(
     #   苟 (苟晞/苟变/苟苌 · 苟=苟且)           檀 (檀道济/檀和之/檀凭之 · 檀=檀木)
     #   阳 (阳球/阳裕/阳休之 · 阳=阴阳)         乌 (乌重胤/乌承玼/乌获 · 乌=乌鸦/西域)
     #   延 (延岑/延笃/延普 · 延=延续)
-    "许衞成尉苟檀阳乌延")
+    "许衞成尉苟檀阳乌延"
+    # Wave 51 — long-tail real 姓 (百家姓-verified, ≥3 cards), same AMBIGUOUS
+    # owner-tally fix. Excludes look-alikes: states (齐鲁燕楚晋), 谥/given (弘宣伊伯),
+    # compound cuts (司商东濮闻), foreign particles (那沙慕), and the deliberately-held
+    # high-noise 安文平曲.
+    #   和(和峤/和凝) 权(权德舆) 尚(尚让) 匡(匡衡) 阴(阴兴) 昌(昌义之) 卜(卜式)
+    #   车(车胤) 薄(薄昭) 全(全怿) 云(云定兴) 师(师丹) 满(满宠) 施(施绩)
+    #   暴(暴胜之) 汲(汲黯) 谷(谷永) 左(左雄) 山(山涛) 牟(牟融) 宁(宁成)
+    "和权尚匡阴昌卜车薄全云师满施暴汲谷左山牟宁")
 SURNAMES |= SURNAMES_EXTRA
 
 # Compound (2-char) surnames → a 3-char auto name must begin with one of these.
@@ -687,7 +695,7 @@ TITLE_GLUE_ALIASES = {
 # starting with one of these is too easily a glued phrase (于今, 何谓, 方略,
 # 丁壮…), so such a candidate is accepted ONLY when jieba's name lexicon already
 # knows the whole token (the `d` flag). Unambiguous surnames take the cheap path.
-AMBIGUOUS_SURNAMES = set("于何方白向都任武史召国金田文成安平广万丁乐华牛高严时后那东元柳宗封常穆步许衞成尉苟檀阳乌延")
+AMBIGUOUS_SURNAMES = set("于何方白向都任武史召国金田文成安平广万丁乐华牛高严时后那东元柳宗封常穆步许衞成尉苟檀阳乌延和权尚匡阴昌卜车薄全云师满施暴汲谷左山牟宁")
 CLEAN_SURNAMES = SURNAMES - AMBIGUOUS_SURNAMES
 
 _TIANGAN = set("甲乙丙丁戊己庚辛壬癸")
