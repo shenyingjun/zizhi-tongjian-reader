@@ -2297,6 +2297,33 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                     if (surname + tok[0]) in canon_to_pids \
                             and (surname + tok[1]) in canon_to_pids:
                         continue
+                    # Upgrade-in-place: a confident sibling (cond_a — a same-list
+                    # relative already carded, e.g. 王审知 for 王潮及弟审邽) may name a
+                    # person who ALREADY has a surname-LESS given-only auto card (审邽,
+                    # minted by the 官衔连写 pass). Its mentions already point there, so
+                    # renaming that card's canonical to 姓+given (王审邽) fixes the label
+                    # without minting an orphan. Guarded: exactly one auto (non-reviewed)
+                    # card whose canonical is the bare given, and cond_a proves the 姓.
+                    ec = created.get(tok)
+                    if cond_a and ec and str(ec.get("id", "")).startswith("a:") \
+                            and ec.get("confidence") != "reviewed" \
+                            and ec.get("canonical_name") == tok:
+                        ec["canonical_name"] = nf
+                        mt_list = ec.get("match") or []
+                        for s in (nf, tok):
+                            if s not in mt_list:
+                                mt_list.append(s)
+                        ec["match"] = mt_list
+                        jl = ec.get("juans") or []
+                        if juan_no not in jl:
+                            jl.append(juan_no)
+                        ec["juans"] = jl
+                        del created[tok]
+                        created[nf] = ec
+                        canon_to_pids.setdefault(nf, []).append(
+                            (ec["id"], set(jl)))
+                        rule_map.setdefault(nf, ec["id"])
+                        continue
                     dyn = (meta.get(juan_no, {}).get("dynasty") or "").strip()
                     cs = meta.get(juan_no, {}).get("ce_start")
                     created[nf] = {
