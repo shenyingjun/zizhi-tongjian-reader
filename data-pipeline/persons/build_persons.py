@@ -1603,7 +1603,7 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
     # hard boundary + non-person guards beat a bare NER hit for personhood.
     strong_office_cues = tuple(sorted({
         "观察使", "节度使", "团练使", "防御使", "经略使", "招讨使", "都统",
-        "刺史", "太守", "都督", "都将", "大将", "牙将", "衙将", "其将",
+        "刺史", "太守", "都督", "都将", "大将", "牙将", "衙将", "其将", "别将",
         "都押牙", "押牙", "都虞候", "虞候", "都知兵马使", "兵马使",
         "镇遏使", "团练判官", "节度判官", "行军司马", "都指挥使",
         "宣徽使", "枢密使",
