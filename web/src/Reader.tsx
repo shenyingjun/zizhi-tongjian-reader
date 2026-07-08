@@ -34,6 +34,21 @@ function ParagraphView({
   const mainMatches = useMemo(() => findMatches(p.main, highlightQuery), [p.main, highlightQuery]);
   const [overridden, setOverridden] = useState<Set<number>>(new Set());
 
+  // 纲目 event markers are circled numbers ①..㊿ (Unicode only provides 1..50).
+  // For the 51st item onward the digitiser falls back to plain ASCII digits,
+  // which otherwise render as a bare "51". Detect that leading digit run so we
+  // can wrap it in a CSS circled badge and keep it visually consistent with ㊿.
+  const markerLen = useMemo(() => {
+    if (p.type !== 'event') return 0;
+    const m = /^\d+/.exec(p.main);
+    return m ? m[0].length : 0;
+  }, [p.type, p.main]);
+
+  const renderText = (text: string, mainStart: number) =>
+    personSpans.length
+      ? renderTextSegment(text, mainStart, mainMatches, personSpans, onPersonClick, p.id, activePersonId)
+      : highlightWithRanges(text, mainStart, mainMatches);
+
   const toggleNote = (i: number) =>
     setOverridden(prev => {
       const next = new Set(prev);
@@ -52,11 +67,20 @@ function ParagraphView({
     <p className={cls} data-pid={p.id} data-type={p.type}>
       {segments.map((seg, i) => {
         if (seg.kind === 'text') {
+          if (markerLen && seg.mainStart === 0) {
+            const cps = Array.from(seg.text);
+            const num = cps.slice(0, markerLen).join('');
+            const rest = cps.slice(markerLen).join('');
+            return (
+              <span key={i}>
+                <span className="event-marker">{num}</span>
+                {renderText(rest, markerLen)}
+              </span>
+            );
+          }
           return (
             <span key={i}>
-              {personSpans.length
-                ? renderTextSegment(seg.text, seg.mainStart!, mainMatches, personSpans, onPersonClick, p.id, activePersonId)
-                : highlightWithRanges(seg.text, seg.mainStart!, mainMatches)}
+              {renderText(seg.text, seg.mainStart!)}
             </span>
           );
         }
