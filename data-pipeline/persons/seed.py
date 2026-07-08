@@ -414,6 +414,7 @@ COMMON_WORD_NONPERSON: set[str] = {
     "胡柳", "胡壁",   # 至胡柳陂 / 败汴兵于胡壁 — 战地名
     "潘张",   # 筑垒贮粮于潘张 — 地名
     "唐仓", "唐林",   # 唐仓镇 / 焚唐林崞县 — 镇·地名
+    "石镜镇",   # 石镜镇将董昌 — 杭州石镜镇 (garrison town), NER mis-cards the place
     "赵步",   # 遇于赵步 / 帝军于赵步 — 地名 (a 淮上 location)
     # — [姓/王/国] + 动词·副词 误切 —
     "王命",   # 倍王命 / 矫以王命 / 项王命萧公角 — 王(之)命 or 王命(ordered)
@@ -957,6 +958,14 @@ def _surname_of_known(full: str):
     if sn:
         return sn
     if len(full) >= 2 and full[0] in AMBIGUOUS_SURNAMES and (len(full) - 1) in (1, 2):
+        return full[0]
+    # Rare-姓 fallback: the 姓 is absent from the surname dict (阡能, 万俟…), yet this is
+    # a CONFIRMED card whose full name already matched in text, so trust the canonical
+    # 姓+名 shape. Restrict to a 2-char canonical (1-char 姓 + 1-char 名): the given is
+    # single-char and therefore POS·Giv-gated + 节-local single-owner downstream, so a
+    # wrong split cannot leak. 3+-char canonicals are skipped — they may be 封号+名
+    # (忠王玙) or an unknown 复姓, which a blind head-split would corrupt.
+    if len(full) == 2:
         return full[0]
     return None
 
