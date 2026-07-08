@@ -2230,6 +2230,84 @@ def build_gloss_cards(juans, text_dir, rules, canon_to_pids, by_id,
                     "match": [nf], "juans": [juan_no], "confidence": "high"}
                 rule_map.setdefault(nf, created[nf]["id"])
                 anaphora[nf] = x
+        # ── Sibling-mint (extends extract_siblings from BIND-only to MINT) ─────────
+        # 「carded-X（及|与）<patrilineal-kin>A、B」: mint the 省姓 relative 姓(X)+given
+        # when no card exists; extract_siblings then binds the literal occurrence.
+        # Precision gates (corpus-validated, 6 clean mints): 2-char given only — a
+        # single-char 省姓 sibling needs a separator we cannot trust (及弟远穆 = 李远+
+        # 李穆); POS·Giv on both chars (rejects verb/place glue 济始用事 / 同郡王信);
+        # reject a 连写 pair whose 姓+c1 AND 姓+c2 are both carded (远穆); and trust the
+        # surname only when a same-list sibling is already carded (A) OR X's canonical
+        # is a clean 姓+双名 ≥3 chars (B) — which drops mis-carded 省称 X (仲礼→柳仲礼).
+        sib_giv = None
+        for para in juan["paragraphs"]:
+            mt2 = para.get("main", "")
+            if "及" not in mt2 and "与" not in mt2:
+                continue
+            for m in _SIB_RE.finditer(mt2):
+                end = m.start()
+                pid_x = None
+                for L in (4, 3, 2):
+                    if end - L < 0:
+                        continue
+                    cand = mt2[end - L:end]
+                    px = rule_map.get(cand)
+                    if px in by_id and len(cand) >= 2:
+                        pid_x = px
+                        break
+                if not pid_x:
+                    continue
+                cx = by_id[pid_x]["canonical_name"]
+                surname = seed_mod._surname_of(cx)
+                if not surname and len(cx) >= 2 and cx[0] in seed_mod.SURNAMES:
+                    surname = cx[0]
+                if not surname:
+                    continue
+                toks = m.group(2).split("、")
+                # 孙/子 double as surnames: 「韦玄成及孙会宗」 is 孙会宗 (surname 孙), NOT
+                # 韦玄成's grandson 韦会宗. When a single-char kin + given is itself a
+                # carded name, the kin char is that person's surname — never a relation.
+                kin = m.group(1)
+                if len(kin) == 1 and any((kin + t) in canon_to_pids for t in toks):
+                    continue
+                cond_a = any((surname + t) in canon_to_pids or (surname + t) in created
+                             for t in toks)
+                cond_b = len(cx) >= 3 and seed_mod._surname_of(cx) is not None
+                if not (cond_a or cond_b):
+                    continue
+                if sib_giv is None:
+                    sib_giv = pos_giv.giv_for_juan(
+                        juan_no, juan["paragraphs"], OUT / "pos_giv")
+                gset = set(sib_giv.get(para.get("id"), ()))
+                base = m.start(2)
+                pos = 0
+                for tok in toks:
+                    gs = base + pos
+                    pos += len(tok) + 1
+                    if len(tok) != 2 or tok in _SIB_STOP \
+                            or seed_mod.bad_auto_surface(tok):
+                        continue
+                    nf = surname + tok
+                    if nf in canon_to_pids or nf in created:
+                        continue
+                    if nf in seed_mod.COMMON_WORD_NONPERSON or nf in _TITLE_BANNED:
+                        continue
+                    if gs not in gset or gs + 1 not in gset:
+                        continue
+                    if (surname + tok[0]) in canon_to_pids \
+                            and (surname + tok[1]) in canon_to_pids:
+                        continue
+                    dyn = (meta.get(juan_no, {}).get("dynasty") or "").strip()
+                    cs = meta.get(juan_no, {}).get("ce_start")
+                    created[nf] = {
+                        "id": seed_mod._auto_id(nf, 9000 + len(created)),
+                        "canonical_name": nf, "names": [], "dynasty": dyn or "—",
+                        "era_hint": f"{dyn}人物" if dyn else "人物",
+                        "floruit": [cs, cs] if cs else [None, None],
+                        "brief": f"{dyn + '·' if dyn else ''}见于卷{juan_no:03d}（家世胡注）。",
+                        "identity": f"{dyn + '·' if dyn else ''}见于卷{juan_no:03d}（家世胡注）。",
+                        "match": [nf], "juans": [juan_no], "confidence": "high"}
+                    rule_map.setdefault(nf, created[nf]["id"])
     for new_full, card in created.items():
         people_merged.append(card)
         by_id[card["id"]] = card
