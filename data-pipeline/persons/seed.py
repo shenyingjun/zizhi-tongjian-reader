@@ -622,7 +622,13 @@ SURNAMES_EXTRA = set(
     #   和(和峤/和凝) 权(权德舆) 尚(尚让) 匡(匡衡) 阴(阴兴) 昌(昌义之) 卜(卜式)
     #   车(车胤) 薄(薄昭) 全(全怿) 云(云定兴) 师(师丹) 满(满宠) 施(施绩)
     #   暴(暴胜之) 汲(汲黯) 谷(谷永) 左(左雄) 山(山涛) 牟(牟融) 宁(宁成)
-    "和权尚匡阴昌卜车薄全云师满施暴汲谷左山牟宁")
+    "和权尚匡阴昌卜车薄全云师满施暴汲谷左山牟宁"
+    # Wave 52 — high-noise but genuine 姓, measured and admitted. Same AMBIGUOUS
+    # owner-tally fix; each collides with a very common word/title so the POS gate
+    # does the heavy lifting on bare single-char binding:
+    #   安 (安禄山/安庆绪/安金藏 · 安=安定/长安/安否)   文 (文钦/文鸯/文聘 · 文=文帝/文王/文章)
+    #   平 (平当/平晏 · 平=平原/太平/平定)             曲 (曲珍/曲环 · 曲=曲城/委曲/曲直)
+    "安文平曲")
 SURNAMES |= SURNAMES_EXTRA
 
 # Compound (2-char) surnames → a 3-char auto name must begin with one of these.
@@ -695,7 +701,7 @@ TITLE_GLUE_ALIASES = {
 # starting with one of these is too easily a glued phrase (于今, 何谓, 方略,
 # 丁壮…), so such a candidate is accepted ONLY when jieba's name lexicon already
 # knows the whole token (the `d` flag). Unambiguous surnames take the cheap path.
-AMBIGUOUS_SURNAMES = set("于何方白向都任武史召国金田文成安平广万丁乐华牛高严时后那东元柳宗封常穆步许衞成尉苟檀阳乌延和权尚匡阴昌卜车薄全云师满施暴汲谷左山牟宁")
+AMBIGUOUS_SURNAMES = set("于何方白向都任武史召国金田文成安平广万丁乐华牛高严时后那东元柳宗封常穆步许衞成尉苟檀阳乌延和权尚匡阴昌卜车薄全云师满施暴汲谷左山牟宁曲")
 CLEAN_SURNAMES = SURNAMES - AMBIGUOUS_SURNAMES
 
 _TIANGAN = set("甲乙丙丁戊己庚辛壬癸")
