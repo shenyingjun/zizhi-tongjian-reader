@@ -1219,6 +1219,67 @@ def extract_gloss(text, rule_map, canon_to_pids, juan_no, by_id, consumed):
     return mentions, relations
 
 
+# ── Sibling enumeration 「X（及|与）<kin>A、B」 — given-only patrilineal relatives ─────
+# After a carded 姓+名 X, an enumeration 「(及|与)<patrilineal-kin>A、B…」 lists relatives
+# who share X's surname: 「固始县佐王潮及弟审邽、审知」 → 审邽/审知 are 王 (王审邽/王审知). Each
+# given is written 省姓; reconstruct 姓+given and bind it to that card when it already
+# exists near this 卷 — the same existence gate extract_gloss uses, so a wrong X (hence
+# wrong surname) yields an uncarded 姓+given and is silently dropped. Purely additive;
+# never overrides a consumed span. X is found by longest-carded-surface lookback, so an
+# 官衔 prefix (县佐王潮) collapses to the real card surface 王潮.
+_SIB_KIN = ["从弟", "从兄", "从子", "兄子", "族子", "母弟", "母兄",
+            "季父", "叔父", "伯父", "弟", "兄", "子", "孙"]
+_SIB_KIN_ALT = "|".join(sorted(_SIB_KIN, key=len, reverse=True))
+_SIB_RE = re.compile(
+    r"(?:及|与)(" + _SIB_KIN_ALT + r")"
+    r"([\u4e00-\u9fff]{1,2}(?:、[\u4e00-\u9fff]{1,2})*)")
+# tokens that are never a personal given in this slot (kinship / enumeration glue)
+_SIB_STOP = set("子孙弟兄父母妻女诸皆并及与亦也其之等群众亲族家属")
+
+
+def extract_siblings(text, rule_map, canon_to_pids, juan_no, by_id, consumed):
+    """Bind 省姓 given-only siblings in 「X（及|与）<kin>A、B」 to their 姓+given card.
+    Return [(start, end, person_id, surface)]. Existence-gated like extract_gloss."""
+    out = []
+    for m in _SIB_RE.finditer(text):
+        end = m.start()                       # position of 及/与
+        pid_x = x_surf = None
+        for L in (4, 3, 2):                   # longest carded surface wins
+            if end - L < 0:
+                continue
+            cand = text[end - L:end]
+            px = rule_map.get(cand)
+            if px in by_id and len(cand) >= 2:
+                x_surf, pid_x = cand, px
+                break
+        if not pid_x:
+            continue
+        cx = by_id[pid_x]["canonical_name"]
+        surname = seed_mod._surname_of(cx)
+        if not surname and len(cx) >= 2 and cx[0] in seed_mod.SURNAMES:
+            surname = cx[0]
+        if not surname:
+            continue
+        base = m.start(2)
+        pos = 0
+        for token in m.group(2).split("、"):
+            gs = base + pos
+            ge = gs + len(token)
+            pos += len(token) + 1             # +1 for the 、 separator
+            if not token or token in _SIB_STOP or seed_mod.bad_auto_surface(token):
+                continue
+            cands = canon_to_pids.get(surname + token)
+            if not cands:
+                continue
+            pid_y = min(cands, key=lambda pc: _juan_gap(pc[1], juan_no))[0]
+            if pid_y == pid_x or any(consumed[gs:ge]):
+                continue
+            for k in range(gs, ge):
+                consumed[k] = True
+            out.append((gs, ge, pid_y, token))
+    return out
+
+
 _CN_DIGIT = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7,
              "八": 8, "九": 9, "十": 10, "百": 100, "零": 0, "〇": 0}
 
@@ -2984,6 +3045,15 @@ def main():
                 relations_all.append({"subject": px, "kin": z, "object": py,
                                       "juan": juan_no, "para": pid,
                                       "x": xs, "y": ys})
+            # Sibling enumeration 「X（及|与）<kin>A、B」 — bind 省姓 given-only relatives.
+            for (s, e, pid_, surf) in extract_siblings(
+                    main_text, RULES.get(juan_no, {}), canon_to_pids, juan_no, by_id, consumed):
+                mentions.append({"pid": pid, "ce_year": ce, "source": "main",
+                                 "start": s, "end": e, "surface": surf,
+                                 "person_id": pid_, "kind": "gloss",
+                                 "confidence": by_id[pid_].get("confidence", "reviewed")})
+                seen_ids.add(pid_)
+                gloss_emitted += 1
             for ni, note in enumerate(para.get("notes", [])):
                 for (s, e, pid_, surf) in extract(note.get("text", ""), surfaces):
                     if e - s < 2:
