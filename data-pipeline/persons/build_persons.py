@@ -823,6 +823,8 @@ def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span, full_a
                    is absent from the section, so a 节 re-introduced only by a
                    title+given form still binds its bare givens. Stays 节-local."""
     full_anchor = full_anchor or {}
+    text_by_pid = {p["id"]: p.get("main", "") for p in paras}
+    backfilled: set = set()                     # (para_id, s, e) full names already backfilled
     pid2 = {}                                   # pid -> (canon, given, cls)
     given_to_pids = collections.defaultdict(set)
     two_char_givens = set()
@@ -876,6 +878,7 @@ def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span, full_a
     for sec in sections:
         sec_full = {}                           # given -> most-recent full-name pid in 节
         sec_owners = collections.defaultdict(set)
+        sec_full_span = {}                      # given -> (fp, fce, fs, fe, pid) antecedent occurrence
         for p in sec:
             mt = p.get("main", "")
             if not mt:
@@ -886,7 +889,7 @@ def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span, full_a
             events, fullspans = [], collections.defaultdict(list)
             for pid, (canon, g, cls) in pid2.items():
                 for s in find_all(mt, canon):
-                    events.append((s, 0, pid, g))
+                    events.append((s, 0, pid, g, s + len(canon)))
                     fullspans[pid].append((s, s + len(canon)))
             # Seed anchors from already-tagged title/full forms (后秦王苌 …) whose
             # surface ends in the person's given, so the 节 they appear in gains a
@@ -897,29 +900,35 @@ def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span, full_a
                 info = pid2.get(a_pid)
                 if not info or not a_surf.endswith(info[1]):
                     continue
-                events.append((a_s, 0, a_pid, info[1]))
+                events.append((a_s, 0, a_pid, info[1], a_e))
                 fullspans[a_pid].append((a_s, a_e))
             for g, pids in given_to_pids.items():
                 for s in find_all(mt, g):
                     e = s + len(g)
                     if any(a <= s and e <= b for pid in pids for (a, b) in fullspans.get(pid, [])):
                         continue
-                    events.append((s, 1, None, g))
+                    events.append((s, 1, None, g, 0))
             events.sort(key=lambda t: (t[0], t[1]))
             para_full = {}
+            para_full_span = {}
             done = set(exist_span.get(pid_para, ()))
             giv_here = giv_map.get(pid_para, ())
-            for (s, typ, pid, g) in events:
+            for (s, typ, pid, g, fe) in events:
                 if typ == 0:
                     para_full[g] = pid
                     sec_full[g] = pid
                     sec_owners[g].add(pid)
+                    span_rec = (pid_para, raw_ce, s, fe, pid)
+                    para_full_span[g] = span_rec
+                    sec_full_span[g] = span_rec
                     continue
                 e = s + len(g)
                 if g in para_full:
                     rpid = para_full[g]
+                    ante = para_full_span.get(g)
                 elif g in sec_full and len(sec_owners[g]) == 1:
                     rpid = sec_full[g]
+                    ante = sec_full_span.get(g)
                 else:
                     continue
                 if (s, e) in done or any(a <= s and e <= b for (a, b) in done):
@@ -931,8 +940,27 @@ def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span, full_a
                         continue
                 if _lifespan_outside(by_id[rpid], eff_ce):
                     continue
-                out.append((pid_para, raw_ce, s, e, rpid, g))
+                out.append((pid_para, raw_ce, s, e, rpid, g, "anaphora"))
                 done.add((s, e))
+                # ── backfill (Wave 7): this 省称 just bound to a full name that is
+                # physically present in the 节 yet was never emitted (a titleglue
+                # reserve-drop / overlapping-consume ate it). Emit that full name — it
+                # is strictly higher-confidence than the bare given we just trusted.
+                # Dedup against already-emitted / overlapping spans; honor the alias
+                # pass's 谥号 guard so a 谥曰X posthumous title is never resurrected.
+                if ante is not None:
+                    fp, fce, fs, fe2, fpid = ante
+                    key = (fp, fs, fe2)
+                    if key not in backfilled and fpid == rpid:
+                        fp_text = text_by_pid.get(fp, "")
+                        emitted_fp = exist_span.get(fp, ())
+                        overlaps = any(a < fe2 and fs < b for (a, b) in emitted_fp)
+                        guarded = (fp_text[max(0, fs - 2):fs] in ("谥曰", "谥为")
+                                   or fp_text[max(0, fs - 1):fs] == "谥")
+                        if not overlaps and not guarded:
+                            out.append((fp, fce, fs, fe2, fpid,
+                                        fp_text[fs:fe2], "alias"))
+                            backfilled.add(key)
     return out
 
 
@@ -2984,15 +3012,16 @@ def main():
                         full_anchor_main[m["pid"]].append(
                             (m["start"], m["end"], m["person_id"], m["surface"]))
             giv_map = pos_giv.giv_for_juan(juan_no, juan["paragraphs"], OUT / "pos_giv")
-            for (pid_para, ce_y, s, e, rpid, surf) in resolve_anaphora_pos(
+            for (pid_para, ce_y, s, e, rpid, surf, kind) in resolve_anaphora_pos(
                     juan["paragraphs"], present_pids, by_id, giv_map,
                     exist_span_main, full_anchor_main):
                 mentions.append({"pid": pid_para, "ce_year": ce_y, "source": "main",
                                  "start": s, "end": e, "surface": surf,
-                                 "person_id": rpid, "kind": "anaphora",
+                                 "person_id": rpid, "kind": kind,
                                  "confidence": by_id[rpid].get("confidence", "reviewed")})
                 seen_ids.add(rpid)
-                anaphora_emitted += 1
+                if kind == "anaphora":
+                    anaphora_emitted += 1
 
         # ── LLM precision-veto (delete-only) ──────────────────────────────
         # Drop every mention whose surface the 卷's LLM audit flagged as a
