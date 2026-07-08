@@ -606,7 +606,15 @@ SURNAMES_EXTRA = set(
     #   柳 (柳元景/柳世隆/柳仲礼/柳彧 · 柳=willow)   宗 (宗悫/宗楚客 · 宗=宗室/宗庙)
     #   封 (封德彝/封常清/封裕 · 封=封爵/封赏)      常 (常衮/常惠/常景 · 常=非常/常山)
     #   穆 (穆泰/穆崇/穆提婆 北魏穆姓 · 穆=谥/穆穆)  步 (步骘/步阐 · 步=步兵/步骤)
-    "柳宗封常穆步")
+    "柳宗封常穆步"
+    # Wave 50 — second tier of missing 姓 (same owner-tally invisibility fix, all →
+    # AMBIGUOUS_SURNAMES, POS gate still guards bare single char):
+    #   许 (许广汉/许圣/许历 · 许=允许/许多)   衞 (衞青/衞绾/衞子夫 · 衞=卫/守卫)
+    #   成 (成济/成淹/成景儁 · 成=成为)         尉 (尉元/尉眷/尉佗 · 尉=太尉/尉官)
+    #   苟 (苟晞/苟变/苟苌 · 苟=苟且)           檀 (檀道济/檀和之/檀凭之 · 檀=檀木)
+    #   阳 (阳球/阳裕/阳休之 · 阳=阴阳)         乌 (乌重胤/乌承玼/乌获 · 乌=乌鸦/西域)
+    #   延 (延岑/延笃/延普 · 延=延续)
+    "许衞成尉苟檀阳乌延")
 SURNAMES |= SURNAMES_EXTRA
 
 # Compound (2-char) surnames → a 3-char auto name must begin with one of these.
@@ -679,7 +687,7 @@ TITLE_GLUE_ALIASES = {
 # starting with one of these is too easily a glued phrase (于今, 何谓, 方略,
 # 丁壮…), so such a candidate is accepted ONLY when jieba's name lexicon already
 # knows the whole token (the `d` flag). Unambiguous surnames take the cheap path.
-AMBIGUOUS_SURNAMES = set("于何方白向都任武史召国金田文成安平广万丁乐华牛高严时后那东元柳宗封常穆步")
+AMBIGUOUS_SURNAMES = set("于何方白向都任武史召国金田文成安平广万丁乐华牛高严时后那东元柳宗封常穆步许衞成尉苟檀阳乌延")
 CLEAN_SURNAMES = SURNAMES - AMBIGUOUS_SURNAMES
 
 _TIANGAN = set("甲乙丙丁戊己庚辛壬癸")
