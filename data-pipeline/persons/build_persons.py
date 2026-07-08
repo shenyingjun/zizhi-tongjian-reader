@@ -1109,19 +1109,55 @@ def extract_gloss(text, rule_map, canon_to_pids, juan_no, by_id, consumed):
             continue
         x_emit = None
         if not pid_x or pid_x not in by_id:
-            # subject unmapped (省称 not NER'd): if both subject 姓+X and ancestor 姓+Y
-            # are carded under one shared surname, the patrilineal rule binds both.
-            sub_ok = []
-            for s in seed_mod.SURNAMES:
-                xf, yf = s + x_surf, s + y_surf
-                if xf in canon_to_pids and yf in canon_to_pids:
-                    sub_ok.append((s, canon_to_pids[xf], canon_to_pids[yf]))
-            if len(sub_ok) != 1:
-                continue
-            s, xc, yc = sub_ok[0]
-            pid_x = min(xc, key=lambda pc: _juan_gap(pc[1], juan_no))[0]
-            x_emit = (m.start(1), m.end(1))
-            surname = s
+            # subject unmapped (省称 not NER'd). Governance rule: honor a LOCALLY-attested
+            # full name for X before any cross-卷 reconstruction. Resolve X's surname from
+            # the NEAREST preceding 姓+X / 复姓+X in THIS paragraph — the just-named
+            # antecedent (魏宗正卿元树来奔。树，翼之弟也 → 元) — never a distant 同名 phantom
+            # (刘树). The patrilineal ancestor Y=姓+Y is then reconstructed downstream; if X
+            # and Y differ in surname, Y appears 姓名-in-full and takes its own 姓 (1132).
+            surname = None
+            pre_txt = text[:m.start(1)]
+            idx = pre_txt.rfind(x_surf)
+            while idx > 0:
+                if idx >= 2 and pre_txt[idx - 2:idx] in seed_mod.COMPOUND:
+                    surname = pre_txt[idx - 2:idx]
+                    break
+                if pre_txt[idx - 1] in seed_mod.SURNAMES:
+                    cand = pre_txt[idx - 1]
+                    # 王/公/侯/君/主 double as princely titles: 「彭城王雄」 is prince 雄
+                    # (姓 元/司马…), not surname 王 — accept only at a fresh name boundary.
+                    if cand in "王公侯君主" and not (
+                            idx == 1 or pre_txt[idx - 2] in _GLOSS_BOUNDARY
+                            or pre_txt[idx - 2] in "「『（〈《【　 "):
+                        idx = pre_txt.rfind(x_surf, 0, idx)
+                        continue
+                    # 孙 after a 宗室 grandson prefix (皇孙/太孙/曾孙/从孙/嫡孙…) is the
+                    # relation word, not surname 孙 — 皇孙暕 is 杨暕, never 孙暕.
+                    if cand == "孙" and idx >= 2 and pre_txt[idx - 2] in "皇太世曾玄从嫡冢":
+                        idx = pre_txt.rfind(x_surf, 0, idx)
+                        continue
+                    surname = cand
+                    break
+                idx = pre_txt.rfind(x_surf, 0, idx)
+            if surname and (surname + x_surf) in canon_to_pids:
+                xc = canon_to_pids[surname + x_surf]
+                pid_x = min(xc, key=lambda pc: _juan_gap(pc[1], juan_no))[0]
+                x_emit = (m.start(1), m.end(1))
+            else:
+                # fall back: both subject 姓+X and ancestor 姓+Y carded under exactly one
+                # shared surname, the patrilineal rule binds both.
+                surname = None
+                sub_ok = []
+                for s in seed_mod.SURNAMES:
+                    xf, yf = s + x_surf, s + y_surf
+                    if xf in canon_to_pids and yf in canon_to_pids:
+                        sub_ok.append((s, canon_to_pids[xf], canon_to_pids[yf]))
+                if len(sub_ok) != 1:
+                    continue
+                s, xc, yc = sub_ok[0]
+                pid_x = min(xc, key=lambda pc: _juan_gap(pc[1], juan_no))[0]
+                x_emit = (m.start(1), m.end(1))
+                surname = s
         else:
             cx = by_id[pid_x]["canonical_name"]
             surname = seed_mod._surname_of(cx)
