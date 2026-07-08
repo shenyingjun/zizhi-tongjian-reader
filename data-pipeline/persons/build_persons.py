@@ -673,18 +673,24 @@ _ANAPHORA_LEFT = set(
     "杀执废立遣召讨击破降诛斩围获擒释赦贬黜任用见责让劝说谓命拜封逐囚弑代")
 
 
-def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events, ce, by_id):
+def extract_anaphora(text, admitted, consumed, char_anchor, sec_owners, anchor_events, ce, by_id):
     """Wave 5 P2 — single-char 省称 matches in one main-text blob, each bound to its
     NEAREST preceding full-name antecedent (the person most recently named whose
     given char == this char). Gates:
       * the char is an admitted candidate for this 卷 (admitted set),
       * an antecedent for that char already exists in char_anchor (else suppress —
         precision-first, never guess without an anchor),
+      * NODE-LOCAL COLLISION GUARD: ≥2 DISTINCT people have been named in full for
+        this char earlier in the current 节 (sec_owners[ch]) → ambiguous, drop. This
+        replaced a blunt whole-卷 endswith filter (see seed.build_anaphora_rules); it
+        only fires where the ambiguity is actually local, so a char with one owner in
+        this 节 (even if a same-tail person exists in another 节) still binds.
       * the position is not consumed by a longer alias match,
       * a common-word bigram / modifier / clean-surname guard (坚守, 不坚, 杨惠 …),
       * a positive person-context gate (agent before a verb, or object after a
         person-taking verb).
-    char_anchor is mutated in place (carried across paragraphs within a 卷);
+    char_anchor is mutated in place (carried across paragraphs within a 卷); sec_owners
+    is likewise carried across paragraphs but RESET at each 节 lead by the caller.
     anchor_events is [(end_pos, given_char, person_id)] for this para's full-name
     hits, applied in reading order so an antecedent earlier in the SAME paragraph
     is visible to a later bare char. Returns [(start, end, person_id, surface)]."""
@@ -712,6 +718,7 @@ def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events, ce, b
         while ev_i < nev and anchor_events[ev_i][0] <= i:
             _, gc, pidp = anchor_events[ev_i]
             char_anchor[gc] = pidp
+            sec_owners.setdefault(gc, set()).add(pidp)  # 节-local distinct owner tally
             ev_i += 1
         if ch not in admitted or consumed[i]:
             continue
@@ -719,6 +726,8 @@ def extract_anaphora(text, admitted, consumed, char_anchor, anchor_events, ce, b
             continue
         pid_ = char_anchor.get(ch)
         if pid_ is None:        # no antecedent seen yet → suppress
+            continue
+        if len(sec_owners.get(ch, ())) >= 2:  # ≥2 full-named owners in THIS 节 → ambiguous
             continue
         if pid_ not in by_id:   # xref-merged card id; RULES now points at the survivor
             continue
@@ -2778,6 +2787,7 @@ def main():
             gch: pid_ for gch, pid_ in minted_anchor.get(juan_no, {}).items()
             if pid_ in by_id
         }  # given-char -> nearest antecedent person_id (卷-local)
+        sec_owners: dict[str, set] = {}  # 节-local: given-char -> {owners full-named so far in 节}
         cue_idx = build_role_cue_index(juan["paragraphs"])  # P3 succession split
         mentions = []
         for p_idx, para in enumerate(juan["paragraphs"]):
@@ -2790,6 +2800,7 @@ def main():
             # bind a bare given char (云 in 云大破蛮 ≠ 张云). Full names recur per section.
             if _is_sec_lead(main_text):
                 char_anchor.clear()
+                sec_owners.clear()   # 节-local collision tally resets each numbered 节
                 for _gch, _pid in llm_anchor.get(juan_no, {}).items():
                     char_anchor[_gch] = _pid   # LLM 省称 anchors are whole-卷 durable
             # rc4 封号-glue runs FIRST: reserve 「封号+given」 spans (任城王澄→元澄) so the
@@ -2885,7 +2896,7 @@ def main():
                         anchor_events.append((e, g, pid_))
                 anchor_events.sort()
                 for (s, e, pid_, surf) in extract_anaphora(
-                        main_text, admitted, consumed, char_anchor, anchor_events, ce, by_id):
+                        main_text, admitted, consumed, char_anchor, sec_owners, anchor_events, ce, by_id):
                     mentions.append({"pid": pid, "ce_year": ce, "source": "main",
                                      "start": s, "end": e, "surface": surf,
                                      "person_id": pid_, "kind": "anaphora",

@@ -1092,31 +1092,28 @@ def build_anaphora_rules(people, allowed):
     list. WHICH person a bare char resolves to is decided at build time by the
     nearest preceding full-name antecedent (build_persons.extract_anaphora).
 
-    COLLISION GUARD: a char is suppressed for a 卷 when ≥2 DISTINCT people there have
-    a canonical name ending in that char — detected by endswith, NOT by _given_single,
-    so it catches collisions even when one party's surname is outside our list (元胄 &
-    宇文胄 both end 胄 → 胄 suppressed in that 卷, never mis-bound to the recognised one).
-    Precision-first: an ambiguous given-char is dropped rather than guessed."""
+    COLLISION GUARD (节-local, moved out of here): a bare given char is ambiguous only
+    inside a 节 where ≥2 DISTINCT people have both been named in full earlier in that
+    same 节. A whole-卷 endswith filter here was far too blunt — corpus-wide 75% of the
+    (卷, tail) collisions never co-occur in one 节, so it discarded ~11k sections of
+    safe single-owner recall to protect ~1k genuinely ambiguous ones. The guard now
+    lives in extract_anaphora's `sec_owners` backstop (per-节, reset each 节), where it
+    can see who was actually full-named before the bare char in reading order. Here we
+    simply admit every owned given-char (minus the common-word exclude list)."""
     cand: dict[int, set] = collections.defaultdict(set)
-    endswith: dict[int, dict] = collections.defaultdict(lambda: collections.defaultdict(set))
     for p in people:
-        cn = p["canonical_name"]
-        g = _given_single(cn)
-        last = cn[-1] if (len(cn) >= 2 and _HAN_ONLY.match(cn)) else None
+        g = _given_single(p["canonical_name"])
+        if not g or g in ANAPHORA_CHAR_EXCLUDE:
+            continue
         for j in p["juans"]:
-            if j not in allowed:
-                continue
-            if g and g not in ANAPHORA_CHAR_EXCLUDE:
+            if j in allowed:
                 cand[j].add(g)
-            if last:
-                endswith[j][last].add(p["id"])
     out: dict[int, set] = {}
     n_admitted = 0
     for j, chars in cand.items():
-        keep = {c for c in chars if len(endswith[j].get(c, ())) < 2}
-        if keep:
-            out[j] = keep
-            n_admitted += len(keep)
+        if chars:
+            out[j] = set(chars)
+            n_admitted += len(chars)
     return out, n_admitted
 
 
