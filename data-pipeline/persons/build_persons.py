@@ -768,6 +768,14 @@ def extract_anaphora(text, admitted, consumed, char_anchor, sec_owners, anchor_e
 # mention — it only fills the recall gap the curated allow-list left behind.
 _TITLE_END_CHARS = set("王侯公伯子男君后主帝卿相将")
 
+# 复姓 heads used by the 节-eligibility nesting test in resolve_anaphora_pos. A bare
+# canonical (舒曜) that appears only as the SUFFIX of a longer tagged name whose head
+# forms a 复姓 (哥+舒曜 → 哥舒·曜) is a false split, not a real re-introduction — so it
+# must NOT make that (wrong) card eligible. seed.COMPOUND misses a few common ones.
+_FUXING_HEADS = set(seed_mod.COMPOUND) | {
+    "哥舒", "叔孙", "太史", "公羊", "端木", "公良", "颛孙",
+}
+
 
 def _sec_num(mt: str):
     """Section (节) number 1..N from a paragraph lead, or None if not a section head.
@@ -809,6 +817,35 @@ _BANNED_APPELLATIONS = {
     "王", "公", "侯", "君", "太子", "公子", "孝公", "惠王", "武王", "文王",
     "威王", "成侯", "太后", "大王", "上", "帝",
 }
+
+
+_FENG_TAIL_CHARS = set("王公侯君")
+# Office-word suffixes: when a name-swallowing prefix ENDS in one of these, it is an
+# 官名 (书事·王永 / 丞相·王永 / 都头·王晏) and the trailing 姓名 is the real person — NOT a
+# 封号. 封号 号 end in 地名/号 chars (忠/魏/广阳→阳/湘东→东), which are excluded here. 中 is
+# deliberately omitted (汉中王/中山王 are 封号) at the cost of the rarer 侍中王X office form.
+_OFFICE_SUFFIX_CHARS = set("相头事书使史守督尉监令卿傅师保丞徒空牧尹仆")
+
+
+def _real_name_nesting(s, e, a, b, container, canon):
+    """True if canonical [s,e] sits inside a longer tagged name [a,b] (surface
+    `container`) as part of a REAL name — a 封号 (忠王玙), a 复姓 (哥舒曜), or a
+    truncation / 复姓-interior (王元⊂王元逵, 马道⊂司马道赐). False for an OFFICE prefix
+    (书事王永, 都头王晏) where the inner 姓名 is genuinely the person."""
+    if e < b:
+        return True                          # canonical is a prefix / interior of a longer name
+    prefix = container[:s - a]               # e == b: canonical is the suffix
+    if not prefix:
+        return False
+    if prefix[-1] in _OFFICE_SUFFIX_CHARS:   # 书事·王永 / 丞相·王永 / 都头·王晏 → 官名, keep person
+        return False
+    if canon[0] in _FENG_TAIL_CHARS:         # 王玙 inside 忠王玙 — canonical head IS the 封号 rank
+        return True
+    if prefix[-1] in _FENG_TAIL_CHARS:       # …王 / …公 / …侯 / …君 → 封号
+        return True
+    if (prefix[-1] + canon[0]) in _FUXING_HEADS:  # 哥+舒 / 叔+孙 → 复姓 head
+        return True
+    return False
 
 
 def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span, full_anchor=None):
@@ -876,6 +913,35 @@ def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span, full_a
 
     out = []
     for sec in sections:
+        # A pid may own a given in this 节 only if its canonical occurs at least once
+        # NOT nested inside a longer tagged name of a DIFFERENT person. This kills false
+        # antecedents that arise from pure substrings (chancellor 王玙 appearing only
+        # inside prince 忠王玙) while keeping people whose name is genuinely present even
+        # where a verb-glued mis-tag also exists (阎式 stands alone at some 段 even though
+        # 阎式诣 is tagged elsewhere). Order-independent: scans the whole 节 first.
+        eligible = set()
+        for p in sec:
+            mt = p.get("main", "")
+            if not mt:
+                continue
+            anch = full_anchor.get(p["id"], ())
+            for pid, (canon, g, cls) in pid2.items():
+                if pid in eligible:
+                    continue
+                for s in find_all(mt, canon):
+                    e = s + len(canon)
+                    conts = [(a, b, surf) for (a, b, apid, surf) in anch
+                             if a <= s and e <= b and (b - a) > (e - s) and apid != pid]
+                    # A nesting disqualifies this occurrence only when the longer name is
+                    # a REAL name that swallows the canonical: (a) canonical is a prefix /
+                    # interior (truncation or 复姓 interior, 王元⊂王元逵, 马道⊂司马道赐), or
+                    # (b) canonical is the suffix under a 封号 (忠王玙, 魏王珪) or 复姓 head
+                    # (哥舒曜). An OFFICE prefix (书事王永, 都头王晏) is NOT a real longer
+                    # name — the inner 姓名 IS the person, so it still counts as eligible.
+                    if not any(_real_name_nesting(s, e, a, b, surf, canon)
+                               for (a, b, surf) in conts):
+                        eligible.add(pid)
+                        break
         sec_full = {}                           # given -> most-recent full-name pid in 节
         sec_owners = collections.defaultdict(set)
         sec_full_span = {}                      # given -> (fp, fce, fs, fe, pid) antecedent occurrence
@@ -888,6 +954,8 @@ def resolve_anaphora_pos(paras, present_pids, by_id, giv_map, exist_span, full_a
             eff_ce = year_of.get(pid_para)
             events, fullspans = [], collections.defaultdict(list)
             for pid, (canon, g, cls) in pid2.items():
+                if pid not in eligible:
+                    continue
                 for s in find_all(mt, canon):
                     events.append((s, 0, pid, g, s + len(canon)))
                     fullspans[pid].append((s, s + len(canon)))
