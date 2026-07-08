@@ -591,7 +591,13 @@ SURNAMES_EXTRA = set(
     #   康 — 康承训/康义诚/康待宾/康延孝/康福/康楚元/康日知/康绚/康宁/康儒 (粟特·后唐 康姓)
     #   浑 — 浑瑊(唐名将)/浑镐  ·  来 — 来歙/来济  ·  鱼 — 鱼朝恩/鱼遵/鱼承晔/鱼崇远
     #   游 — 游明根/游肇/游雅/游邃/游楷 (河间游氏)
-    "康浑来鱼游")
+    "康浑来鱼游"
+    # 元 — 北魏国姓 (元宏/元恪/元胄/元晖…) plus 隋唐 元载/元稹/元结. Admitted so a
+    # full 元X name is resolvable for the 节-local same-given owner tally (else 元胄 is
+    # invisible → the collision guard undercounts owners of 胄 and mis-binds). Kept OUT
+    # of CLEAN_SURNAMES (added to AMBIGUOUS_SURNAMES below) because bare 元 collides with
+    # 元年/元会/元日/元子 — its binding still passes the POS gate.
+    "元")
 SURNAMES |= SURNAMES_EXTRA
 
 # Compound (2-char) surnames → a 3-char auto name must begin with one of these.
@@ -664,7 +670,7 @@ TITLE_GLUE_ALIASES = {
 # starting with one of these is too easily a glued phrase (于今, 何谓, 方略,
 # 丁壮…), so such a candidate is accepted ONLY when jieba's name lexicon already
 # knows the whole token (the `d` flag). Unambiguous surnames take the cheap path.
-AMBIGUOUS_SURNAMES = set("于何方白向都任武史召国金田文成安平广万丁乐华牛高严时后那东")
+AMBIGUOUS_SURNAMES = set("于何方白向都任武史召国金田文成安平广万丁乐华牛高严时后那东元")
 CLEAN_SURNAMES = SURNAMES - AMBIGUOUS_SURNAMES
 
 _TIANGAN = set("甲乙丙丁戊己庚辛壬癸")
