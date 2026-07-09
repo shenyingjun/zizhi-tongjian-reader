@@ -54,6 +54,33 @@ export interface Juan {
 
 const BASE = import.meta.env.BASE_URL || './';
 
+// ── Person-data variant (old vs new underline/card pipeline) ──────────────
+// 'v1' = current production pipeline (text/persons/), 'v2' = the two-stage
+// local-first pipeline (text/persons-v2/). Driven by a settings toggle; the
+// active variant is module-global so every loader (mentions, people,
+// appearances) and every caller (Reader underlines, LookupPanel) stays in sync.
+export type PersonVariant = 'v1' | 'v2';
+let _personVariant: PersonVariant = 'v1';
+
+function personsDir(): string {
+  return _personVariant === 'v2' ? 'persons-v2' : 'persons';
+}
+
+// Switch the active person-data variant. Clears every person-scoped cache so
+// the next load re-fetches from the new directory. No-op if unchanged.
+export function setPersonVariant(v: PersonVariant): void {
+  if (v === _personVariant) return;
+  _personVariant = v;
+  _peopleCache = null;
+  _appearancesCache = null;
+  _mentionsCache.clear();
+}
+
+export function getPersonVariant(): PersonVariant {
+  return _personVariant;
+}
+
+
 export async function loadManifest(): Promise<Manifest> {
   const r = await fetch(`${BASE}text/manifest.json`);
   if (!r.ok) throw new Error(`manifest ${r.status}`);
@@ -238,7 +265,7 @@ let _appearancesCache: Promise<Map<string, AppearanceRow[]>> | null = null;
 
 export function loadAppearances(): Promise<Map<string, AppearanceRow[]>> {
   if (!_appearancesCache) {
-    _appearancesCache = fetch(`${BASE}text/persons/appearances.json`)
+    _appearancesCache = fetch(`${BASE}text/${personsDir()}/appearances.json`)
       .then(r => {
         if (!r.ok) throw new Error(`appearances ${r.status}`);
         return r.json() as Promise<AppearancesFile>;
@@ -258,7 +285,7 @@ let _peopleCache: Promise<Map<string, Person>> | null = null;
 
 export function loadPeople(): Promise<Map<string, Person>> {
   if (!_peopleCache) {
-    _peopleCache = fetch(`${BASE}text/persons/people.json`)
+    _peopleCache = fetch(`${BASE}text/${personsDir()}/people.json`)
       .then(r => {
         if (!r.ok) throw new Error(`people ${r.status}`);
         return r.json() as Promise<PeopleFile>;
@@ -281,7 +308,7 @@ export function loadPersonMentions(no: number): Promise<JuanPersonMentions | nul
   let cached = _mentionsCache.get(no);
   if (!cached) {
     const padded = String(no).padStart(3, '0');
-    cached = fetch(`${BASE}text/persons/mentions/juan_${padded}.json`)
+    cached = fetch(`${BASE}text/${personsDir()}/mentions/juan_${padded}.json`)
       .then(r => {
         if (r.status === 404) return null;
         if (!r.ok) throw new Error(`mentions ${no} ${r.status}`);

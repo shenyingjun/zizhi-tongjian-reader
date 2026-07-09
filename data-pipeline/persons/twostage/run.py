@@ -16,7 +16,6 @@ Usage:
 from __future__ import annotations
 import json, glob, os, sys, re, io, collections
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 HERE = os.path.dirname(__file__)
 sys.path.insert(0, os.path.join(HERE, ".."))
 import seed as S           # noqa: E402
@@ -153,4 +152,5 @@ def compare(juans, mine_by_juan, cur_all, gtot, n_new):
 
 
 if __name__ == "__main__":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
     main(sys.argv[1:])

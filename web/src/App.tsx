@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import type { Manifest, Juan, GuideSummary, Person, PersonMention, GuidePersonRef, AppearanceRow } from './corpus';
-import { loadManifest, loadJuan, loadJuanGuide, loadPeople, loadPersonMentions, loadAppearances } from './corpus';
+import type { Manifest, Juan, GuideSummary, Person, PersonMention, GuidePersonRef, AppearanceRow, PersonVariant } from './corpus';
+import { loadManifest, loadJuan, loadJuanGuide, loadPeople, loadPersonMentions, loadAppearances, setPersonVariant } from './corpus';
 import Sidebar from './Sidebar';
 import Reader from './Reader';
 import YearToc from './YearToc';
@@ -120,6 +120,21 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('zztj.guideMode', guideMode);
   }, [guideMode]);
+  // Person-data pipeline variant: 'v1' = current production underlines/cards,
+  // 'v2' = the two-stage local-first pipeline (experimental). Applied to the
+  // corpus module synchronously at init so the very first people/mentions fetch
+  // already targets the right directory.
+  const [personVariant, setPersonVariantState] = useState<PersonVariant>(() => {
+    const v: PersonVariant = localStorage.getItem('zztj.personVariant') === 'v2' ? 'v2' : 'v1';
+    setPersonVariant(v);
+    return v;
+  });
+  const changePersonVariant = (v: PersonVariant) => {
+    if (v === personVariant) return;
+    setPersonVariant(v);                 // clears person caches synchronously
+    localStorage.setItem('zztj.personVariant', v);
+    setPersonVariantState(v);            // re-renders → people/mentions effects refetch
+  };
   // anchor_pid → reviewed summary for the currently loaded 卷. Empty when the
   // 卷 ships no guide file (graceful absence).
   const [guideByAnchorPid, setGuideByAnchorPid] =
@@ -333,7 +348,7 @@ export default function App() {
   // (loadPeople swallows errors) → no identity layer, literal search only.
   useEffect(() => {
     loadPeople().then(setPeople);
-  }, []);
+  }, [personVariant]);
 
   // Load the per-卷 person mention sidecar alongside the 卷 text. Missing files
   // resolve to null → empty mentions → no person affordances for that 卷.
@@ -353,7 +368,7 @@ export default function App() {
       setMentions(file.mentions);
     });
     return () => { cancelled = true; };
-  }, [juanNo]);
+  }, [juanNo, personVariant]);
 
   // Track which paragraph is most prominent in viewport. Also persist scroll
   // position per juan and mark a juan as "read" once the reader has scrolled
@@ -1112,6 +1127,14 @@ export default function App() {
     }
   }, [activePersonObj, appearances.size]);
 
+  // On variant switch, drop the loaded appearance index so the lazy effect above
+  // refetches from the new directory (the corpus cache was already cleared).
+  const firstVariantRun = useRef(true);
+  useEffect(() => {
+    if (firstVariantRun.current) { firstVariantRun.current = false; return; }
+    setAppearances(new Map());
+  }, [personVariant]);
+
   // Compact "current position" label for the dock's persistent year chip:
   // the latest year-anchor at or before the active paragraph.
   const currentYearLabel = useMemo(() => {
@@ -1400,6 +1423,23 @@ export default function App() {
                   disabled={fontScale >= 1.8 - 1e-6}
                   aria-label="放大字号"
                 >A+</button>
+              </div>
+            </div>
+            <div className="settings-row" role="group" aria-label="人名标注">
+              <span className="settings-label">人名标注</span>
+              <div className="seg">
+                <button
+                  type="button"
+                  className={'seg-btn' + (personVariant === 'v1' ? ' is-on' : '')}
+                  aria-pressed={personVariant === 'v1'}
+                  onClick={() => changePersonVariant('v1')}
+                >旧</button>
+                <button
+                  type="button"
+                  className={'seg-btn' + (personVariant === 'v2' ? ' is-on' : '')}
+                  aria-pressed={personVariant === 'v2'}
+                  onClick={() => changePersonVariant('v2')}
+                >新</button>
               </div>
             </div>
           </div>
