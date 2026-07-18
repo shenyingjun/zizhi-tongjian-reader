@@ -101,6 +101,7 @@ OFFICE_TITLES = tuple(sorted((
     "大将军", "骠骑将军", "车骑将军", "卫将军", "衞将军",
     "前将军", "后将军", "左将军", "右将军", "将军",
     "大司马", "司徒", "司空", "丞相", "相国", "太尉", "太傅", "太师",
+    "散骑常侍", "常侍",
 ), key=len, reverse=True))
 OFFICE_SHI_TITLES = ("侍御史", "御史", "刺史", "长史", "内史", "令史", "黄门史")
 PERSON_APPOS_TAIL = APPOS_TAIL | set("徒督史人贼书")
@@ -2672,7 +2673,102 @@ COMBINED_EVIDENCE_POLICIES = (
             "exact_local_recurrence",
             "hard_name_boundary",
         }),
+        prerequisite_signals=frozenset({
+            "model_ner_witness",
+            "long_surface",
+        }),
+    ),
+    E.AdmissionPolicy(
+        "soft-title-recurrence-syntax",
+        frozenset({
+            "personal_title_anchor",
+            "exact_document_recurrence",
+            "person_occurrence_syntax",
+            "document_person_morphology_majority",
+        }),
         prerequisite_signals=frozenset({"model_ner_witness"}),
+        allowed_soft_conflicts=frozenset({
+            "function_morphology",
+            "geo_nat_morphology",
+            "missing_person_morphology",
+        }),
+    ),
+    E.AdmissionPolicy(
+        "soft-genealogy-recurrence-syntax",
+        frozenset({
+            "genealogy_name_anchor",
+            "exact_document_recurrence",
+            "person_occurrence_syntax",
+            "document_person_morphology_anchor",
+        }),
+        prerequisite_signals=frozenset({"model_ner_witness"}),
+        allowed_soft_conflicts=frozenset({
+            "function_morphology",
+            "geo_nat_morphology",
+            "missing_person_morphology",
+        }),
+    ),
+    E.AdmissionPolicy(
+        "soft-surname-recurrence-syntax",
+        frozenset({
+            "document_person_morphology_anchor",
+            "local_surname_morphology",
+            "surname_shape",
+            "exact_document_recurrence",
+            "decisive_person_syntax",
+        }),
+        prerequisite_signals=frozenset({"model_ner_witness"}),
+        allowed_soft_conflicts=frozenset({
+            "geo_nat_morphology",
+            "missing_person_morphology",
+        }),
+    ),
+    E.AdmissionPolicy(
+        "soft-surname-geo-decisive-syntax",
+        frozenset({
+            "document_person_morphology_anchor",
+            "surname_shape",
+            "exact_document_recurrence",
+            "decisive_person_syntax",
+            "geo_nat_morphology",
+        }),
+        prerequisite_signals=frozenset({"model_ner_witness"}),
+        allowed_soft_conflicts=frozenset({
+            "geo_nat_morphology",
+            "function_morphology",
+            "missing_person_morphology",
+        }),
+    ),
+    E.AdmissionPolicy(
+        "soft-surname-geo-recurrence-syntax",
+        frozenset({
+            "document_person_morphology_majority",
+            "surname_shape",
+            "exact_document_recurrence",
+            "person_occurrence_syntax",
+            "geo_nat_morphology",
+        }),
+        prerequisite_signals=frozenset({"model_ner_witness"}),
+        allowed_soft_conflicts=frozenset({
+            "geo_nat_morphology",
+            "function_morphology",
+            "missing_person_morphology",
+        }),
+    ),
+    E.AdmissionPolicy(
+        "soft-translation-recurrence-syntax",
+        frozenset({
+            "translation_exact_identity",
+            "exact_document_recurrence",
+            "person_occurrence_syntax",
+            "document_person_morphology_anchor",
+        }),
+        prerequisite_signals=frozenset({"model_ner_witness"}),
+        allowed_soft_conflicts=frozenset({
+            "function_morphology",
+            "geo_nat_morphology",
+            "missing_person_morphology",
+        }),
     ),
 )
 
@@ -2745,11 +2841,10 @@ def _model_ner_witnesses(ctx):
                 and not set(surface) & (NAMESTART | GLOSS_SEP)
             ):
                 witnesses.append((start, end))
-                break
     return witnesses
 
 
-def _combined_candidate_lattice(ctx):
+def _combined_candidate_lattice(ctx, cards):
     """Candidate union from model surfaces, POS spans, and translation mappings."""
     candidates = {}
 
@@ -2779,66 +2874,226 @@ def _combined_candidate_lattice(ctx):
     ):
         add(mapping["start"], mapping["end"])
 
+    admitted_surfaces = {
+        card["surface"]
+        for card in cards
+        if card.get("surface")
+    }
     for candidate in candidates.values():
         for witness_start, witness_end in witnesses:
-            match = E.fuzzy_relation(
-                candidate.start,
-                candidate.end,
-                witness_start,
-                witness_end,
-            )
-            if match is not None:
+            if (
+                candidate.start == witness_start
+                and candidate.end == witness_end
+            ):
                 candidate.add(
                     "model_ner_witness",
                     "model",
-                    match=match,
+                    match="exact",
                     witness_start=witness_start,
                     witness_end=witness_end,
                 )
-        if _complete_model_name_tokens(ctx, candidate.start, candidate.end):
+        tokens = ctx.tokens_for(candidate.start, candidate.end)
+        personal_tokens = [
+            token
+            for token in tokens
+            if token.pos == "PROPN"
+            and any(
+                name_type in token.tag
+                for name_type in (
+                    "NameType=Sur",
+                    "NameType=Giv",
+                    "NameType=Prs",
+                )
+            )
+        ]
+        geo_nat = any(
+            "NameType=Geo" in token.tag or "NameType=Nat" in token.tag
+            for token in tokens
+        )
+        complete_person = (
+            bool(tokens)
+            and len(personal_tokens) == len(tokens)
+            and not geo_nat
+        )
+        if complete_person:
             candidate.add("model_name_morphology", "model")
+        else:
+            candidate.missing("complete_person_morphology")
+        if personal_tokens:
+            candidate.add("partial_person_morphology", "model")
+        else:
+            candidate.missing("partial_person_morphology")
+            candidate.conflict("missing_person_morphology")
+        if geo_nat:
+            candidate.add("geo_nat_morphology", "model")
+            candidate.conflict("geo_nat_morphology")
+        if _all_high_confidence_function_pos(
+            ctx, candidate.start, candidate.end
+        ):
+            candidate.conflict("function_morphology")
         if ctx.t.count(candidate.surface) > 1:
             candidate.add("exact_local_recurrence", "local_recurrence")
+        else:
+            candidate.missing("exact_local_recurrence")
+        if ctx.document_text.count(candidate.surface) > 1:
+            candidate.add("exact_document_recurrence", "document_recurrence")
+        else:
+            candidate.missing("exact_document_recurrence")
         if (
             ctx.t[candidate.start - 1:candidate.start] in NAMESTART
             or ctx.t[candidate.end:candidate.end + 1] in NAMESTART
         ):
             candidate.add("hard_name_boundary", "syntax")
+        occurrence_syntax = (
+            _strict_person_frame(ctx, candidate.start, candidate.end)
+            or ctx.t[candidate.start - 1:candidate.start] in NAMESTART
+            or ctx.t[candidate.end:candidate.end + 1] in NAMESTART
+        )
+        if occurrence_syntax:
+            candidate.add("person_occurrence_syntax", "syntax")
+        else:
+            candidate.missing("person_occurrence_syntax")
         if _strict_person_frame(ctx, candidate.start, candidate.end):
             candidate.add("strict_person_frame", "syntax")
+        decisive_syntax = (
+            ctx.t[candidate.start - 1:candidate.start] in PERSON_LEFT_VERBS
+            or ctx.t[candidate.end:candidate.end + 1] in PERSON_SUBJECT_PRED
+            or (
+                ctx.t[candidate.start - 1:candidate.start] in NAMESTART
+                and _next_token_is_high_conf_verb(ctx, candidate.end)
+            )
+        )
+        if decisive_syntax:
+            candidate.add("decisive_person_syntax", "syntax")
         if _is_xing_headed(candidate.surface):
             candidate.add("surname_shape", "name_shape")
+        if (
+            tokens
+            and tokens[0].start == candidate.start
+            and tokens[0].pos == "PROPN"
+            and "NameType=Sur" in tokens[0].tag
+        ):
+            candidate.add("local_surname_morphology", "model")
         if any(
             candidate.surface.endswith(suffix)
             and len(candidate.surface) > len(suffix)
             for suffix in MODEL_PERSON_TITLE_SUFFIXES
         ):
             candidate.add("person_title_shape", "title_semantics")
+        if candidate.surface in admitted_surfaces:
+            candidate.add("admitted_local_anchor", "local_anchor")
+        if candidate.surface in ctx.document_person_surfaces:
+            candidate.add(
+                "document_person_morphology_anchor",
+                "document_morphology",
+            )
+        if candidate.surface in ctx.document_partial_person_surfaces:
+            candidate.add(
+                "document_partial_person_morphology_anchor",
+                "document_morphology",
+            )
+        if (
+            candidate.surface
+            in ctx.document_person_morphology_majority_surfaces
+        ):
+            candidate.add(
+                "document_person_morphology_majority",
+                "document_morphology",
+            )
+        if candidate.surface in ctx.document_person_title_surfaces:
+            candidate.add("personal_title_anchor", "title_semantics")
+        genealogy_anchor = any(
+            (prefix + candidate.surface) in ctx.document_text
+            for prefix in GENEALOGY_PREFIXES
+            if len(prefix) > 1
+        )
+        if genealogy_anchor:
+            candidate.add("genealogy_name_anchor", "genealogy_semantics")
+        translated = ctx.translation_fullnames.get(candidate.start)
+        if translated is not None and translated["end"] == candidate.end:
+            candidate.add("translation_exact_identity", "translation")
 
         following = ctx.token_at(candidate.end)
-        if len(candidate.surface) < 3:
-            candidate.veto("short_surface")
+        if len(candidate.surface) >= 3:
+            candidate.add("long_surface", "span_shape")
         if any(ctx.consumed[candidate.start:candidate.end]):
             candidate.veto("overlap")
         if _shi_guard(ctx.t, candidate.start):
             candidate.veto("clan_suffix")
         if ctx.t[candidate.end:candidate.end + 1] == "氏":
             candidate.veto("clan_continuation")
-        if _all_high_confidence_function_pos(
-            ctx, candidate.start, candidate.end
-        ):
-            candidate.veto("function_morphology")
-        if _local_nat_or_geo(ctx, candidate.start, candidate.end):
-            candidate.veto("local_geo_or_polity")
+        if candidate.surface.endswith("氏"):
+            candidate.veto("clan_suffix")
         if (
             candidate.surface in APPOINT_TITLES
             or candidate.surface in OFFICE_TITLES
+            or candidate.surface in TITLE_NONPERSON_COMPONENTS
+            or any(
+                title in candidate.surface
+                for title in APPOINT_TITLES + OFFICE_TITLES + ("总管", "卿")
+            )
             or candidate.surface in ctx.corpus.admin_places
             or candidate.surface in ctx.corpus.geo_names
         ):
             candidate.veto("nonperson_lexical_class")
+        if (
+            not personal_tokens
+            and (
+                ctx.t.startswith("五品", candidate.end)
+                or ctx.t.startswith("总", candidate.end)
+            )
+        ):
+            candidate.veto("collective_role_continuation")
+        if ctx.t[candidate.end:candidate.end + 1] in set(
+            "一二三四五六七八九十百千万两"
+        ):
+            candidate.veto("numeric_continuation")
+        if any(
+            ctx.t.startswith(title, candidate.end)
+            for title in HUMAN_APPOINT_TITLES + ("节度使", "都督")
+        ):
+            candidate.veto("office_continuation")
+        if any(
+            ctx.t[extension_start:candidate.end] in ctx.corpus.ner
+            for extension_start in range(
+                max(0, candidate.start - 2),
+                candidate.start,
+            )
+        ):
+            candidate.veto("longer_name_left_continuation")
+        if any(
+            ctx.t[candidate.start:extension_end] in ctx.corpus.ner
+            for extension_end in range(
+                candidate.end + 1,
+                min(len(ctx.t), candidate.end + 2) + 1,
+            )
+        ):
+            candidate.veto("longer_name_right_continuation")
+        coordinated = ctx.token_at(candidate.end + 1)
+        if (
+            ctx.t[candidate.end:candidate.end + 1] == "、"
+            and coordinated is not None
+            and coordinated.start == candidate.end + 1
+            and (
+                "NameType=Geo" in coordinated.tag
+                or "NameType=Nat" in coordinated.tag
+                or (
+                    tokens
+                    and all(token.pos == "NOUN" for token in tokens)
+                    and coordinated.pos == "NOUN"
+                )
+            )
+        ):
+            candidate.veto("coordinated_polity")
         if _surface_has_local_polity_frame(ctx, candidate.surface):
             candidate.veto("local_polity_usage")
+        if any(
+            candidate.surface + suffix in ctx.document_text
+            for suffix in (
+                "国", "人", "部众", "之众", "小国", "王", "主", "寇",
+            )
+        ):
+            candidate.veto("document_polity_usage")
         if ctx.t[candidate.end:candidate.end + 1] in {"众", "王"}:
             candidate.veto("collective_or_polity_continuation")
         if (
@@ -2853,7 +3108,6 @@ def _combined_candidate_lattice(ctx):
 
 def detect_combined_evidence(ctx, cards):
     """Admit candidates supported by independent evidence-family policies."""
-    del cards
     out = []
     marker = ctx.t.find("以")
     while marker >= 0:
@@ -2875,7 +3129,7 @@ def detect_combined_evidence(ctx, cards):
                 ))
         marker = ctx.t.find("以", marker + 1)
     for candidate in sorted(
-        _combined_candidate_lattice(ctx),
+        _combined_candidate_lattice(ctx, cards),
         key=lambda row: (row.start, -(row.end - row.start)),
     ):
         if any(ctx.consumed[candidate.start:candidate.end]):
@@ -4545,11 +4799,18 @@ class Ctx:
         "t", "gset", "gspans", "tokens", "_token_by_offset", "corpus", "consumed",
         "juan", "sec", "para_id", "ce", "_year_ranges", "translation_anchors",
         "translation_fullnames", "translation_mentions",
+        "document_text", "document_person_surfaces",
+        "document_partial_person_surfaces",
+        "document_person_morphology_majority_surfaces",
+        "document_person_title_surfaces",
     )
 
     def __init__(
         self, t, gset, corpus, juan, sec, para_id, ce, gspans=(), tokens=(),
-        year_ranges=(),
+        year_ranges=(), document_text=None, document_person_surfaces=(),
+        document_partial_person_surfaces=(),
+        document_person_morphology_majority_surfaces=(),
+        document_person_title_surfaces=(),
     ):
         self.t, self.gset, self.corpus = t, gset, corpus
         self.gspans = {}
@@ -4568,6 +4829,17 @@ class Ctx:
         self.translation_anchors = ()
         self.translation_fullnames = {}
         self.translation_mentions = {}
+        self.document_text = document_text if document_text is not None else t
+        self.document_person_surfaces = frozenset(document_person_surfaces)
+        self.document_partial_person_surfaces = frozenset(
+            document_partial_person_surfaces
+        )
+        self.document_person_morphology_majority_surfaces = frozenset(
+            document_person_morphology_majority_surfaces
+        )
+        self.document_person_title_surfaces = frozenset(
+            document_person_title_surfaces
+        )
 
     def token_at(self, offset):
         return self._token_by_offset.get(offset)
@@ -4691,6 +4963,101 @@ def _blocks_of(paras):
     return blocks
 
 
+def _document_person_morphology_surfaces(paras, giv, corpus):
+    """Exact surfaces with person morphology somewhere else in the same juan."""
+    complete_surfaces = set()
+    partial_surfaces = set()
+    complete_counts = collections.Counter()
+    geo_nat_counts = collections.Counter()
+    for para in paras:
+        text = para.get("main", "") or ""
+        evidence = giv.get(para.get("id"), set())
+        tokens = tuple(getattr(evidence, "tokens", ()))
+        by_start = {token.start: token for token in tokens}
+        for start in range(len(text)):
+            cursor = start
+            candidate_tokens = []
+            while cursor < min(len(text), start + 8):
+                token = by_start.get(cursor)
+                if token is None:
+                    break
+                candidate_tokens.append(token)
+                cursor = token.end
+                surface = text[start:cursor]
+                if (
+                    len(surface) >= 2
+                    and surface in corpus.ner
+                ):
+                    personal = [
+                        item
+                        for item in candidate_tokens
+                        if item.pos == "PROPN"
+                        and any(
+                            name_type in item.tag
+                            for name_type in (
+                                "NameType=Sur",
+                                "NameType=Giv",
+                                "NameType=Prs",
+                            )
+                        )
+                    ]
+                    if personal:
+                        partial_surfaces.add(surface)
+                    if all(
+                        item.pos == "PROPN"
+                        and any(
+                            name_type in item.tag
+                            for name_type in (
+                                "NameType=Sur",
+                                "NameType=Giv",
+                                "NameType=Prs",
+                            )
+                        )
+                        and "NameType=Geo" not in item.tag
+                        and "NameType=Nat" not in item.tag
+                        for item in candidate_tokens
+                    ):
+                        complete_surfaces.add(surface)
+                        complete_counts[surface] += 1
+                    if any(
+                        "NameType=Geo" in item.tag
+                        or "NameType=Nat" in item.tag
+                        for item in candidate_tokens
+                    ):
+                        geo_nat_counts[surface] += 1
+    majority_surfaces = {
+        surface
+        for surface, count in complete_counts.items()
+        if count > geo_nat_counts[surface]
+    }
+    return (
+        frozenset(complete_surfaces),
+        frozenset(partial_surfaces),
+        frozenset(majority_surfaces),
+    )
+
+
+def _document_person_title_surfaces(paras, giv, corpus):
+    """Exact POS-given spans immediately introduced with a personal title."""
+    surfaces = set()
+    for para in paras:
+        text = para.get("main", "") or ""
+        evidence = giv.get(para.get("id"), set())
+        spans = tuple(getattr(evidence, "spans", ()))
+        span_starts = {start for start, _ in spans}
+        for start, end in spans:
+            surface = text[start:end]
+            if len(surface) < 2 or surface not in corpus.ner:
+                continue
+            for title in ("可汗", "单于", "公主"):
+                if not text.startswith(title, end):
+                    continue
+                if end + len(title) not in span_starts:
+                    surfaces.add(surface)
+                break
+    return frozenset(surfaces)
+
+
 def detect_juan(
     juan_no,
     paras,
@@ -4703,6 +5070,20 @@ def detect_juan(
     if enabled is None:
         enabled = {r[0] for r in RULES}
     out = []
+    document_text = SEC_SEP.join(
+        para.get("main", "") or ""
+        for para in paras
+    )
+    (
+        document_person_surfaces,
+        document_partial_person_surfaces,
+        document_person_morphology_majority_surfaces,
+    ) = _document_person_morphology_surfaces(
+        paras, giv, corpus
+    )
+    document_person_title_surfaces = _document_person_title_surfaces(
+        paras, giv, corpus
+    )
     for bsec, bparas in _blocks_of(paras):
         # Assemble the 节 as ONE text: every rule (anchors, gloss prepass, anaphora
         # postpass) runs over the whole block. SEC_SEP is a hard boundary so no name
@@ -4803,6 +5184,13 @@ def detect_juan(
             gspans=blk_gspans,
             tokens=blk_tokens,
             year_ranges=blk_year_ranges,
+            document_text=document_text,
+            document_person_surfaces=document_person_surfaces,
+            document_partial_person_surfaces=document_partial_person_surfaces,
+            document_person_morphology_majority_surfaces=(
+                document_person_morphology_majority_surfaces
+            ),
+            document_person_title_surfaces=document_person_title_surfaces,
         )
         ctx.translation_anchors = tuple(blk_translation_anchors)
         by_start = collections.defaultdict(list)

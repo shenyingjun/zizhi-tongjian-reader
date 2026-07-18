@@ -140,7 +140,7 @@ paragraph 用硬边界 `"\n"` 拼接后运行规则。输出时恢复到原 para
 | `explicit_title_frame` | jie | `子 + X君 + 立`，或高置信政权 + POS-Prs 谥号 + `公` | `子嗣君立`、`齐简公` |
 | `title_appellation` | jie | 仅用称号形态、当前 POS/句法和同节前文：语法化君主称号；局部引入的庙号简称；明确尾衔前的称号组件；受控政权 + 谥号 + 爵位 | `始皇`、`周世宗…世宗`、`太穆神皇后` 中的 `太穆`、`梁孝王` |
 | `coordinated_person_object` | jie | 受控对象引介词 + 两个独立 POS 证明的人物，中间为 `、` | `魏用犀首、张仪` |
-| `combined_evidence` | jie | candidate 上的独立证据族按显式 policy 联合；当前 `inherent-title-appointment` 要求人物固有称号形态、`以X为Y` 句法及 `Y` 人类角色语义三族同时成立，强 veto 优先 | `以太平公主为女官` 中的 `太平公主` |
+| `combined_evidence` | jie | candidate 上的独立证据族按显式 policy 联合；signal 可为 matched、missing 或 soft conflict，policy 明确授权可补偿的 conflict，hard veto 永远优先 | `以太平公主为女官`、Geo-misclassified `安禄山` |
 
 `corpus_xing2/corpus_given2` 是为 benchmark provenance 保留的旧名称，不再表示 corpus
 人物词典。它们使用完整 token span 作冲突否决：候选若完全由高置信
@@ -151,12 +151,26 @@ paragraph 用硬边界 `"\n"` 拼接后运行规则。输出时恢复到原 para
 句法与人类角色外，还必须由完整人物 POS 或 paragraph-local translation exact identity
 提供第四个独立 family。不能因为两个相关模型字段同时成立就降低该门槛。
 
-当前 prototype 还建立 model surface、POS/BIO span、translation mapping 的 candidate
-lattice，并允许 candidate 与 model witness 在每端一字内作 `exact/contains/shift`
-匹配。`long-repeat-boundary-model` 只在 candidate 自身具有完整 model-name morphology、
-同节 exact recurrence 和硬边界时 admission。全量实验表明其主要收益仍来自 exact span
-上的弱证据联合，span fuzziness 本身没有显著增益；下一轮应把规则内部 gate 拆成
-matched/missing/soft-conflict/hard-veto witness，而不是继续放宽边界。
+candidate lattice 汇集 model surface、POS/BIO span 和可选 translation mapping，但正式
+graded policy 只接受 exact model witness geometry。证据状态分为：
+
+- **matched signal**：policy 可计入的正向证据；
+- **missing signal**：没有观察到，不自动否决，可由其他独立 family 补偿；
+- **soft conflict**：例如当前 occurrence 被标成 Geo/Nat；只有显式列出该 conflict 的
+  policy 才能 admission；
+- **hard veto**：clan/office continuation、政权用法、数量 continuation、较长姓名延续、
+  标点/重叠等；任何票数都不能覆盖。
+
+同一模型派生的 POS、BIO、NER 不算三个独立 family。同卷 exact recurrence 可以作为
+`document_recurrence`，但 morphology anchor 必须来自同一 exact surface；Geo-conflict
+路径通常还要求完整 person morphology 在同卷占多数，或当前 occurrence 有 decisive
+person syntax。Title witness 必须是 POS-Giv span 紧邻 `可汗/单于/公主`，若 title 后又
+紧邻另一个姓名 span，则前段按政权修饰语处理。Genealogy witness 只接受多字亲属引介，
+不用单字 `兄/弟` 的宽松 substring。
+
+`long-repeat-boundary-model` 保留为 exact-span 对照：完整 model-name morphology、同节
+exact recurrence、长度至少三字及硬边界同时成立。全量实验确认 span containment/shift
+没有稳定增益，因此不进入正式 graded admission。
 
 `local_exact_surface/local_exact_title` 只传播完全相同的完整文本跨度，不把两个不同
 surface 绑定为同一身份。它们因此可以使用同节后文的同形可信 card；`曹操…操曰` 这类

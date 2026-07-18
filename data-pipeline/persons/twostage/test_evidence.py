@@ -100,6 +100,112 @@ class EvidencePolicyTest(unittest.TestCase):
         )
         self.assertIsNone(E.fuzzy_relation(4, 8, 8, 10))
 
+    def test_policy_must_explicitly_allow_soft_conflict(self):
+        candidate = E.Candidate(0, 3, "安禄山")
+        candidate.add("partial_person_morphology", "model")
+        candidate.add("surname_shape", "name_shape")
+        candidate.add("exact_local_recurrence", "local_recurrence")
+        candidate.add("person_occurrence_syntax", "syntax")
+        candidate.conflict("geo_nat_morphology")
+        strict = E.AdmissionPolicy(
+            "strict",
+            frozenset({
+                "partial_person_morphology",
+                "surname_shape",
+                "exact_local_recurrence",
+                "person_occurrence_syntax",
+            }),
+        )
+        relaxed = E.AdmissionPolicy(
+            "relaxed",
+            strict.required_signals,
+            allowed_soft_conflicts=frozenset({"geo_nat_morphology"}),
+        )
+
+        self.assertIsNone(E.decide(candidate, (strict,)))
+        self.assertEqual(relaxed, E.decide(candidate, (relaxed,)))
+
+    def test_unlisted_soft_conflict_still_rejects(self):
+        candidate = E.Candidate(0, 2, "异人")
+        candidate.add("genealogy_name_anchor", "genealogy_semantics")
+        candidate.add("exact_local_recurrence", "local_recurrence")
+        candidate.add("person_occurrence_syntax", "syntax")
+        candidate.conflict("function_morphology")
+        candidate.conflict("office_continuation")
+        policy = E.AdmissionPolicy(
+            "genealogy",
+            frozenset({
+                "genealogy_name_anchor",
+                "exact_local_recurrence",
+                "person_occurrence_syntax",
+            }),
+            allowed_soft_conflicts=frozenset({"function_morphology"}),
+        )
+
+        self.assertIsNone(E.decide(candidate, (policy,)))
+
+    def test_geo_conflict_requires_an_explicit_signal(self):
+        policy = next(
+            policy
+            for policy in R.COMBINED_EVIDENCE_POLICIES
+            if policy.name == "soft-surname-geo-recurrence-syntax"
+        )
+        candidate = E.Candidate(0, 3, "安禄山")
+        candidate.add("model_ner_witness", "model")
+        candidate.add(
+            "document_person_morphology_majority",
+            "document_morphology",
+        )
+        candidate.add("surname_shape", "name_shape")
+        candidate.add("exact_document_recurrence", "document_recurrence")
+        candidate.add("person_occurrence_syntax", "syntax")
+        candidate.conflict("geo_nat_morphology")
+
+        self.assertIsNone(E.decide(candidate, (policy,)))
+        candidate.add("geo_nat_morphology", "model")
+        self.assertEqual(policy, E.decide(candidate, (policy,)))
+
+    def test_translation_requires_document_morphology(self):
+        policy = next(
+            policy
+            for policy in R.COMBINED_EVIDENCE_POLICIES
+            if policy.name == "soft-translation-recurrence-syntax"
+        )
+        candidate = E.Candidate(0, 2, "常据")
+        candidate.add("model_ner_witness", "model")
+        candidate.add("translation_exact_identity", "translation")
+        candidate.add("exact_document_recurrence", "document_recurrence")
+        candidate.add("person_occurrence_syntax", "syntax")
+        candidate.conflict("missing_person_morphology")
+
+        self.assertIsNone(E.decide(candidate, (policy,)))
+        candidate.add(
+            "document_person_morphology_anchor",
+            "document_morphology",
+        )
+        self.assertEqual(policy, E.decide(candidate, (policy,)))
+
+    def test_geo_conflict_can_use_decisive_syntax_without_majority(self):
+        policy = next(
+            policy
+            for policy in R.COMBINED_EVIDENCE_POLICIES
+            if policy.name == "soft-surname-geo-decisive-syntax"
+        )
+        candidate = E.Candidate(0, 2, "盖吴")
+        candidate.add("model_ner_witness", "model")
+        candidate.add(
+            "document_person_morphology_anchor",
+            "document_morphology",
+        )
+        candidate.add("surname_shape", "name_shape")
+        candidate.add("exact_document_recurrence", "document_recurrence")
+        candidate.add("geo_nat_morphology", "model")
+        candidate.conflict("geo_nat_morphology")
+
+        self.assertIsNone(E.decide(candidate, (policy,)))
+        candidate.add("decisive_person_syntax", "syntax")
+        self.assertEqual(policy, E.decide(candidate, (policy,)))
+
 
 class CombinedEvidenceIntegrationTest(unittest.TestCase):
     @staticmethod

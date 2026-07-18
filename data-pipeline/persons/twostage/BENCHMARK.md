@@ -56,15 +56,15 @@ data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
 
 | 指标 | 默认 baseline | translation-assisted |
 |---|---:|---:|
-| v1 coverage | 123,821 / 128,596 (96.287%) | 124,473 / 128,596 (96.794%) |
-| v1-only gap | 4,775 | 4,123 |
-| assisted gap closure | - | 652 / 4,775 (13.65%) |
-| alias coverage | 85,228 / 88,619 (96.174%) | 85,647 / 88,619 (96.646%) |
-| anaphora coverage | 33,886 / 35,261 (96.101%) | 34,117 / 35,261 (96.756%) |
-| Agent 1 spans | 172,497 | 174,386 |
-| v1 overlap proxy | 72.022% | 71.661% |
+| v1 coverage | 123,953 / 128,596 (96.389%) | 124,575 / 128,596 (96.873%) |
+| v1-only gap | 4,643 | 4,021 |
+| assisted gap closure | - | 622 / 4,643 (13.40%) |
+| alias coverage | 85,350 / 88,619 (96.311%) | 85,746 / 88,619 (96.758%) |
+| anaphora coverage | 33,896 / 35,261 (96.129%) | 34,120 / 35,261 (96.764%) |
+| Agent 1 spans | 172,682 | 174,528 |
+| v1 overlap proxy | 72.021% | 71.661% |
 
-translation-assisted 输出比默认输出净多 1,920 个 span。译文路径仍只产生
+translation-assisted 输出比默认输出净多 1,846 个 span。译文路径仍只产生
 `translation_fullname`、`translation_anaphora`，以及由新完整姓名锚点触发的普通
 `anaphora`；默认路径不读取 translation evidence。
 
@@ -78,7 +78,7 @@ precision 必须与 v1 overlap proxy 分开报告。此前 translation 路径的
 
 运行时间：2026-07-18 UTC；Python 3.11.4；294 卷。结果 JSON 同时记录：
 
-- rule-bundle SHA-256：`88681ccbc4673a25ce92783eafe07912080a5d06c478b507f0eba42bed4cae2f`
+- rule-bundle SHA-256：`a9e6ff6ac3b1be4b5ee1b6ce058c39a35a26bffc538425f4f071b5cc7e7566db`
 - `admin-places.json` SHA-256：`b6849b571ae31041ea362bb1d2a9c689a61da7e081aa5460cc10e162e1bd5370`
 
 后者使时序行政区证据变化不会被误当成“同一规则”的 benchmark。
@@ -86,13 +86,13 @@ precision 必须与 v1 overlap proxy 分开报告。此前 translation 路径的
 | 指标 | 结果 |
 |---|---:|
 | v1 main spans | 128,596 |
-| Agent 1 覆盖 v1 | 123,821 |
-| **v1 coverage** | **96.287%** |
-| v1-only | 4,775 |
-| Agent 1 spans | 172,497 |
-| Agent 1 spans overlapping v1 | 124,235 |
-| Agent 1 spans not overlapping v1 | 48,262 |
-| v1 overlap proxy | 72.022% |
+| Agent 1 覆盖 v1 | 123,953 |
+| **v1 coverage** | **96.389%** |
+| v1-only | 4,643 |
+| Agent 1 spans | 172,682 |
+| Agent 1 spans overlapping v1 | 124,367 |
+| Agent 1 spans not overlapping v1 | 48,315 |
+| v1 overlap proxy | 72.021% |
 
 两个 overlap 数不是一一对应计数：当两个系统的跨度切分不同，一个 span 可能与多个 span
 重叠，所以 `123,139` 与 `123,419` 可以不同。
@@ -101,12 +101,12 @@ precision 必须与 v1 overlap proxy 分开报告。此前 translation 路径的
 
 | v1 kind | 覆盖 | 总数 | coverage | v1-only |
 |---|---:|---:|---:|---:|
-| alias | 85,228 | 88,619 | 96.174% | 3,391 |
-| anaphora | 33,886 | 35,261 | 96.101% | 1,375 |
+| alias | 85,350 | 88,619 | 96.311% | 3,269 |
+| anaphora | 33,896 | 35,261 | 96.129% | 1,365 |
 | feng | 355 | 363 | 97.796% | 8 |
 | gloss | 1,535 | 1,536 | 99.935% | 1 |
 | role | 2,817 | 2,817 | 100.000% | 0 |
-| **ALL** | **123,821** | **128,596** | **96.287%** | **4,775** |
+| **ALL** | **123,953** | **128,596** | **96.389%** | **4,643** |
 
 完整的 Agent 1 `chunk_type` 数量、重叠数和 overlap proxy 保存在
 [`benchmark-latest.json`](benchmark-latest.json)。每次修改规则后，应重新执行同一命令并
@@ -268,6 +268,25 @@ assisted gap 4,131→4,130。
 由完整 `贺拔岳/斛斯椿` 取代。default 新增覆盖 38 个 v1 span，assisted 新增覆盖 7 个。
 本轮主要收益来自同一 exact span 上的弱证据联合，而非 fuzzy boundary；后续设计应转向
 rule witness 软化。该 prototype 保存用于后续对照，不视为最终 cutover。
+
+### Graded soft witness
+
+正式实现把 strict gate 拆为 matched、missing、soft conflict 与 hard veto，并只允许显式
+policy 组合不同 evidence family。Model NER、POS 与 BIO 视为相关来源，不重复计票；同卷
+recurrence、document morphology、人物句法、surname/title/genealogy semantics 和可选
+translation 才能提供独立支持。Geo/Nat conflict 只有在同卷 exact surface 有完整人物
+morphology 多数，或当前 occurrence 有 decisive person syntax 时可被补偿。
+
+全量 delta 审计从宽版的 546 个 default 新增逐步收紧到 206 个新增、20 个 geometry
+替换；已知误类 `高丽/柔然/高句丽/突骑施/乌孙/文武/太仆卿/常侍/室韦` 均为零。
+Graded policies 直接恢复 `安禄山` 11、`异人` 8、`启民` 6、`颉利` 4、`盖吴` 2，
+并保留 `可足浑氏` 的 clan hard veto。相对 span-lattice prototype，default v1 gap
+4,775→4,643（关闭 132），assisted gap 4,123→4,021（关闭 102）。
+
+最终 default 为 172,682 spans，coverage 96.389%；assisted 为 174,528 spans，
+coverage 96.873%。Assisted 的 translation graded policy 另恢复 10 个真人 surface；
+现代文 NER 误给的 `鲜卑/黄钟/果毅/室韦` 被 document morphology、官职和并列政权 veto
+阻断。
 
 ### 称号与庙号 schema
 

@@ -106,6 +106,8 @@ def run(
                     "evidence_families",
                     "evidence_signals",
                     "evidence_witnesses",
+                    "evidence_missing",
+                    "evidence_soft_conflicts",
                 )
                 if key in card
             }

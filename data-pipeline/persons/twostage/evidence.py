@@ -19,6 +19,8 @@ class Candidate:
     end: int
     surface: str
     signals: set[Signal] = field(default_factory=set)
+    missing_signals: set[str] = field(default_factory=set)
+    soft_conflicts: set[str] = field(default_factory=set)
     vetoes: set[str] = field(default_factory=set)
 
     def add(
@@ -40,15 +42,24 @@ class Candidate:
     def veto(self, name: str) -> None:
         self.vetoes.add(name)
 
+    def missing(self, name: str) -> None:
+        self.missing_signals.add(name)
+
+    def conflict(self, name: str) -> None:
+        self.soft_conflicts.add(name)
+
 
 @dataclass(frozen=True)
 class AdmissionPolicy:
     name: str
     required_signals: frozenset[str]
     prerequisite_signals: frozenset[str] = frozenset()
+    allowed_soft_conflicts: frozenset[str] = frozenset()
 
     def matches(self, candidate: Candidate) -> bool:
         if candidate.vetoes:
+            return False
+        if not candidate.soft_conflicts <= self.allowed_soft_conflicts:
             return False
         by_name = {signal.name: signal for signal in candidate.signals}
         if not (
@@ -111,6 +122,8 @@ def audit_metadata(candidate: Candidate, policy: AdmissionPolicy) -> dict:
         "evidence_policy": policy.name,
         "evidence_families": sorted({signal.family for signal in candidate.signals}),
         "evidence_signals": sorted(signal.name for signal in candidate.signals),
+        "evidence_missing": sorted(candidate.missing_signals),
+        "evidence_soft_conflicts": sorted(candidate.soft_conflicts),
         "evidence_witnesses": sorted(
             (
                 {
