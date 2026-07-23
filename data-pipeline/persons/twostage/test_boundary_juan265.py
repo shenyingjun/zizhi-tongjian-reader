@@ -442,6 +442,26 @@ class Juan265BoundaryTest(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual(text[1:4], R.rule_jue_name(ctx, 1)[2])
 
+    def test_lexical_polity_title_after_office_list_remains(self):
+        text = "幷州牧、晋公柳，征西"
+        tokens = (
+            PosToken("晋", 4, 5, "PROPN", "PROPN|Case=Loc|NameType=Nat", None, 0.99),
+            PosToken("公", 5, 6, "NOUN", "NOUN", None, 0.96),
+            PosToken("柳", 6, 7, "PROPN", "PROPN|NameType=Giv", None, 0.99),
+        )
+        ctx = R.Ctx(
+            text,
+            {6},
+            R.Corpus(set(), {}, set()),
+            1,
+            1,
+            0,
+            904,
+            gspans=[(6, 7)],
+            tokens=tokens,
+        )
+        self.assertEqual((4, 7, "晋公柳", "title_name"), R.rule_jue_name(ctx, 4))
+
     # ── Issue B: 谥号(2 posthumous epithets) + 帝 → full 昭宣帝 span ─────────────
     def test_posthumous_two_char_epithet_plus_di_full_span(self):
         text = "，昭宣帝即位"  # ，0 昭1 宣2 帝3 即4 位5

@@ -1301,14 +1301,17 @@ def rule_jue_name(ctx, i):
     t, gset, consumed = ctx.t, ctx.gset, ctx.consumed
     n = len(t)
     start = i
+    morphological_fief = False
     if t[i] in POLITY_PREFIX and t[i + 1:i + 2] and t[i + 1] in POLITY1 \
             and t[i + 2:i + 3] and t[i + 2] in JUE_HEAD:
         j = i + 3                                    # 后秦王苌, 东魏王…
     elif t[i] in POLITY1 and t[i + 1:i + 2] and t[i + 1] in JUE_HEAD:
         j = i + 2                                    # 秦王坚, 魏公操…
     elif t[i + 1:i + 2] and t[i + 1] in JUE_HEAD and _fief_morph_char(ctx, i):
+        morphological_fief = True
         j = i + 2                                    # 辉王祚 (POS-proven 封号 char)
     elif t[i + 1:i + 2] and t[i + 1] in JUE_HEAD:
+        morphological_fief = True
         start = _continued_fief_start(ctx, i)
         if start is None:
             return None
@@ -1324,7 +1327,7 @@ def rule_jue_name(ctx, i):
     )
     if e is None:
         return None
-    if _jue_office_verb_context(ctx, start, e):
+    if morphological_fief and _jue_office_verb_context(ctx, start, e):
         return None
     if any(consumed[start:e]):
         return None
