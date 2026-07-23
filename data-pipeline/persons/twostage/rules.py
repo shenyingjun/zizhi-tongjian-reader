@@ -1079,6 +1079,17 @@ def rule_polity_king(ctx, i):
     return (i, end, t[i:end], "role")
 
 
+def _is_cjk_ideograph(char):
+    if not char:
+        return False
+    codepoint = ord(char)
+    return (
+        0x3400 <= codepoint <= 0x9FFF
+        or 0x20000 <= codepoint <= 0x2FA1F
+        or 0x30000 <= codepoint <= 0x323AF
+    )
+
+
 def _fief_morph_char(ctx, i):
     """A single character the POS model proves to be a proper-noun fief/place
     (封号), rather than a lexical polity, e.g. 辉 in 辉王祚. Lets 封号+王/公/侯+given
@@ -1093,7 +1104,10 @@ def _fief_morph_char(ctx, i):
         or token.end != i + 1
         or token.pos != "PROPN"
         or "NameType=Geo" not in token.tag
+        or token.bio == "I"
+        or token.score is None
         or ctx.t[i] in NAMESTART
+        or not _is_cjk_ideograph(ctx.t[i])
     ):
         return False
     prev = ctx.token_at(i - 1)
@@ -1104,11 +1118,181 @@ def _fief_morph_char(ctx, i):
         and "NameType=Geo" in prev.tag
     ):
         return False
+    if (
+        prev is not None
+        and prev.end == i
+        and _is_cjk_ideograph(ctx.t[i - 1])
+        and _is_person_name_token(prev)
+    ):
+        return False
     return True
 
 
+def _continued_fief_start(ctx, i):
+    """Recover a complete left title component instead of emitting its final char."""
+    current = ctx.token_at(i)
+    if (
+        current is None
+        or current.start != i
+        or current.end != i + 1
+        or current.bio != "I"
+        or current.pos != "PROPN"
+        or not (
+            "NameType=Geo" in current.tag
+            or "NameType=Nat" in current.tag
+        )
+    ):
+        return None
+    start = i
+    saw_component_start = False
+    while start > 0 and i + 1 - start < 4:
+        previous = ctx.token_at(start - 1)
+        if previous is None or previous.end != start:
+            break
+        named_component = (
+            (
+                previous.pos == "PROPN"
+                and previous.bio in {"B", "I"}
+            )
+            or "NameType=Geo" in previous.tag
+            or "NameType=Nat" in previous.tag
+            or "NameType=Sur" in previous.tag
+            or (
+                previous.pos == "NOUN"
+                and "Case=Loc" in previous.tag
+            )
+            or (
+                previous.pos == "NOUN"
+                and previous.bio == "B"
+                and start == i
+            )
+        )
+        if not named_component or previous.pos in FUNCTION_POS | {"VERB", "AUX"}:
+            break
+        start = previous.start
+        saw_component_start = saw_component_start or previous.bio == "B"
+        if (
+            previous.pos == "PROPN"
+            and previous.bio is None
+        ) or (
+            previous.pos == "NOUN"
+            and previous.bio == "B"
+            and "Case=Loc" not in previous.tag
+        ):
+            break
+    if (
+        start > 0
+        and ctx.t[start - 1:start] in {"左", "右"}
+        and i + 1 - start >= 1
+    ):
+        start -= 1
+    previous = ctx.token_at(start - 1)
+    if (
+        start == i
+        or (
+            not saw_component_start
+            and not any(
+                marker in token.tag
+                for token in ctx.tokens_for(start, i + 1)
+                for marker in ("NameType=Geo", "NameType=Nat")
+            )
+        )
+    ):
+        return None
+    if previous is not None and previous.end == start and _is_person_name_token(previous):
+        return None
+    if set(ctx.t[start:i + 1]) & NAMESTART:
+        return None
+    return start
+
+
+def _jue_office_verb_context(ctx, start, end):
+    if (
+        ctx.t[start - 1:start] not in {"，", "、"}
+        or ctx.t[end:end + 1] not in NAMESTART
+    ):
+        return False
+    left = ctx.t[max(0, start - 8):start - 1]
+    return any(
+        left.endswith(title)
+        for title in OFFICE_TITLES + APPOINT_TITLES
+    )
+
+
+def _jue_given_end(ctx, start, max_length=2):
+    """Return a complete one/two-character given span after a title."""
+    end = ctx.gspans.get(start)
+    if end is None and start in ctx.gset:
+        end = start + 1
+        if (
+            start + 1 in ctx.gset
+            and ctx.t[start + 1:start + 2] not in NAMESTART
+        ):
+            end += 1
+    if end is None or not 1 <= end - start <= max_length:
+        return None
+    tokens = ctx.tokens_for(start, end)
+    if (
+        not tokens
+        or tokens[0].start != start
+        or tokens[-1].end != end
+        or any(left.end != right.start for left, right in zip(tokens, tokens[1:]))
+        or tokens[0].bio == "I"
+        or any(
+            token.pos != "PROPN"
+            or "NameType=Giv" not in token.tag
+            or token.score is None
+            for token in tokens
+        )
+    ):
+        return None
+    if (
+        end == start + 1
+        and start + 2 <= len(ctx.t)
+        and ctx.t[start:start + 2] in ctx.corpus.ner
+    ):
+        following = ctx.token_at(end)
+        extended_end = end + 1
+        if (
+            following is not None
+            and following.start == end
+            and following.end == extended_end
+            and following.pos not in FUNCTION_POS
+            and not _all_high_confidence_function_pos(ctx, end, extended_end)
+            and (
+                ctx.t[extended_end:extended_end + 1] in NAMESTART
+                or _next_token_is_high_conf_verb(ctx, extended_end)
+            )
+        ):
+            end = extended_end
+    return end
+
+
+def _jue_given_max_length(ctx, start):
+    end = ctx.gspans.get(start)
+    if end is None or not 3 <= end - start <= 4:
+        return 2
+    tokens = ctx.tokens_for(start, end)
+    if (
+        tokens
+        and tokens[0].start == start
+        and tokens[-1].end == end
+        and tokens[0].bio == "B"
+        and all(token.bio == "I" for token in tokens[1:])
+        and all(
+            token.pos == "PROPN"
+            and "NameType=Giv" in token.tag
+            and token.score is not None
+            and token.score >= 0.8
+            for token in tokens
+        )
+    ):
+        return 4
+    return 2
+
+
 def rule_jue_name(ctx, i):
-    """Title+given-name: [北南东西后]?POLITY1 + 王/公/侯 + given(1-2 char).
+    """Title+given-name: [北南东西后]?POLITY1 + 王/公/侯 + complete given span.
     A bare fief-title (秦王/晋王) is ambiguous across many holders so golden does
     NOT tag it, but title+given-name (秦王坚, 秦王世民, 魏王操) is an unambiguous
     person reference -> tag the whole span as alias. The given-name gate (char
@@ -1116,6 +1300,7 @@ def rule_jue_name(ctx, i):
     identity is bonded (Agent 2's job)."""
     t, gset, consumed = ctx.t, ctx.gset, ctx.consumed
     n = len(t)
+    start = i
     if t[i] in POLITY_PREFIX and t[i + 1:i + 2] and t[i + 1] in POLITY1 \
             and t[i + 2:i + 3] and t[i + 2] in JUE_HEAD:
         j = i + 3                                    # 后秦王苌, 东魏王…
@@ -1123,19 +1308,27 @@ def rule_jue_name(ctx, i):
         j = i + 2                                    # 秦王坚, 魏公操…
     elif t[i + 1:i + 2] and t[i + 1] in JUE_HEAD and _fief_morph_char(ctx, i):
         j = i + 2                                    # 辉王祚 (POS-proven 封号 char)
+    elif t[i + 1:i + 2] and t[i + 1] in JUE_HEAD:
+        start = _continued_fief_start(ctx, i)
+        if start is None:
+            return None
+        j = i + 2
     else:
         return None
-    if j >= n or j not in gset or t[j] in NAMESTART:  # must be title + given name
+    if j >= n or t[j] in NAMESTART:
         return None
-    g = 2 if (
-        j + 1 < n
-        and (j + 1) in gset
-        and t[j + 1] not in NAMESTART
-    ) else 1
-    e = j + g
-    if any(consumed[i:e]):
+    e = _jue_given_end(
+        ctx,
+        j,
+        max_length=4 if start < i else _jue_given_max_length(ctx, j),
+    )
+    if e is None:
         return None
-    return (i, e, t[i:e], "title_name")
+    if _jue_office_verb_context(ctx, start, e):
+        return None
+    if any(consumed[start:e]):
+        return None
+    return (start, e, t[start:e], "title_name")
 
 
 TITLE_NAME_STATE_RIGHT = set("幼少长壮老年")
@@ -1675,10 +1868,31 @@ def _model_ner_surface(ctx, i, predicate):
             and not _shi_guard(ctx.t, i)
             and not _all_high_confidence_function_pos(ctx, i, end)
             and not _local_nat_or_geo(ctx, i, end)
+            and not _unresolved_jue_given(ctx, i)
             and predicate(surface, end)
         ):
             return surface, end
     return None
+
+
+def _unresolved_jue_given(ctx, start):
+    title_at = start - 1
+    if title_at < 1 or ctx.t[title_at] not in JUE_HEAD:
+        return False
+    fief = ctx.token_at(title_at - 1)
+    given_end = ctx.gspans.get(start)
+    if _jue_given_max_length(ctx, start) > 2:
+        return False
+    return (
+        fief is not None
+        and fief.end == title_at
+        and (
+            "NameType=Geo" in fief.tag
+            or "NameType=Nat" in fief.tag
+        )
+        and given_end is not None
+        and given_end - start > 2
+    )
 
 
 def _complete_model_name_tokens(ctx, start, end):
@@ -2170,6 +2384,14 @@ def rule_model_ner_name(ctx, i):
             or _shi_guard(t, i)
             or _all_high_confidence_function_pos(ctx, i, end)
             or _local_nat_or_geo(ctx, i, end)
+            or _unresolved_jue_given(ctx, i)
+            or (
+                surface.endswith("子")
+                and t[i] in JUE_HEAD
+                and surface[:-1] in ctx.corpus.ner
+                and ctx.token_at(end) is not None
+                and _is_named_entity_token(ctx.token_at(end))
+            )
         ):
             continue
         title_shape = any(
@@ -4390,6 +4612,8 @@ def _high_confidence_name_pos(ctx, start, end):
 def rule_known_fullname_pos(ctx, i):
     """Complete high-confidence POS name span, independent of person KB."""
     t, consumed = ctx.t, ctx.consumed
+    if _unresolved_jue_given(ctx, i):
+        return None
     for length in range(min(6, len(t) - i), 1, -1):
         surface = t[i:i + length]
         if any(consumed[i:i + length]):
@@ -4497,6 +4721,36 @@ def rule_struct_xingming(ctx, i):
     c = t[i]
     if c not in CLEAN or _fuxing_left(t, i):
         return None
+    if c in JUE_HEAD and i > 0:
+        title_left = ctx.token_at(i - 1)
+        if (
+            title_left is not None
+            and title_left.end == i
+            and title_left.pos == "PROPN"
+            and (
+                "NameType=Geo" in title_left.tag
+                or "NameType=Nat" in title_left.tag
+            )
+            and (
+                title_left.bio == "I"
+                or (
+                    ctx.token_at(i - 2) is not None
+                    and ctx.token_at(i - 2).end == i - 1
+                    and _is_cjk_ideograph(ctx.t[i - 2])
+                    and _is_person_name_token(ctx.token_at(i - 2))
+                )
+                or (
+                    ctx.gspans.get(i + 1) is not None
+                    and ctx.gspans[i + 1] - (i + 1) > 2
+                )
+                or _jue_office_verb_context(
+                    ctx,
+                    i - 1,
+                    ctx.gspans.get(i + 1, i + 2),
+                )
+            )
+        ):
+            return None
     if (t[i - 1] if i > 0 else "") in BLOCK1 or t[i - 2:i] in BLOCK2:
         return None
     if c in JUE_HEAD and not _jue_ok(t, i, gset):
@@ -5623,11 +5877,32 @@ def _embedded_in_name_tokens(ctx, start, end):
 
 def _strong_exact_anchor(ctx, card, *, titles):
     if titles:
-        return card["chunk_type"] in {
+        if card["chunk_type"] in {
             "alias", "female_court_title", "known_title", "local_title_anchor",
             "model_ner_fief_title", "model_ner_name", "model_ner_rank_title",
             "model_ner_temple_title", "model_ner_title", "surname_honorific",
-        }
+        }:
+            return True
+        suffix = _model_title_suffix(card["surface"])
+        tokens = ctx.tokens_for(card["start"], card["end"])
+        return (
+            card["chunk_type"] == "gloss_kin"
+            and card.get("rule") == "genealogy_given"
+            and suffix in JUE_HEAD
+            and ctx.gspans.get(card["start"]) == card["end"]
+            and bool(tokens)
+            and tokens[0].start == card["start"]
+            and tokens[-1].end == card["end"]
+            and all(left.end == right.start for left, right in zip(tokens, tokens[1:]))
+            and tokens[0].bio != "I"
+            and all(
+                token.pos == "PROPN"
+                and "NameType=Giv" in token.tag
+                and token.score is not None
+                and token.score >= 0.5
+                for token in tokens
+            )
+        )
     return (
         _complete_person_pos(ctx, card["start"], card["end"])
         or card["chunk_type"] in {
@@ -5637,6 +5912,43 @@ def _strong_exact_anchor(ctx, card, *, titles):
             "royal_title_name", "translation_fullname", "xing2_appos",
         }
     )
+
+
+def _validated_title_name_handle(ctx, card):
+    if (
+        card["chunk_type"] != "title_name"
+        or card.get("rule") not in {"jue_name", "multifief_jue_name"}
+    ):
+        return None
+    title_at = max(
+        (card["surface"].rfind(title) for title in JUE_HEAD),
+        default=-1,
+    )
+    start = card["start"] + title_at + 1
+    end = card["end"]
+    if title_at <= 0 or ctx.gspans.get(start) != end:
+        return None
+    tokens = ctx.tokens_for(start, end)
+    handle = ctx.t[start:end]
+    if (
+        not 1 <= len(handle) <= 2
+        or set(handle) & (NAMESTART | GLOSS_SEP)
+        or not tokens
+        or tokens[0].start != start
+        or tokens[-1].end != end
+        or tokens[0].bio == "I"
+        or any(left.end != right.start for left, right in zip(tokens, tokens[1:]))
+        or any(
+            token.pos != "PROPN"
+            or "NameType=Giv" not in token.tag
+            or token.score is None
+            or token.score < 0.5
+            for token in tokens
+        )
+        or _has_person_bio_right_continuation(ctx, start, end)
+    ):
+        return None
+    return handle
 
 
 def _detect_exact_local_surface(ctx, cards, *, titles):
@@ -5682,6 +5994,16 @@ def _detect_exact_local_surface(ctx, cards, *, titles):
                     )
                 ):
                     relaxed_anchors.add(handle)
+            replacement_handle = _validated_title_name_handle(ctx, card)
+            if (
+                replacement_handle is not None
+                and replacement_handle in ctx.corpus.ner
+                and (
+                    ctx.t.find(replacement_handle, 0, card["start"]) >= 0
+                    or ctx.t.find(replacement_handle, card["end"]) >= 0
+                )
+            ):
+                relaxed_anchors.add(replacement_handle)
             if (
                 card["chunk_type"] == "translation_fullname"
                 and len(card["surface"]) >= 2

@@ -356,7 +356,11 @@ BIO 模型偶尔会把一个外族名拆成相邻实体 span。谱系规则只�
 
 - `role` 识别受控政权称谓，如 `吴主`、`魏主`、`契丹主`。
 - `polity_king` 识别 `汉王`、`吴王` 等本身已确立 personhood 的王号；身份留给 Agent 2。
-- `jue_name` 识别“政权/封号 + 王公侯 + 给名”。
+- `jue_name` 识别“政权/封号 + 王公侯 + 给名”。单字封号必须是完整、非 `I-`
+  的 CJK Geo token；若当前字是更长封号的 `I-` continuation，只在左侧连续
+  Geo/Nat/BIO 形态能唯一恢复完整封号时取最长跨度，否则拒绝而不切尾。称号后的给名
+  使用完整 POS·Giv span；普通封号只接受一至二字，更长外族给名只在完整左封号同时
+  恢复时接受。官职后的动词结构、前接人物姓名和未解决的给名 continuation 均否决。
 - `multifief_jue_name` 识别完整多字 Geo 封地后的“王公侯 + 姓名”，并建立同节 handle。
 - `corpus_jue2` 是兼容 rule id；当前要求 model-derived NER corroboration、爵位形态、
   人名 POS 和局部人物句法，不再按 identity 数量准入。
@@ -441,6 +445,11 @@ VERB/AUX 独立证明；位于更长 PROPN/NER 姓名内部时拒绝。
 `军司马班勇`。已经被 Agent 1 识别的 title-person span 若形如
 `…王/公/侯 + 1–2 字给名`，其爵号后部分也进入同节 roster，例如
 `高阳王隆 → 隆`、`范阳王德 → 德`、`湘东王彧 → 彧`。
+该 roster 入口只开放给 `jue_name/multifief_jue_name` 自身已验证的完整称号形态，
+并再次要求尾部给名是干净、完整、无 BIO continuation 的 POS·Giv span；其他
+`title_name` card（如官名粘连）不能借此传播。谱系规则替换掉 model anchor 时，
+也只有 `genealogy_given` 自身产出的、完整 POS·Giv 且带正式爵尾的 card 可继续作为
+同节 exact-title anchor。
 
 Model NER 称号另有三个 KB-free schema：
 
