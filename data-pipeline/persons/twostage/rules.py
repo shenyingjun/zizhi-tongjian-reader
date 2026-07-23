@@ -34,7 +34,8 @@ Rules (scope):
   struct_fuxing   (jie)     复姓 + POS.Giv given.
   struct_xingming (jie)     clean 姓 + POS.Giv given.
   semantic_given2 (jie)     complete POS.Giv + person-predicate frame.
-  gloss_geneal     (jie)     genealogy / 谥曰 / enumerated-name prepass.
+  gloss_geneal     (jie)     genealogy / 谥曰 / enumerated-name prepass, including
+                             appositive office+relation frames (苏楷，礼部尚书循之子也).
   jie_anaphora     (jie)     same-jie, earlier-anchor-only given-name anaphora.
 Guards (identity-independent): POS function/geo vetoes, BIO boundaries, 复姓
   left-guard, BLOCK1/BLOCK2, 爵-head gate, 仆射, and 谥号.
@@ -4503,6 +4504,32 @@ GLOSS_STOP = set("\u4e4b\u4e5f\u8005\u6240\u5176\u800c\u5219\u662f\u4e3a\u4ee5\u
                  "\u4e0a\u4e0b\u540e\u521d\u8c13\u89c1\u965b\u81e3\u541b\u592b\u59bb\u59be")
 #  STOP = non-name honorifics/function words: 上下后初谓见陛臣君夫妻妾 + relations + 王公侯帝
 GLOSS_ENUM = set("\u957f\u6b21\u5b63\u5e7c\u5eb6")   # 长次季幼庶 (before 曰)
+# Keep `_is_gloss_marker` on its established vocabulary so bare X之REL behavior
+# stays unchanged. Office-bearing appositions additionally admit controlled kin
+# terminals already used by genealogy rules, plus 女/伯.
+GLOSS_OFFICE_REL = (
+    GLOSS_TERM
+    | {prefix[-1] for prefix in GENEALOGY_PREFIXES}
+    | set("\u5973\u4f2f")
+)
+GLOSS_OFFICE_TITLES = tuple(sorted(
+    (
+        set(OFFICE_TITLES)
+        | set(OFFICE_SHI_TITLES)
+        | {
+            title
+            for title in APPOINT_TITLES
+            if len(title) >= 2
+            and title not in {"皇太子", "皇后", "太子", "左贤王", "右贤王"}
+        }
+        | {
+            "御史大夫", "京兆尹", "节度使", "观察使", "防御使", "团练使",
+            "起居郎", "尚书令", "中书令", "门下侍郎", "侍郎", "郎中",
+        }
+    ),
+    key=len,
+    reverse=True,
+))
 
 
 def _is_gloss_marker(t, z):
@@ -4522,6 +4549,28 @@ def _is_gloss_marker(t, z):
     return False
 
 
+def _gloss_office_relation_end(t, z):
+    """Return the end of a controlled kin relation followed immediately by 也."""
+    a = t[z + 1:z + 2]
+    if not a:
+        return None
+    if a in GLOSS_OFFICE_REL or a == "\u540e":
+        end = z + 2
+    elif a in GLOSS_PREF:
+        nx = t[z + 2:z + 3]
+        if nx in GLOSS_OFFICE_REL:
+            end = z + 3
+        else:
+            end = z + 2
+    elif a in GLOSS_NUM and t[z + 2:z + 3] == "\u4e16":
+        end = z + 3
+        if t[end:end + 1] in GLOSS_OFFICE_REL:
+            end += 1
+    else:
+        return None
+    return end if t[end:end + 1] == "\u4e5f" else None
+
+
 def _gloss_name_left(t, end, maxlen=2):
     """Maximal 1..maxlen char name ending just before `end`, bounded by a SEP.
     Stopword is only rejected at the name-START (leftmost) char, so names ending
@@ -4535,6 +4584,26 @@ def _gloss_name_left(t, end, maxlen=2):
     if not run or run[0] in GLOSS_STOP:
         return None, None
     return k, run
+
+
+def _gloss_office_name_left(t, end, maxlen=2):
+    """Parse ``[office]<name>`` ending at ``end`` without tagging the office."""
+    start = end
+    while start > 0 and t[start - 1] not in GLOSS_SEP:
+        start -= 1
+    run = t[start:end]
+    for name_len in range(min(maxlen, len(run) - 2), 0, -1):
+        name_start = end - name_len
+        name = t[name_start:end]
+        office = t[start:name_start]
+        if (
+            name[0] not in GLOSS_STOP
+            and office not in COMPOUND
+            and office not in COMPOUND3
+            and any(office.endswith(title) for title in GLOSS_OFFICE_TITLES)
+        ):
+            return name_start, name
+    return None, None
 
 
 _RIGHT_BREAK = GLOSS_SEP | set("\u4e5f\u8005\u77e3\u7109\u4e4b")   # 也者矣焉之
@@ -4560,11 +4629,37 @@ def detect_gloss(t):
     # (a) 之REL frame
     z = t.find("\u4e4b")
     while z != -1:
-        if _is_gloss_marker(t, z):
-            rs, rname = _gloss_name_left(t, z)
+        bare_marker = _is_gloss_marker(t, z)
+        office_relation_end = _gloss_office_relation_end(t, z)
+        if bare_marker or office_relation_end is not None:
+            rs, rname = (
+                _gloss_name_left(t, z)
+                if bare_marker
+                else (None, None)
+            )
+            office_subject = None
+            if not rname and office_relation_end is not None:
+                candidate_start, candidate_name = _gloss_office_name_left(t, z)
+                segment_start = candidate_start
+                while (
+                    segment_start is not None
+                    and segment_start > 0
+                    and t[segment_start - 1] not in GLOSS_SEP
+                ):
+                    segment_start -= 1
+                comma = segment_start - 1 if segment_start is not None else -1
+                if comma >= 0 and t[comma] == "\uff0c":
+                    ss, sname = _gloss_name_left(t, comma)
+                    if not sname:
+                        ss, sname = _gloss_office_name_left(t, comma)
+                    if sname:
+                        rs, rname = candidate_start, candidate_name
+                        office_subject = (ss, comma, sname, "gloss_subj")
             if rname:
                 spans.append((rs, z, rname, "gloss_rel"))
-                if rs - 1 >= 0 and t[rs - 1] in "\uff0c\u3001":
+                if office_subject:
+                    spans.append(office_subject)
+                elif rs - 1 >= 0 and t[rs - 1] in "\uff0c\u3001":
                     ss, sname = _gloss_name_left(t, rs - 1)
                     if sname:
                         spans.append((ss, rs - 1, sname, "gloss_subj"))
