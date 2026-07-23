@@ -29,7 +29,8 @@ Rules (scope):
   appointment      (jie)     以 + POS-backed person + 为 + office/title.
   empress_title    (jie)     inherently personal titles 太后 / 皇后.
   surname_empress  (jie)     surname morphology + 后 title (贾后, 独孤后).
-  genealogy_given (jie)     kinship + POS-backed name (弟亮 / 其子仁果; tags name only).
+  genealogy_given (jie)     kinship + POS-backed name, optionally skipping a nested
+                            office (弟亮 / 其子仁果 / 其姪[天雄节度使]继勋; tags name only).
   struct_fuxing   (jie)     复姓 + POS.Giv given.
   struct_xingming (jie)     clean 姓 + POS.Giv given.
   semantic_given2 (jie)     complete POS.Giv + person-predicate frame.
@@ -2274,14 +2275,19 @@ GENEALOGY_PREFIXES = tuple(sorted((
     "养子", "义子", "兄子", "弟子", "从子", "族子",
     "其孙", "长孙", "次孙", "少孙", "幼孙", "兄孙", "弟孙", "从孙", "族孙",
     "其兄", "其弟", "从兄", "从弟", "族兄", "族弟",
-    "兄", "弟",
+    "其姪", "其侄", "兄姪", "弟姪", "从姪", "族姪",
+    "兄", "弟", "姪", "侄",
 ), key=len, reverse=True))
 GENEALOGY_RIGHT = (
     NAMESTART | PERSON_LEFT_VERBS | PERSON_RIGHT_PRED
     | set("而不大独等兵事节自于行继临淫懦顾说将令讨勒奉上尚娶袭封拜诣入出进守谋摄监已相夺"
           "所代部有统分嗣南妻举又居引用夜镇贼趋蒸异恨俱掌取仍权友闻皆驰非主同乳早幽谕"
-          "往闚抚既应篡")
+          "往闚抚既应篡求")
 )
+# Office-final characters that can close an office/title sitting between a kinship
+# term and the given name (其子[牙内诸军使]渥 / 其姪[天雄节度使]继勋). The office is
+# skipped, never tagged; the following POS-given name is the person.
+GENEALOGY_OFFICE_SUFFIX = set("使尹令牧守丞尉卿监帅傅保师郎将督射")
 GENEALOGY_STATE_PHRASES = {
     "新昏", "尚幼", "幼弱", "年少", "年幼", "未冠", "无子",
 }
@@ -2316,6 +2322,49 @@ def rule_foreign_suffix_name(ctx, i):
     return (i, end, t[i:end], "foreign_suffix_name")
 
 
+def _kin_direct_name(ctx, j):
+    """A person name begins directly at ``j`` (POS-given, or surname + POS-given)."""
+    t, gset = ctx.t, ctx.gset
+    if j in gset:
+        return True
+    surname_len = 3 if t[j:j + 3] in COMPOUND3 else (
+        2 if t[j:j + 2] in COMPOUND else (1 if t[j:j + 1] in CLEAN else 0)
+    )
+    return bool(surname_len) and (j + surname_len) in gset
+
+
+def _skip_kin_office(ctx, j):
+    """Skip an office/title between a kinship term and the given name.
+
+    Returns the offset where the POS-given name begins after an intervening office
+    (其子[牙内诸军使]渥), or ``None`` when no bounded office ends right before a
+    POS-given name. The office is never tagged; only the trailing name is minted, so
+    the skipped span must not itself contain a person name or punctuation.
+    """
+    t, gset, consumed = ctx.t, ctx.gset, ctx.consumed
+    limit = min(len(t), j + 8)
+    for m in range(j + 2, limit + 1):
+        if m not in gset or t[m - 1] not in GENEALOGY_OFFICE_SUFFIX:
+            continue
+        office = t[j:m]
+        if set(office) & (NAMESTART | GLOSS_SEP):
+            continue
+        if any(off in gset for off in range(j, m)) or any(consumed[j:m]):
+            continue
+        if any(
+            token.start >= j
+            and token.start < m
+            and any(
+                name_type in token.tag
+                for name_type in ("NameType=Sur", "NameType=Giv", "NameType=Prs")
+            )
+            for token in ctx.tokens
+        ):
+            continue
+        return m
+    return None
+
+
 def rule_genealogy_given(ctx, i):
     """A kinship relation locally licenses a following POS-backed person name.
 
@@ -2335,6 +2384,10 @@ def rule_genealogy_given(ctx, i):
     j = i + len(prefix)
     if j >= len(t):
         return None
+    if not _kin_direct_name(ctx, j):
+        j = _skip_kin_office(ctx, j)
+        if j is None:
+            return None
     if j in gset:
         e = ctx.gspans.get(j)
         if e is None:
