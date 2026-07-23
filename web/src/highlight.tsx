@@ -106,7 +106,7 @@ export function highlightWithRanges(
 export interface PersonSpan {
   start: number;
   end: number;
-  personId: string;
+  personId?: string;
   confidence: string;
 }
 
@@ -150,33 +150,46 @@ export function renderTextSegment(
       );
     }
     const label = cps.slice(segStart - mainStart, segEnd - mainStart).join('');
-    const isActive = !!activePersonId && s.personId === activePersonId;
-    out.push(
-      <button
-        key={'p' + k++}
-        type="button"
-        className={'person-name' + (isActive ? ' is-active' : '')}
-        data-confidence={s.confidence}
-        title="编者人物信息 · 非原文"
-        aria-label={`${label}，编者人物信息，非原文，查看此前出现`}
-        onClick={(e) => {
-          // Let copy/select gestures win — but only when the live selection
-          // actually covers THIS name (the user is dragging across it). A
-          // stray selection elsewhere on the page (e.g. left over from a
-          // select-to-search) must NOT swallow a deliberate tap on a person.
-          const sel = typeof window !== 'undefined' ? window.getSelection() : null;
-          if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
-            const btn = e.currentTarget as Node;
-            for (let i = 0; i < sel.rangeCount; i++) {
-              if (sel.getRangeAt(i).intersectsNode(btn)) return;
+    if (s.personId) {
+      const isActive = !!activePersonId && s.personId === activePersonId;
+      out.push(
+        <button
+          key={'p' + k++}
+          type="button"
+          className={'person-name' + (isActive ? ' is-active' : '')}
+          data-confidence={s.confidence}
+          title="编者人物信息 · 非原文"
+          aria-label={`${label}，编者人物信息，非原文，查看此前出现`}
+          onClick={(e) => {
+            // Let copy/select gestures win — but only when the live selection
+            // actually covers THIS name (the user is dragging across it). A
+            // stray selection elsewhere on the page (e.g. left over from a
+            // select-to-search) must NOT swallow a deliberate tap on a person.
+            const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+            if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+              const btn = e.currentTarget as Node;
+              for (let i = 0; i < sel.rangeCount; i++) {
+                if (sel.getRangeAt(i).intersectsNode(btn)) return;
+              }
             }
-          }
-          onPersonClick(s.personId, pid, 'main', label);
-        }}
-      >
-        {highlightWithRanges(label, segStart, mainMatches)}
-      </button>,
-    );
+            onPersonClick(s.personId!, pid, 'main', label);
+          }}
+        >
+          {highlightWithRanges(label, segStart, mainMatches)}
+        </button>,
+      );
+    } else {
+      out.push(
+        <span
+          key={'p' + k++}
+          className="person-name is-tag-only"
+          data-confidence={s.confidence}
+          title="自动人名标注"
+        >
+          {highlightWithRanges(label, segStart, mainMatches)}
+        </span>,
+      );
+    }
     cursor = segEnd;
   }
   if (cursor < mainEnd) {

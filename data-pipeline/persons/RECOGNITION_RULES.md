@@ -1,5 +1,9 @@
 # 资治通鉴 Reader — Person-Name Recognition Rules (verbalized pipeline)
 
+> 本文描述当前 shipped 旧管线。两阶段目标规范见
+> [`twostage/SPEC.md`](twostage/SPEC.md)；两者在迁移完成前会并存，请勿把旧管线的
+> per-卷/per-paragraph 行为当作新架构约束。
+
 This document verbalizes the **shipped** offline recognition pipeline in
 `data-pipeline/persons/` (`seed.py`, `build_persons.py`, `validate_persons.py`).
 It is the accumulated rule set from session waves R1–R34. It describes behavior,

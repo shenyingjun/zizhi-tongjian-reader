@@ -57,13 +57,17 @@ def _sec_num(mt: str):
     return None
 
 
-def detect_juan(juan_no, paras, giv, surf3, lex2, known_long):
+def detect_juan(juan_no, paras, giv, surf3, lex2, known_long, pos_optional=False):
     """Return (occurrence cards, guard counters) for one juan.
 
     surf3      : set of known KB surfaces length ≥3 (curated person names/aliases).
     lex2       : dict 2-char name -> [pids] (single-char surname; guarded).
     known_long : set of names length ≥3 (for the G2 longest-match guard).
     giv        : {para_id(str): set(offsets)} POS·Giv given-name char offsets.
+    pos_optional : when True, the D-GIV2 POS·Giv gate (G3) is dropped. Use ONLY when
+                   every lex2 entry is a CONFIRMED KB card (the local-first supplement),
+                   so identity is anchored by the card + an era-window uniqueness merge
+                   rather than by POS. Keeps G1/G2/王-gate/仆射 guards intact.
     """
     cards = []
     sec = None
@@ -76,64 +80,74 @@ def detect_juan(juan_no, paras, giv, surf3, lex2, known_long):
         if s is not None:
             sec = s
         gset = giv.get(str(para_id), set())
-        n = len(t)
-        consumed = [False] * n
-        for i in range(n):
-            if consumed[i]:
-                continue
-            # ── D-LIT3: longest known surface (maxL..3 chars) ──
-            hit = None
-            for L in range(min(maxL, n - i), 2, -1):
-                if t[i:i + L] in surf3 and not any(consumed[i:i + L]):
-                    hit = t[i:i + L]
-                    break
-            if hit:
-                L = len(hit)
-                # 谥号 guard: 谥曰X / 谥为X / 谥X → posthumous title, not a person.
-                if t[max(0, i - 2):i] in SHI_YUE or t[max(0, i - 1):i] == SHI:
-                    continue
-                for k in range(i, i + L):
-                    consumed[k] = True
-                cards.append(_card(juan_no, sec, para_id, i, i + L, hit, "lit3",
-                                   para.get("ce_year")))
-                counters["lit3"] += 1
-                continue
-            # ── D-GIV2: 2-char surname+given, guarded ──
-            if i + 2 > n:
-                continue
-            cn = t[i:i + 2]
-            if cn not in lex2:
-                continue
-            # G1 left-guard
-            if (t[i - 1] if i > 0 else "") in BLOCK1 or t[i - 2:i] in BLOCK2:
-                counters["g1"] += 1
-                continue
-            # G2 longest-match (2-char is a prefix/interior of a known ≥3 name here)
-            if any(len(w) == 3 and w in known_long
-                   for w in (t[i:i + 3], t[i - 1:i + 2], t[i - 2:i + 1])):
-                counters["g2"] += 1
-                continue
-            # G3 POS·Giv
-            if not ({i, i + 1} & gset):
-                counters["g3"] += 1
-                continue
-            # 王 name-start gate (soft): 王X accepted when 王 sits at a name boundary
-            # OR when the given char itself is POS·Giv-tagged (strong literal evidence
-            # for a known 2-char card). Rejects 清河王|庆-style 爵+given truncation.
-            if cn[0] == WANG:
-                prev = t[i - 1] if i > 0 else "\u0001"
-                if not (prev in NAMESTART or prev in APPOS_TAIL
-                        or (i + 1) in gset):
-                    counters["gw"] += 1
-                    continue
-            # 仆射 office-truncation (surface tail + next char spell 仆射)
-            if cn[-1] == PU and t[i + 2:i + 3] == SHE:
-                continue
-            consumed[i] = consumed[i + 1] = True
-            cards.append(_card(juan_no, sec, para_id, i, i + 2, cn, "giv2",
-                               para.get("ce_year")))
-            counters["giv2"] += 1
+        cards.extend(detect_text(juan_no, sec, para_id, t, gset, surf3, lex2,
+                                 known_long, para.get("ce_year"), maxL,
+                                 counters, pos_optional))
     return cards, counters
+
+
+def detect_text(juan_no, sec, para_id, t, gset, surf3, lex2, known_long, ce,
+                maxL=None, counters=None, pos_optional=False, consumed=None):
+    """Per-text global-lexicon detector (D-LIT3 + guarded D-GIV2).
+
+    Operates on ONE text blob. When `consumed` (a list[bool] the length of `t`) is
+    passed, spans already reserved by an earlier pass (e.g. feng 封号-glue) are
+    skipped and newly-drawn spans are marked consumed in it — so this can run in the
+    per-paragraph emission pipeline sharing state with the other detectors. Returns
+    a list of occurrence cards (dicts) carrying NO identity."""
+    if maxL is None:
+        maxL = min(max((len(x) for x in surf3), default=4), 10)
+    if counters is None:
+        counters = dict(g1=0, g2=0, g3=0, gw=0, lit3=0, giv2=0)
+    out = []
+    n = len(t)
+    if consumed is None:
+        consumed = [False] * n
+    for i in range(n):
+        if consumed[i]:
+            continue
+        # ── D-LIT3: longest known surface (maxL..3 chars) ──
+        hit = None
+        for L in range(min(maxL, n - i), 2, -1):
+            if t[i:i + L] in surf3 and not any(consumed[i:i + L]):
+                hit = t[i:i + L]
+                break
+        if hit:
+            L = len(hit)
+            if t[max(0, i - 2):i] in SHI_YUE or t[max(0, i - 1):i] == SHI:
+                continue
+            for k in range(i, i + L):
+                consumed[k] = True
+            out.append(_card(juan_no, sec, para_id, i, i + L, hit, "lit3", ce))
+            counters["lit3"] += 1
+            continue
+        # ── D-GIV2: 2-char surname+given, guarded ──
+        if i + 2 > n:
+            continue
+        cn = t[i:i + 2]
+        if cn not in lex2:
+            continue
+        if (t[i - 1] if i > 0 else "") in BLOCK1 or t[i - 2:i] in BLOCK2:
+            counters["g1"] += 1
+            continue
+        if any(len(w) == 3 and w in known_long
+               for w in (t[i:i + 3], t[i - 1:i + 2], t[i - 2:i + 1])):
+            counters["g2"] += 1
+            continue
+        if not pos_optional and not ({i, i + 1} & gset):
+            counters["g3"] += 1
+            continue
+        if cn[0] == WANG:
+            prev = t[i - 1] if i > 0 else "\u0001"
+            if not (prev in NAMESTART or prev in APPOS_TAIL or (i + 1) in gset):
+                counters["gw"] += 1
+                continue
+        if cn[-1] == PU and t[i + 2:i + 3] == SHE:
+            continue
+        consumed[i] = consumed[i + 1] = True
+        out.append(_card(juan_no, sec, para_id, i, i + 2, cn, "giv2", ce))
+        counters["giv2"] += 1
+    return out
 
 
 def _card(juan, sec, para_id, start, end, surface, evidence, ce):

@@ -1,58 +1,62 @@
-# Two-stage local-first person-underlining pipeline (SHADOW / experimental)
+# Two-stage person-underlining pipeline
 
-This is an **isolated, non-production** reimplementation of person-name detection
-following the two-stage *local-first* architecture (see
-`session-state .../files/two_stage_spec.md`). It does **not** touch the current
-production pipeline (`build_persons.py` / `seed.py` / `cast.py`) or any of its
-output files. It writes a parallel mention set to `out/` and diffs it against the
-current pipeline span-for-span.
+本目录是人物下划线目标管线，当前仍与旧生产管线并存。
 
-## Architecture
+- [`SPEC.md`](SPEC.md)：术语、节级作用域、Agent 1 / Agent 2 边界和规则规范。
+- [Copilot instructions](../../../.github/copilot-instructions.md)：规则修改、targeted
+  验证、全量 rebuild 和 precision 审计的默认操作门槛与经验。
+- [`rules.py`](rules.py)：当前开发中的 Agent 1 Tagger；所有规则按编号节运行。
+- [`BENCHMARK.md`](BENCHMARK.md)：相对生产 v1 的正式可重复 benchmark、运行命令和最新结果。
+- [`benchmark.py`](benchmark.py)：全 294 卷 benchmark runner。
+- [`benchmark-latest.json`](benchmark-latest.json)：最新机器可读结果。
+- [`build_admin_places.py`](build_admin_places.py)：从全书正文和 POS cache 重建带年份的
+  行政区证据。
+- [`retag.py`](retag.py)：用当前规则输出不带人物身份的 occurrence cards，不覆盖生产 v1。
+- [`translation_evidence.py`](translation_evidence.py)：把离线译文 NER/mapping 输出转换为
+  带 canonical paragraph hash 的可选 identity evidence；不保存译文正文。
 
-- **Stage 1 — per-juan detection (`stage1.py`)**
-  Scans one 卷 at a time and emits one *occurrence card* per detected name span.
-  It never consults `people.json` to decide *whether* to underline — only the juan
-  text + dictionaries + POS·Giv + boundary guards. Detectors:
-  - `D-LIT3` — literal match of a curated KB name (canonical/alias), any length ≥3.
-  - `D-GIV2` — 2-char surname+given, gated by the validated guard stack:
-    G1 left-guard (齐王建), G2 longest-match (张守←张守一), G3 POS·Giv, soft 王
-    name-start gate (accepts 王X when 王 is at a name boundary *or* the given char
-    is POS·Giv-tagged), 仆射 office-truncation, 谥号 posthumous-title.
-  NER candidates are treated as *discovery hints only*: they feed the G2 guard
-  (to suppress bad 2-char splits) but are **never drawn as blind literals** (they
-  are noisy — 王侍郎, 余非吾, 蒙圣恩 all pass the legacy surface filter).
+当前 **v1** 指 `web/public/text/persons/` 中的生产输出；**v2** 指当前 Agent 1 Tagger
+及未来 Agent 2 Identifier 的目标管线。Agent 2 尚未完成，因此目前只能评估 Agent 1 的
+画线跨度，不能声称已有完整 v2 数据集。`web/public/text/persons-v2/` 是旧的 ADD-only
+union 产物，已不能代表这里的最新实现。
 
-- **Stage 2 — cross-juan merge (`stage2.py`)**
-  Merges occurrence cards into person cards, safest scope outward. KB is *reference
-  data*, not a detection gate, so a name attested only in the text (王绪@254) still
-  underlines. Merges only, never drops; an unmerged card is a singleton that still
-  underlines.
+`stage1.py`、`stage2.py`、`run.py` 和 `build_v2.py` 属于较早的 shadow harness；其历史
+AGREE/RECOVER/LOST 数字不再作为当前 benchmark。新规则改动统一通过 `benchmark.py`
+复跑，并按 `SPEC.md` 的人工抽样要求审查。
 
-- **Runner / comparator (`run.py`)**
-  `python run.py`             → all juans
-  `python run.py 251 252 254` → only those juans
-  Writes `out/mentions/` and diffs vs current main-source `alias` mentions (len≥2),
-  reporting AGREE / RECOVER / LOST and 王绪@254.
+最终输出必须加载 Translation evidence。先生成 evidence，再在仓库根目录重建行政区证据
+并重标全 294 卷：
 
-## Corpus validation (294 卷, vs current pipeline)
+```powershell
+data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
+  data-pipeline\persons\twostage\translation_evidence.py `
+  --mapping-json C:\temp\mapping-v3.json `
+  --output-dir C:\temp\translation-evidence
 
-| metric | value |
-|---|---|
-| AGREE (same span) | 56,310 |
-| RECOVER (mine adds) | 4,391 — **100% exact KB names**, incl. 王绪@254, 1,200 王-names |
-| LOST len≥3 (full-name) | 111; of these 51 still underlined (extent diff), 60 true misses |
-| LOST len2 | 32,198 — deferred 省称 anaphora + ambiguous-surname class |
+data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
+  data-pipeline\persons\twostage\retag.py `
+  --translation-evidence-dir C:\temp\translation-evidence `
+  --output-dir C:\temp\ztj-agent1-final
+```
 
-The 60 true len≥3 misses are **entirely deferred special passes** not ported in
-this scope: role/appellation binding (傅太后, …可汗) and feng-title binding
-without a given (梁孝王, 魏其侯). There are **zero true regressions** on Stage-1's
-target class (clean full-name detection).
+`retag.py` 默认先重建 `admin-places.json`；反复调试规则时可加
+`--skip-admin-rebuild`，也可用 `--juans 62 141` 只处理指定卷。输出目录包含每卷 JSON
+和 `manifest.json`，两者都记录 `rules.py` 与行政区证据的 SHA-256。
 
-## Deferred (documented scope, not regressions)
+未传 `--translation-evidence-dir` 的路径只用于规则消融和调试，不作为最终输出，也不汇报
+正式覆盖率。需要针对部分卷验证时可运行：
 
-- 省称 given-only anaphora (kind=anaphora) — a Stage-2 given-binding step
-  (port of `resolve_anaphora_pos`).
-- ambiguous / compound-surname 2-char aliases (高X, 田X, …).
-- feng-title and role-appellation special passes.
+```powershell
+data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
+  data-pipeline\persons\twostage\retag.py `
+  --juans 27 37 45 150 `
+  --skip-admin-rebuild `
+  --translation-evidence-dir C:\temp\translation-evidence `
+  --output-dir C:\temp\ztj-agent1-translation
+```
 
-`out/` is git-ignored (regenerated comparison artifacts).
+该 evidence 只在同 paragraph 生效。exact fullname 与 mapped given 分别须通过完整
+POS/BIO/边界 gate 和受控原文句法 gate；获准 fullname 会成为后续普通 anaphora anchor。
+translation 路径不得删除未重叠的原文 card，也不得用 suffix 替换原文完整姓名。
+loader 会按 manifest 的逐卷 SHA-256 拒绝被替换或损坏的 evidence。正式 benchmark 只测量
+Translation-assisted 全 294 卷最终输出；结果和人工 precision 审计见 `BENCHMARK.md`。

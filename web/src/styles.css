@@ -667,6 +667,15 @@ body { background: var(--bg); color: var(--fg); line-height: 1.95; }
 }
 .person-name:hover { background: var(--accent); color: #fff; text-decoration-color: #fff; padding: 0 0.06em; }
 .person-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.person-name.is-tag-only {
+  cursor: text;
+}
+.person-name.is-tag-only:hover {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-decoration-color: color-mix(in srgb, var(--accent) 65%, transparent);
+}
 /* When a person is open, all their occurrences carry the yellow search-hit
    highlight (the name is searched). The clicked occurrence is emphasized with a
    slightly stronger box — never a second nested box on top of the search-hit

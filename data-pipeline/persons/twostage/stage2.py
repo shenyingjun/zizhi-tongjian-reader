@@ -25,7 +25,8 @@ def build_reference(people, mentions_by_juan):
     for p in people:
         cn = p["canonical_name"]
         pid_canon[p["id"]] = cn
-        for nm in [cn] + [n.get("text", "") for n in p.get("names", [])]:
+        for nm in [cn] + [(n.get("text", "") if isinstance(n, dict) else n)
+                          for n in p.get("names", [])]:
             if nm and 2 <= len(nm) <= 4:
                 surface_pids.setdefault(nm, []).append(p["id"])
     for s in surface_pids:
