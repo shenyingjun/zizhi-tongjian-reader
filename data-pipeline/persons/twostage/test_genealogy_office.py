@@ -85,6 +85,22 @@ class GenealogyOfficeTest(unittest.TestCase):
         result = R.rule_genealogy_given(ctx, 0)
         self.assertEqual(result, (2, 4, "\u4ec1\u679c", "gloss_kin"))
 
+    def test_compound_surname_is_not_reinterpreted_as_kinship(self):
+        text = "从长孙俭求"
+        tokens = (
+            R.pos_giv.PosToken(
+                "长", 1, 2, "PROPN", "B-PROPN|NameType=Sur", "B", 0.98
+            ),
+            R.pos_giv.PosToken(
+                "孙", 2, 3, "PROPN", "I-PROPN|NameType=Sur", "I", 0.99
+            ),
+            R.pos_giv.PosToken(
+                "俭", 3, 4, "PROPN", "PROPN|NameType=Giv", None, 0.99
+            ),
+        )
+        ctx = make_ctx(text, gset={3}, gspans=[(3, 4)], tokens=tokens)
+        self.assertIsNone(R.rule_genealogy_given(ctx, 1))
+
 
 if __name__ == "__main__":
     unittest.main()

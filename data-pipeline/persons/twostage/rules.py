@@ -2644,6 +2644,21 @@ def rule_genealogy_given(ctx, i):
     j = i + len(prefix)
     if j >= len(t):
         return None
+    prefix_tokens = ctx.tokens_for(i, j)
+    if (
+        prefix in COMPOUND
+        and ctx.gspans.get(j) is not None
+        and prefix_tokens
+        and prefix_tokens[0].start == i
+        and prefix_tokens[-1].end == j
+        and prefix_tokens[0].bio == "B"
+        and all(token.bio == "I" for token in prefix_tokens[1:])
+        and all(
+            token.pos == "PROPN" and "NameType=Sur" in token.tag
+            for token in prefix_tokens
+        )
+    ):
+        return None
     if not _kin_direct_name(ctx, j):
         j = _skip_kin_office(ctx, j)
         if j is None:
