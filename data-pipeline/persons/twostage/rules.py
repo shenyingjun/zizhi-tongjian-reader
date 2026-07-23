@@ -150,6 +150,10 @@ PERSON_TITLE_SUFFIXES = (
 INHERENT_PERSON_TITLE_SUFFIXES = frozenset(PERSON_TITLE_SUFFIXES[:-4])
 TITLE_EPITHET_END = set("穆哀简武昭襄灵元成康靖烈孝文宣景惠悼献懿恭肃")
 FIEF_POSTHUMOUS_EPITHETS = set("孝武文昭宣景惠哀悼简成平康靖烈灵")
+# Accession / imperial-death markers that license a posthumous 谥号+帝 emperor
+# designation (即位 is a modifier+noun pair, so _title_predicate_after cannot see it).
+EMPEROR_ACCESSION_PHRASES = {"即位", "在位", "践阼", "复位"}
+EMPEROR_EVENT_VERBS = set("崩弑")
 LEXICAL_RULER_TITLES = {"始皇", "主父"}
 TITLE_NONPERSON_COMPONENTS = {
     "先帝", "匈奴", "乌桓", "右贤", "左贤", "前部", "南越", "月氏",
@@ -1074,6 +1078,34 @@ def rule_polity_king(ctx, i):
     return (i, end, t[i:end], "role")
 
 
+def _fief_morph_char(ctx, i):
+    """A single character the POS model proves to be a proper-noun fief/place
+    (封号), rather than a lexical polity, e.g. 辉 in 辉王祚. Lets 封号+王/公/侯+given
+    read as one person alias when the given-name POS gate also holds; it does not
+    bond identity (Agent 2's job). A character that merely continues a longer
+    Geo name (间 in 河间王) is rejected so a multi-character fief is not split; that
+    form is 复姓/multifief territory (rule_multifief_jue_name)."""
+    token = ctx.token_at(i)
+    if (
+        token is None
+        or token.start != i
+        or token.end != i + 1
+        or token.pos != "PROPN"
+        or "NameType=Geo" not in token.tag
+        or ctx.t[i] in NAMESTART
+    ):
+        return False
+    prev = ctx.token_at(i - 1)
+    if (
+        prev is not None
+        and prev.end == i
+        and prev.pos == "PROPN"
+        and "NameType=Geo" in prev.tag
+    ):
+        return False
+    return True
+
+
 def rule_jue_name(ctx, i):
     """Title+given-name: [北南东西后]?POLITY1 + 王/公/侯 + given(1-2 char).
     A bare fief-title (秦王/晋王) is ambiguous across many holders so golden does
@@ -1088,9 +1120,11 @@ def rule_jue_name(ctx, i):
         j = i + 3                                    # 后秦王苌, 东魏王…
     elif t[i] in POLITY1 and t[i + 1:i + 2] and t[i + 1] in JUE_HEAD:
         j = i + 2                                    # 秦王坚, 魏公操…
+    elif t[i + 1:i + 2] and t[i + 1] in JUE_HEAD and _fief_morph_char(ctx, i):
+        j = i + 2                                    # 辉王祚 (POS-proven 封号 char)
     else:
         return None
-    if j >= n or j not in gset:                      # must be title + given name
+    if j >= n or j not in gset or t[j] in NAMESTART:  # must be title + given name
         return None
     g = 2 if (
         j + 1 < n
@@ -2874,6 +2908,57 @@ def _earlier_local_temple_title(ctx, start, surface):
     return False
 
 
+def rule_posthumous_emperor_title(ctx, i):
+    """Two-character posthumous 谥号 + 帝 imperial designation: 昭宣帝.
+
+    Agent-1 span geometry only. Gated by a complete POS-given span whose two
+    characters are posthumous epithets (谥号 morphology), an imperial 帝 suffix,
+    and an accession/enthronement predicate (or licensing left verb), so reused
+    bare forms such as 宣帝/武帝 without local emperor support are not over-tagged.
+    No identity is bonded (Agent 2's job)."""
+    t, consumed = ctx.t, ctx.consumed
+    if ctx.gspans.get(i) != i + 2:
+        return None
+    if t[i + 2:i + 3] != "帝":
+        return None
+    if not all(char in FIEF_POSTHUMOUS_EPITHETS for char in t[i:i + 2]):
+        return None
+    epithet_tokens = ctx.tokens_for(i, i + 2)
+    if (
+        not epithet_tokens
+        or epithet_tokens[0].start != i
+        or epithet_tokens[-1].end != i + 2
+        or any(
+            token.pos != "PROPN" or "NameType=Giv" not in token.tag
+            for token in epithet_tokens
+        )
+    ):
+        return None
+    if (
+        i > 0
+        and "\u3400" <= t[i - 1] <= "\u9fff"
+        and t[i - 1] not in NAMESTART
+        and not _title_left_verb(ctx, i)
+        and not (
+            ctx.token_at(i - 1) is not None
+            and ctx.token_at(i - 1).end == i
+            and ctx.token_at(i - 1).pos in FUNCTION_POS
+        )
+    ):
+        return None
+    end = i + 3
+    if not (
+        t[end:end + 2] in EMPEROR_ACCESSION_PHRASES
+        or t[end:end + 1] in EMPEROR_EVENT_VERBS
+        or _title_predicate_after(ctx, end)
+        or _title_left_verb(ctx, i)
+    ):
+        return None
+    if any(consumed[i:end]):
+        return None
+    return (i, end, t[i:end], "posthumous_emperor_title")
+
+
 def rule_title_appellation(ctx, i):
     """Title morphology plus occurrence-local evidence; no person KB admission."""
     t, consumed = ctx.t, ctx.consumed
@@ -4453,6 +4538,7 @@ RULES = [
     ("model_ner_temple_title", "jie", rule_model_ner_temple_title),
     ("model_ner_short_royal_title", "jie", rule_model_ner_short_royal_title),
     ("model_ner_title", "jie", rule_model_ner_title),
+    ("posthumous_emperor_title", "jie", rule_posthumous_emperor_title),
     ("model_ner_given_boundary", "jie", rule_model_ner_given_boundary),
     ("model_ner_predicate", "jie", rule_model_ner_predicate),
     ("model_ner_appos", "jie", rule_model_ner_appos),
