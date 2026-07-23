@@ -15,7 +15,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 TEXT = REPO / "web" / "public" / "text"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -28,6 +28,33 @@ def _sha256_text(text: str) -> str:
 
 def _safe_candidate(row: dict) -> bool:
     return not str(row.get("mapping_status", "")).startswith("flagged_")
+
+
+def _jie_number(text: str) -> int | None:
+    if not text:
+        return None
+    codepoint = ord(text[0])
+    if 0x2460 <= codepoint <= 0x2473:
+        return codepoint - 0x2460 + 1
+    if 0x3251 <= codepoint <= 0x325F:
+        return codepoint - 0x3251 + 21
+    if 0x32B1 <= codepoint <= 0x32BF:
+        return codepoint - 0x32B1 + 36
+    return None
+
+
+def _jie_by_paragraph(paragraphs: list[dict]) -> dict[int, tuple[int, int | None]]:
+    result = {}
+    jie_index = 0
+    number = None
+    for paragraph in paragraphs:
+        text = paragraph.get("main", "") or ""
+        next_number = _jie_number(text)
+        if next_number is not None:
+            jie_index += 1
+            number = next_number
+        result[int(paragraph["id"])] = (jie_index, number)
+    return result
 
 
 def build(mapping_path: Path, output_dir: Path) -> dict:
@@ -51,6 +78,7 @@ def build(mapping_path: Path, output_dir: Path) -> dict:
             int(paragraph["id"]): paragraph.get("main", "") or ""
             for paragraph in paragraphs
         }
+        jie_by_pid = _jie_by_paragraph(paragraphs)
         grouped: dict[tuple[int, str], list[dict]] = {}
         for row in rows:
             pid = int(row["repo_para_id"])
@@ -62,10 +90,23 @@ def build(mapping_path: Path, output_dir: Path) -> dict:
             if pid not in text_by_pid:
                 raise ValueError(f"juan {juan} has no paragraph {pid}")
             text = text_by_pid[pid]
+            jie_index, jie_number = jie_by_pid[pid]
             candidates = []
             seen = set()
             handles = set()
             for row in identity_rows:
+                row_jie_index = int(row["repo_jie_index"])
+                if row_jie_index != jie_index:
+                    raise ValueError(
+                        f"juan {juan} paragraph {pid} belongs to jie {jie_index}, "
+                        f"not mapped jie {row_jie_index}"
+                    )
+                row_jie_number = row.get("repo_jie_number")
+                if row_jie_number is not None and int(row_jie_number) != jie_number:
+                    raise ValueError(
+                        f"juan {juan} paragraph {pid} has jie number {jie_number}, "
+                        f"not mapped number {row_jie_number}"
+                    )
                 start, end = int(row["original_start"]), int(row["original_end"])
                 surface = str(row["original_surface"])
                 if not (0 <= start < end <= len(text)) or text[start:end] != surface:
@@ -116,6 +157,8 @@ def build(mapping_path: Path, output_dir: Path) -> dict:
                 key,
                 {
                     "text_sha256": _sha256_text(text),
+                    "jie_index": jie_index,
+                    "jie_number": jie_number,
                     "identities": [],
                 },
             )["identities"].append(entry)
@@ -146,7 +189,8 @@ def build(mapping_path: Path, output_dir: Path) -> dict:
         "identities_by_juan": counts,
         "evidence_sha256_by_juan": evidence_hashes,
         "policy": (
-            "paragraph-scoped identity anchors only; flagged candidates cannot "
+            "canonical numbered-jie-scoped identity anchors only; paragraph offsets "
+            "and unique jie indexes are both validated; flagged candidates cannot "
             "authorize anchors; no source or translation prose persisted"
         ),
     }
@@ -194,6 +238,7 @@ def load_juan(
         int(paragraph["id"]): paragraph.get("main", "") or ""
         for paragraph in paragraphs
     }
+    jie_by_pid = _jie_by_paragraph(paragraphs)
     result = {}
     for pid_text, paragraph in payload.get("paragraphs", {}).items():
         pid = int(pid_text)
@@ -203,6 +248,15 @@ def load_juan(
         if paragraph.get("text_sha256") != _sha256_text(text):
             raise ValueError(
                 f"translation evidence paragraph hash mismatch: juan {juan} pid {pid}"
+            )
+        expected_jie_index, expected_jie_number = jie_by_pid[pid]
+        if int(paragraph.get("jie_index", -1)) != expected_jie_index:
+            raise ValueError(
+                f"translation evidence jie mismatch: juan {juan} pid {pid}"
+            )
+        if paragraph.get("jie_number") != expected_jie_number:
+            raise ValueError(
+                f"translation evidence jie number mismatch: juan {juan} pid {pid}"
             )
         identities = []
         for identity in paragraph.get("identities", []):

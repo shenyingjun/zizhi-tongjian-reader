@@ -85,7 +85,7 @@ JUE_HEAD = set("\u738b\u516c\u4faf")
 PERSON_LEFT_VERBS = set("召使遣命拜封杀执斩诛攻伐击问谓告从见留逐废立迎送任赐讨擒袭说劝诣遗谗谮劾")
 FUNCTION_HANDLE_OBJECT_VERBS = set("劝从遣")
 FUNCTION_HANDLE_SUBJECT_PREDICATES = set("破出知欲为应还归走奔死降入如")
-FUNCTION_HANDLE_SUBJECT_VETO = {"当"}
+FUNCTION_HANDLE_SUBJECT_VETO = {"当", "遂"}
 PERSON_RIGHT_PRED = set("曰云言白为欲乃遂亦因与及从见请谏谓告使率帅攻击杀死亡降走奔至来去还归领兼屯卒议困")
 PERSON_SUBJECT_PRED = set("曰云言白请谏率帅攻击杀死亡降走奔至来去还归遣命引闻问怒使从纳听拒救议困")
 PERSON_REPORTING_VERBS = set("白")
@@ -5463,6 +5463,14 @@ def detect_anaphora(ctx, cards):
                             and (
                                 extension in ctx.corpus.ner
                                 or ctx.gspans.get(extension_start) == i + L
+                                or (
+                                    active_external
+                                    and extension == source
+                                    and any(
+                                        anchor["identity_surface"] == source
+                                        for anchor in active_external
+                                    )
+                                )
                             )
                         ):
                             embedded_fullname = True

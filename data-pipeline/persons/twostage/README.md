@@ -24,24 +24,31 @@ union 产物，已不能代表这里的最新实现。
 AGREE/RECOVER/LOST 数字不再作为当前 benchmark。新规则改动统一通过 `benchmark.py`
 复跑，并按 `SPEC.md` 的人工抽样要求审查。
 
-最终输出必须加载 Translation evidence。先生成 evidence，再在仓库根目录重建行政区证据
-并重标全 294 卷：
+最终输出必须加载 Translation evidence。仓库已包含 jie-scoped、无译文正文的
+`translation-evidence/`。需要从来源重新生成时，先逐卷恢复临时 mapping，再重建该目录：
 
 ```powershell
 data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
+  data-pipeline\persons\twostage\recover_translation_mapping.py `
+  --juans (1..294) `
+  --mapping-json C:\temp\translation-mapping-recovered.json
+
+data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
   data-pipeline\persons\twostage\translation_evidence.py `
-  --mapping-json C:\temp\mapping-v3.json `
-  --output-dir C:\temp\translation-evidence
+  --mapping-json C:\temp\translation-mapping-recovered.json `
+  --output-dir data-pipeline\persons\twostage\translation-evidence
 
 data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
   data-pipeline\persons\twostage\retag.py `
-  --translation-evidence-dir C:\temp\translation-evidence `
+  --translation-evidence-dir data-pipeline\persons\twostage\translation-evidence `
   --output-dir C:\temp\ztj-agent1-final
 ```
 
 `retag.py` 默认先重建 `admin-places.json`；反复调试规则时可加
 `--skip-admin-rebuild`，也可用 `--juans 62 141` 只处理指定卷。输出目录包含每卷 JSON
 和 `manifest.json`，两者都记录 `rules.py` 与行政区证据的 SHA-256。
+卷 113 的来源页明确标记译文缺失，因此其 evidence 是经来源 hash 验证的空记录，而非
+生成或猜测的译文证据。
 
 未传 `--translation-evidence-dir` 的路径只用于规则消融和调试，不作为最终输出，也不汇报
 正式覆盖率。需要针对部分卷验证时可运行：
@@ -51,7 +58,7 @@ data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
   data-pipeline\persons\twostage\retag.py `
   --juans 27 37 45 150 `
   --skip-admin-rebuild `
-  --translation-evidence-dir C:\temp\translation-evidence `
+  --translation-evidence-dir data-pipeline\persons\twostage\translation-evidence `
   --output-dir C:\temp\ztj-agent1-translation
 ```
 

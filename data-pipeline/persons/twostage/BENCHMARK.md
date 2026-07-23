@@ -11,7 +11,7 @@ benchmark。最新机器可读结果见
 ```powershell
 data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
   data-pipeline\persons\twostage\benchmark.py `
-  --translation-evidence-dir C:\temp\translation-evidence `
+  --translation-evidence-dir data-pipeline\persons\twostage\translation-evidence `
   --json data-pipeline\persons\twostage\benchmark-latest.json
 ```
 
@@ -20,7 +20,7 @@ data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
 ```powershell
 data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
   data-pipeline\persons\twostage\benchmark.py `
-  --translation-evidence-dir C:\temp\translation-evidence `
+  --translation-evidence-dir data-pipeline\persons\twostage\translation-evidence `
   --juans 23 69 97 `
   --json C:\temp\translation-evidence-benchmark.json
 ```
@@ -61,10 +61,10 @@ partial `罗侯`。例如 `法曹参军` 内的 `曹参`、`魏征西将军` 内
 
 ## 最新全量结果
 
-运行时间：2026-07-21 UTC；Python 3.11.4；294 卷；Translation-assisted。结果 JSON
+运行时间：2026-07-23 UTC；Python 3.11.4；294 卷；Translation-assisted。结果 JSON
 同时记录：
 
-- rule-bundle SHA-256：`f42baf069149a44c1dd50c90e8dbacdeec515113a1f76f3f58f4a39b2b6444cf`
+- rule-bundle SHA-256：`52d11fb5412cfedfc2d6aae83ce45946a6dc32174b056852c5affe4ca6877d29`
 - `admin-places.json` SHA-256：`b6849b571ae31041ea362bb1d2a9c689a61da7e081aa5460cc10e162e1bd5370`
 
 后者使时序行政区证据变化不会被误当成“同一规则”的 benchmark。
@@ -74,13 +74,13 @@ partial `罗侯`。例如 `法曹参军` 内的 `曹参`、`魏征西将军` 内
 | raw v1 main spans | 128,596 |
 | audited exclusions | 266 |
 | **audited v1 main spans** | **128,330** |
-| Agent 1 覆盖 v1 | 124,864 |
-| **audited v1 coverage** | **97.299%** |
-| audited v1-only | 3,466 |
-| Agent 1 spans | 175,399 |
-| Agent 1 spans overlapping v1 | 125,324 |
-| Agent 1 spans not overlapping v1 | 50,075 |
-| v1 overlap proxy | 71.451% |
+| Agent 1 覆盖 v1 | 124,745 |
+| **audited v1 coverage** | **97.206%** |
+| audited v1-only | 3,585 |
+| Agent 1 spans | 174,837 |
+| Agent 1 spans overlapping v1 | 125,138 |
+| Agent 1 spans not overlapping v1 | 49,699 |
+| v1 overlap proxy | 71.574% |
 
 两个 overlap 数不是一一对应计数：当两个系统的跨度切分不同，一个 span 可能与多个 span
 重叠。
@@ -89,12 +89,26 @@ partial `罗侯`。例如 `法曹参军` 内的 `曹参`、`魏征西将军` 内
 
 | v1 kind | 覆盖 | 总数 | coverage | v1-only |
 |---|---:|---:|---:|---:|
-| alias | 85,985 | 88,353 | 97.320% | 2,368 |
-| anaphora | 34,170 | 35,261 | 96.906% | 1,091 |
-| feng | 357 | 363 | 98.347% | 6 |
+| alias | 85,988 | 88,353 | 97.323% | 2,365 |
+| anaphora | 34,050 | 35,261 | 96.566% | 1,211 |
+| feng | 355 | 363 | 97.796% | 8 |
 | gloss | 1,535 | 1,536 | 99.935% | 1 |
 | role | 2,817 | 2,817 | 100.000% | 0 |
-| **ALL** | **124,864** | **128,330** | **97.299%** | **3,466** |
+| **ALL** | **124,745** | **128,330** | **97.206%** | **3,585** |
+
+### Jie-scoped Translation evidence recovery
+
+The deleted legacy Translation asset was not reproducible, so the current checked-in asset was
+recovered deterministically from the attributable source pages. It contains no source or
+translation prose: only NER identities, canonical offsets, source hashes, and unique numbered-jie
+assignments. All 294 evidence files pass manifest, paragraph hash, offset, and jie checks. Juan 113
+is an empty evidence file because its source explicitly states that the translation is missing.
+
+Against the same rule bundle, the no-Translation ablation covers 124,312/128,330 (96.869%) with
+4,018 gaps. The recovered evidence therefore closes 433 audited gaps and adds 0.337 percentage
+points. It produces 1,066 net additional Agent 1 spans: 436 overlap audited v1 and 630 do not.
+The old deleted evidence reported 97.299%; the reproducible recovery is 119 covered spans lower,
+so the old number is retained only as historical context and is not the current benchmark.
 
 ### 高频缺口称号规则
 
