@@ -1,5 +1,8 @@
 # Person recognition & identity pipeline
 
+> 本文描述当前 shipped 旧管线。正在验证、将来替代它的两阶段术语、节级省称规则、
+> Agent 1/Agent 2 边界和迁移计划见 [`twostage/SPEC.md`](twostage/SPEC.md)。
+
 Builds the **person knowledge base** the reader ships with: who appears in 《资治通鉴》,
 where each person is mentioned, and which surface strings (full names, 省称, 封号, 谥号,
 role appellations) resolve to which person — all computed **offline, at build time**.
@@ -188,6 +191,31 @@ Precision channels the audit relies on: **veto** is delete-only; **binding** off
 placed + re-checked by the build; a **single-char** binding (卬→刘卬) routes through the
 gated anaphora pass, never a blanket alias; **card** edits are metadata-only and a
 `merge_into` is accepted only when the survivor is a real card in that 卷.
+
+## POS cache
+
+`web/public/text/persons/pos_giv/juan_NNN.json` is schema v3. Each file records the
+source-text SHA-256, Hugging Face model ID and cached revision, sentence boundaries,
+and every model token's source text, absolute paragraph-local `[start,end)` offsets,
+base UPOS, complete emitted tag, and emitted confidence. The current
+`KoichiYasuoka/roberta-classical-chinese-base-upos` pipeline emits a mix: tags such
+as `VERB` and `PROPN|NameType=Giv` are unprefixed, while grouped tokens can carry
+tags such as `B-NUM`/`I-NUM`. `bio` is stored only where that prefix is actually
+emitted; none is invented for unprefixed tokens. `giv` and `giv_spans` are compact,
+derived compatibility summaries. Readers of v3 derive the same `GivOffsets` and
+`.spans`; legacy v1/v2 files remain readable.
+
+Normal builds and benchmarks only read matching caches. They never invoke the model
+on a miss, so an all-volume loop cannot silently become a three-hour refresh. Refresh
+is explicit, resumable (already-current v3 volumes are skipped), retried per volume,
+and atomically replaces each file only after complete output has validated:
+
+```powershell
+cd data-pipeline\persons
+..\.venv-ner\Scripts\python.exe refresh_pos_giv.py --juans 1 2
+..\.venv-ner\Scripts\python.exe refresh_pos_giv.py       # all 294
+..\.venv-ner\Scripts\python.exe refresh_pos_giv.py --force --juans 1
+```
 
 ## Build & validate
 

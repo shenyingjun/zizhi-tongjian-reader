@@ -32,6 +32,7 @@ sys.path[:0] = [str(PERS), str(HERE)]
 import pos_giv  # noqa: E402
 import rules as R  # noqa: E402
 import translation_evidence as TE  # noqa: E402
+import benchmark_reference as BR  # noqa: E402
 
 
 def _overlap(a: tuple[int, int], b: tuple[int, int]) -> bool:
@@ -48,9 +49,19 @@ def run(
 ) -> dict:
     started = time.perf_counter()
     corpus = R.load_corpus()
+    all_exclusions = BR.load_exclusions()
+    exclusions = {
+        juan: all_exclusions[juan]
+        for juan in juans
+        if juan in all_exclusions
+    }
+    exclusion_summary = BR.exclusion_summary(exclusions)
     reference_by_kind = collections.defaultdict(lambda: [0, 0])
+    raw_reference_by_kind = collections.defaultdict(lambda: [0, 0])
     tagged_by_chunk = collections.defaultdict(lambda: [0, 0])
+    raw_v1_total = raw_v1_covered = 0
     v1_total = v1_covered = agent_total = agent_overlapped = 0
+    agent_overlapped_raw = 0
 
     for juan in juans:
         text_path = TEXT / f"juan_{juan:03d}.json"
@@ -82,9 +93,23 @@ def run(
 
         v1_doc = json.loads(v1_path.read_text(encoding="utf-8"))
         v1 = collections.defaultdict(list)
+        raw_v1 = collections.defaultdict(list)
         for mention in v1_doc.get("mentions", []):
             if mention.get("source", "main") == "main":
-                v1[mention["pid"]].append(mention)
+                raw_v1[mention["pid"]].append(mention)
+                if not BR.is_excluded(exclusions, juan, mention):
+                    v1[mention["pid"]].append(mention)
+
+        for pid, mentions in raw_v1.items():
+            spans = [(c["start"], c["end"]) for c in agent.get(pid, ())]
+            for mention in mentions:
+                kind = mention.get("kind", "?")
+                raw_reference_by_kind[kind][0] += 1
+                raw_v1_total += 1
+                span = (mention["start"], mention["end"])
+                if any(_overlap(span, candidate) for candidate in spans):
+                    raw_reference_by_kind[kind][1] += 1
+                    raw_v1_covered += 1
 
         for pid, mentions in v1.items():
             spans = [(c["start"], c["end"]) for c in agent.get(pid, ())]
@@ -99,6 +124,9 @@ def run(
 
         for pid, cards_for_para in agent.items():
             spans = [(m["start"], m["end"]) for m in v1.get(pid, ())]
+            raw_spans = [
+                (m["start"], m["end"]) for m in raw_v1.get(pid, ())
+            ]
             for card in cards_for_para:
                 chunk = card["chunk_type"]
                 tagged_by_chunk[chunk][0] += 1
@@ -107,6 +135,8 @@ def run(
                 if any(_overlap(span, reference) for reference in spans):
                     tagged_by_chunk[chunk][1] += 1
                     agent_overlapped += 1
+                if any(_overlap(span, reference) for reference in raw_spans):
+                    agent_overlapped_raw += 1
 
     admin_places_path = HERE / "admin-places.json"
     return {
@@ -119,7 +149,15 @@ def run(
         ).hexdigest(),
         "preset": "PRESET_RECALL",
         "scope": "numbered-jie",
-        "reference": "web/public/text/persons/mentions (production v1, main source only)",
+        "reference": (
+            "audited production v1 main-source geometries; exact reviewed "
+            "non-person/bad-partial exclusions applied"
+        ),
+        "reference_exclusions": {
+            "path": str(BR.EXCLUSIONS_PATH.relative_to(REPO)),
+            "sha256": BR.exclusions_sha256(),
+            **exclusion_summary,
+        },
         "matching": "same juan + paragraph id + overlapping [start,end)",
         "translation_evidence": (
             str(translation_evidence_dir)
@@ -128,11 +166,19 @@ def run(
         ),
         "juans": len(juans),
         "summary": {
+            "v1_spans_raw": raw_v1_total,
+            "v1_covered_raw": raw_v1_covered,
+            "v1_missed_raw": raw_v1_total - raw_v1_covered,
+            "v1_coverage_raw_pct": round(
+                _pct(raw_v1_covered, raw_v1_total), 3
+            ),
+            "v1_excluded": exclusion_summary["count"],
             "v1_spans": v1_total,
             "v1_covered": v1_covered,
             "v1_missed": v1_total - v1_covered,
             "v1_coverage_pct": round(_pct(v1_covered, v1_total), 3),
             "agent1_spans": agent_total,
+            "agent1_overlapping_v1_raw": agent_overlapped_raw,
             "agent1_overlapping_v1": agent_overlapped,
             "agent1_nonoverlapping_v1": agent_total - agent_overlapped,
             "v1_overlap_proxy_pct": round(_pct(agent_overlapped, agent_total), 3),
@@ -145,6 +191,15 @@ def run(
                 "coverage_pct": round(_pct(hit, total), 3),
             }
             for kind, (total, hit) in sorted(reference_by_kind.items())
+        },
+        "v1_raw_coverage_by_kind": {
+            kind: {
+                "total": total,
+                "covered": hit,
+                "missed": total - hit,
+                "coverage_pct": round(_pct(hit, total), 3),
+            }
+            for kind, (total, hit) in sorted(raw_reference_by_kind.items())
         },
         "v1_overlap_by_chunk_type": {
             chunk: {
@@ -162,11 +217,15 @@ def run(
 
 def print_report(result: dict) -> None:
     summary = result["summary"]
-    print("Agent 1 vs production v1 (compatibility benchmark)")
+    print("Agent 1 vs audited production v1 (compatibility benchmark)")
     print(f"juans={result['juans']}  runtime={result['runtime_seconds']}s")
     print(
         f"v1 coverage: {summary['v1_covered']}/{summary['v1_spans']} "
         f"= {summary['v1_coverage_pct']:.3f}%  missed={summary['v1_missed']}"
+    )
+    print(
+        f"raw v1: {summary['v1_covered_raw']}/{summary['v1_spans_raw']}  "
+        f"excluded={summary['v1_excluded']}"
     )
     print(
         f"Agent1 spans: {summary['agent1_spans']}  "

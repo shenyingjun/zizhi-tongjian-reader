@@ -89,6 +89,7 @@ export default function App() {
         && window.matchMedia('(max-width: 900px)').matches) {
       return false;
     }
+
     return true;
   });
   // Font size scale for the reader body — persisted so iOS / mobile users
@@ -968,11 +969,16 @@ export default function App() {
     for (const mt of mentions) {
       if (mt.source !== 'main' || !mt.person_id) continue;
       const arr = m.get(mt.pid) ?? [];
-      arr.push({ start: mt.start, end: mt.end, personId: mt.person_id, confidence: mt.confidence });
+      arr.push({
+        start: mt.start,
+        end: mt.end,
+        personId: personVariant === 'v1' ? mt.person_id : undefined,
+        confidence: mt.confidence,
+      });
       m.set(mt.pid, arr);
     }
     return m;
-  }, [mentions]);
+  }, [mentions, personVariant]);
 
   // Surface → person ids index for binding 白话导读 关键人物 to the KB.
   // Only canonical/alias surfaces of reviewed/high people are bindable; an
@@ -1722,5 +1728,3 @@ export default function App() {
     </div>
   );
 }
-
-

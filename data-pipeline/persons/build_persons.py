@@ -18,7 +18,7 @@ and a surface is only applied in the 卷 listed in its person's `juans`.
 Run:  python build_persons.py
 """
 from __future__ import annotations
-import json, datetime, hashlib, re, collections
+import json, datetime, hashlib, re, collections, sys
 from pathlib import Path
 
 import os
@@ -27,6 +27,16 @@ from cast import PEOPLE
 import seed as seed_mod
 import reigns as reigns_mod
 import pos_giv
+
+# Local-first detection (Stage 1 tagger). The validated per-juan detector lives in
+# twostage/stage1 (D-LIT3 / D-GIV2 with the full boundary-guard stack). We reuse it
+# as an ADD-only supplementary tagger so a KB person literally present in a 卷 that is
+# NOT listed in their card's `juans` still gets underlined (王绪@254), with identity
+# resolved globally by the era-window merge below. It imports only `seed`, so pulling
+# it in here is side-effect-free.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "twostage"))
+import stage1 as lf_stage1  # noqa: E402
+import identify as lf_identify  # noqa: E402  (era-window identity for global-lexicon)
 
 JUANS = list(range(1, 295))  # all 294 卷 (hand 'reviewed' + auto seed layer)
 # Iteration hook: ZTJ_ONLY_JUANS="251,252" limits the build to a few 卷 for fast
@@ -2725,7 +2735,114 @@ def _r2_mint(x_full, given, juan_no, meta, created, rules, canon_to_pids, by_id,
     return card["id"]
 
 
-def main():
+# ── Local-first supplementary tagger (Stage-1 tag / Stage-2 identify) ─────────
+# Principles (user-approved): (a) tag first — enrichment included — then identify;
+# (b) tagging stays LOCAL (节 preferred, else 卷); (c) identity resolves GLOBALLY
+# (era-window + KB reference). This pass adds ADD-only mentions for a KB person whose
+# full name (or clean 姓+given) literally appears in a 卷 that is NOT in their card's
+# `juans` list — the class the card-gated alias pass structurally cannot reach
+# (王绪@254). It never mints new cards (pure new-person discovery stays with the
+# enrichment tier) and never touches spans already tagged by any earlier pass.
+_LF_WINDOW = 40  # era-window (卷) for the uniqueness merge; mirrors the shadow harness
+
+# Grammatical particles / numerals / common nouns that are never a personal given
+# name. A 2-char local-first candidate 姓+X with X in this set is an ambiguous
+# surname-char (state name 魏/赵, 王 "king", 马 "horse") glued to a function word or
+# common noun — 魏以 (魏国以…), 王为 (王为…), 魏人 (people of 魏), 马二 (two horses).
+# Since these single-char givens are POS-optional in the supplement, this guard
+# restores the precision the POS·Giv gate would otherwise provide, without touching
+# real 2-char names (王绪, 魏收, 荀攸, 李谷 …).
+_LF_STOP_GIVEN = set(
+    "以为之其而则也矣乃与及若因故者所焉耳于又亦皆既未无"   # grammatical particles
+    "人二三四五六七八九十众师兵家门城边内外前后中大小上下"   # common nouns / numerals
+    "至足肥牧望军民国主王公侯时日年月")
+
+
+def _build_localfirst_index(by_id):
+    """Global detection lexicon + era index for the local-first supplement."""
+    surf3, lex2, known_long = set(), {}, set()
+    name_pids: dict[str, set] = collections.defaultdict(set)
+    pid_juans: dict[str, set] = {}
+    for pid_, p in by_id.items():
+        cn = p["canonical_name"]
+        pid_juans[pid_] = set(p.get("juans", []))
+        names = [cn]
+        for n in p.get("names", []):
+            names.append(n.get("text", "") if isinstance(n, dict) else n)
+        for nm in names:
+            if not nm:
+                continue
+            if 2 <= len(nm) <= 4:
+                name_pids[nm].add(pid_)
+            if len(nm) >= 3:
+                known_long.add(nm)
+                surf3.add(nm)
+        if len(cn) == 2:
+            sn = seed_mod._surname_of(cn)
+            if sn and len(sn) == 1 and sn in seed_mod.CLEAN_SURNAMES \
+                    and cn[1] not in lf_stage1.NONNAME:
+                lex2.setdefault(cn, []).append(pid_)
+    return surf3, lex2, known_long, name_pids, pid_juans
+
+
+def _era_resolve(name, juan, name_pids, pid_juans):
+    """Nearest-era UNIQUE KB owner of `name` for this 卷, else None (skip — no mint).
+    A tie or an out-of-window nearest is left untagged (precision-first)."""
+    scored = []
+    for pid in name_pids.get(name, ()):  # noqa: B007
+        js = pid_juans.get(pid)
+        if js:
+            scored.append((min(abs(x - juan) for x in js), pid))
+    if not scored:
+        return None
+    scored.sort()
+    if len(scored) >= 2 and scored[0][0] == scored[1][0]:
+        return None
+    if scored[0][0] > _LF_WINDOW:
+        return None
+    return scored[0][1]
+
+
+def localfirst_supplement(juan_no, paras, mentions, by_id, lf_idx):
+    """Return ADD-only [(para_id, ce, start, end, surface, pid)] local-first mentions.
+    Tags KB people literally present in this 卷 but not card-gated here; identity by
+    era-window. Dedups against every existing main-source span (never overlaps)."""
+    surf3, lex2, known_long, name_pids, pid_juans = lf_idx
+    # Spans already tagged by any earlier pass (per paragraph) — never override.
+    taken: dict = collections.defaultdict(list)
+    for m in mentions:
+        if m.get("source") == "main":
+            taken[m["pid"]].append((m["start"], m["end"]))
+    giv = pos_giv.giv_for_juan(juan_no, paras, OUT / "pos_giv")
+    cards, _ = lf_stage1.detect_juan(juan_no, paras, giv, surf3, lex2, known_long,
+                                     pos_optional=True)
+    ce_of = {p["id"]: p.get("ce_year") for p in paras}
+    out = []
+    for c in cards:
+        s, e, pid_para = c["start"], c["end"], c["para_id"]
+        surf = c["surface"]
+        if len(surf) == 2 and surf[1] in _LF_STOP_GIVEN:
+            continue                              # 姓+particle/common-noun → not a name
+        if any(a < e and s < b for (a, b) in taken.get(pid_para, ())):
+            continue                              # overlaps an existing span → skip
+        pid = _era_resolve(surf, juan_no, name_pids, pid_juans)
+        if not pid or pid not in by_id:
+            continue                              # no unique KB owner → no tag, no mint
+        if _lifespan_outside(by_id[pid], ce_of.get(pid_para)):
+            continue
+        taken[pid_para].append((s, e))
+        out.append((pid_para, ce_of.get(pid_para), s, e, surf, pid))
+    return out
+
+
+def build_enriched_kb():
+    """Phase A — build & enrich the person KB, mutating the module globals
+    PEOPLE_MERGED and RULES in place, and return the state the Phase-B emission
+    pass consumes. Extracted verbatim from main() so the two-stage pipeline can
+    import the fully enriched KB (RULES + enrichment-minted cards) at the source,
+    closing the standalone -462 gap where seed.build_seed alone lacks the cards
+    minted here (gloss / narrow-R1 / R2 / LLM curation / xref+variant merges /
+    lookback / gloss_fill). main() calls this, then emits mentions exactly as before."""
     by_id = {p["id"]: p for p in PEOPLE_MERGED}
     # Duplicate-id guard — a copy/paste slip would silently drop a person.
     if len(by_id) != len(PEOPLE_MERGED):
@@ -3015,6 +3132,54 @@ def main():
                 p["juans"].append(jb)
                 gloss_fill_added += 1
 
+    return {
+        "by_id": by_id,
+        "given_of": given_of,
+        "canon_to_pids": canon_to_pids,
+        "minted_admit": minted_admit,
+        "minted_anchor": minted_anchor,
+        "llm_anchor": llm_anchor,
+        "counters": {
+            "briefs_enriched": briefs_enriched,
+            "card_merged": card_merged,
+            "card_rebriefed": card_rebriefed,
+            "card_relabeled": card_relabeled,
+            "gloss_fill_added": gloss_fill_added,
+            "gloss_new_cards": gloss_new_cards,
+            "lookback_added": lookback_added,
+            "lookback_rebriefed": lookback_rebriefed,
+            "r1_new": r1_new,
+            "r1_phantoms": r1_phantoms,
+            "r2_new": r2_new,
+            "xref_merged": xref_merged,
+        },
+    }
+
+
+def emit_mentions(kb):
+    """Phase B — emit the mention/appearance set from an enriched KB (the dict
+    returned by build_enriched_kb). Extracted from main() so the two-stage pipeline
+    can drive detection+emission from twostage without re-deriving the KB."""
+    by_id = kb["by_id"]
+    given_of = kb["given_of"]
+    canon_to_pids = kb["canon_to_pids"]
+    minted_admit = kb["minted_admit"]
+    minted_anchor = kb["minted_anchor"]
+    llm_anchor = kb["llm_anchor"]
+    _c = kb["counters"]
+    briefs_enriched = _c["briefs_enriched"]
+    card_merged = _c["card_merged"]
+    card_rebriefed = _c["card_rebriefed"]
+    card_relabeled = _c["card_relabeled"]
+    gloss_fill_added = _c["gloss_fill_added"]
+    gloss_new_cards = _c["gloss_new_cards"]
+    lookback_added = _c["lookback_added"]
+    lookback_rebriefed = _c["lookback_rebriefed"]
+    r1_new = _c["r1_new"]
+    r1_phantoms = _c["r1_phantoms"]
+    r2_new = _c["r2_new"]
+    xref_merged = _c["xref_merged"]
+
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "mentions").mkdir(parents=True, exist_ok=True)
 
@@ -3026,6 +3191,22 @@ def main():
     role_emitted = 0
     gloss_emitted = 0
     feng_emitted = 0
+    localfirst_emitted = 0            # ADD-only local-first supplement (王绪 class)
+    # Local-first detection lexicon + era index, built once from the enriched KB.
+    lf_idx = _build_localfirst_index(by_id)
+    # ── Global-lexicon alias mode (ZTJ_GLOBAL_LEXICON) ──────────────────────
+    # When set, the per-juan RULES-gated alias pass is REPLACED by global-lexicon
+    # detection (any known KB surface, any 卷 — via stage1.detect_text D-LIT3/D-GIV2)
+    # with identity resolved by the era-window merge (lf_identify.resolve_era) instead
+    # of RULES card-gated prebinding. An unresolved ≥3-char surface still draws a line
+    # under a fresh singleton cluster (never dropped); an unresolved 2-char is skipped
+    # (precision). This is the M3 identity-model swap; diff vs golden classifies deltas.
+    global_lexicon = bool(os.environ.get("ZTJ_GLOBAL_LEXICON"))
+    if global_lexicon:
+        gl_surf3, gl_lex2, gl_known_long, _gl_np, _gl_pj = lf_idx
+        gl_surface_pids, gl_tagged, gl_canon = lf_identify.build_surface_index(
+            PEOPLE_MERGED)
+        gl_new_clusters: dict = {}
     relations_all: list = []
     veto_dropped = 0                 # LLM precision-veto: mentions suppressed
     vetoed_pids: set = set()         # pids touched by veto (orphan-dropped below)
@@ -3266,6 +3447,21 @@ def main():
                 if kind == "anaphora":
                     anaphora_emitted += 1
 
+        # ── Local-first supplement (Stage-1 tag / Stage-2 identify) ────────
+        # ADD-only: tags KB people literally present in this 卷 but not card-gated
+        # here (their card's `juans` omit this 卷), identity resolved by era-window.
+        # Runs last among the taggers so it dedups against every span above; the LLM
+        # veto below still applies uniformly.
+        if not os.environ.get("ZTJ_NO_LOCALFIRST"):
+            for (pid_para, ce_y, s, e, surf, rpid) in localfirst_supplement(
+                    juan_no, juan["paragraphs"], mentions, by_id, lf_idx):
+                mentions.append({"pid": pid_para, "ce_year": ce_y, "source": "main",
+                                 "start": s, "end": e, "surface": surf,
+                                 "person_id": rpid, "kind": "alias",
+                                 "confidence": by_id[rpid].get("confidence", "reviewed")})
+                seen_ids.add(rpid)
+                localfirst_emitted += 1
+
         # ── LLM precision-veto (delete-only) ──────────────────────────────
         # Drop every mention whose surface the 卷's LLM audit flagged as a
         # non-person / boundary-error span. Runs after ALL passes so it uniformly
@@ -3369,6 +3565,7 @@ def main():
           f"{r1_phantoms} phantom tails folded")
     print(f"R2 gloss-subject discovery: {r2_new} cards minted")
     print(f"rc4 封号-glue (titleglue) emitted: {feng_emitted}")
+    print(f"local-first supplement (unlisted-juan KB names) emitted: {localfirst_emitted}")
     print(f"rc5 谥号/封号 fragment cards dropped: {_FRAG_DROPPED}")
     print(f"title-misread (王/公/侯/君/主) cards dropped: {_TITLE_DROPPED}")
     print(f"llm precision-veto: {veto_dropped} mentions suppressed, "
@@ -3390,6 +3587,10 @@ def main():
     if unmatched:
         print(f"  reviewed-but-unmatched ({len(unmatched)}):",
               ", ".join(by_id[u]["canonical_name"] for u in unmatched))
+
+
+def main():
+    emit_mentions(build_enriched_kb())
 
 
 if __name__ == "__main__":

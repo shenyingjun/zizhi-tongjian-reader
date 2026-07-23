@@ -69,7 +69,8 @@
   不是身份回指，可使用该 surface 在节内任一位置的可信 occurrence；
 - 以 `people.json` 中是否存在某个 surface 或 identity 决定是否画线。
 
-离线译文 NER 可以作为**可选补充 identity evidence**，但须满足额外限制：
+离线译文 NER 是**最终输出必须加载的补充 identity evidence**。不加载译文的输出只用于
+规则消融、定位增量和调试，不作为正式结果，也不单独汇报覆盖指标。译文 evidence 须满足：
 
 - evidence 只在其 canonical paragraph 内生效，不跨 paragraph、节或卷；
 - exact full-identity mapping 只有在姓名边界和 title guards 全部通过时才可输出
@@ -86,7 +87,7 @@
 - 译文未识别人物绝不能删除或改变原文已有 card；
 - assisted 输出必须单调保留所有未与新 span 重叠的原文 card；若新 span 被原文完整 card
   严格包含，保留原文完整 card，禁止 suffix 截断；
-- 未显式传入 evidence 时，生产默认输出必须保持不变。
+- 未显式传入 evidence 时，原文规则输出必须保持确定性，但该路径不是最终生产输出。
 
 `detect_juan()` 可以按卷读取文件，但必须先通过 `_blocks_of()` 划分节，再将同节
 paragraph 用硬边界 `"\n"` 拼接后运行规则。输出时恢复到原 paragraph id 和局部偏移。
@@ -96,9 +97,10 @@ paragraph 用硬边界 `"\n"` 拼接后运行规则。输出时恢复到原 para
 规则共享一个 `consumed[]`。高优先级规则先占用 span，低优先级规则不得重叠覆盖。
 除此之外，`combined_evidence` postpass 可先生成未占用 candidate，再由多个**独立证据族**
 共同 admission。它不按规则命中次数或模型分数相加：同一模型派生的 BIO、POS、NER
-属于相关证据，不能重复计票。每个 policy 明确列出所需 signal，且这些 signal 必须来自
-不同 family；任一强 veto 都优先于正向证据。输出 card 保存 `evidence_policy`、
-`evidence_families` 和 `evidence_signals`，使组合决策可逐条复核。
+属于相关证据，每个 family 最多贡献一次。严格 policy 继续要求显式 signal 组合；累计
+policy 则对 family-level support 加权并扣除 soft conflict penalty。两者都要求任一 hard
+veto 优先于全部正向证据。输出 card 保存 `evidence_policy`、`evidence_families` 和
+`evidence_signals`，使组合决策可逐条复核。
 
 ### 4.1 姓名与模型/结构规则
 
@@ -128,9 +130,11 @@ paragraph 用硬边界 `"\n"` 拼接后运行规则。输出时恢复到原 para
 | `corpus_given2` | jie | 兼容 rule id；完整双字 POS·Giv + 姓名边界 | `道济` |
 | `semantic_given2` | jie | 完整双字 POS·Giv + 人物句法框架 | `劝望之`、`为师道所亲信`、`与望之有隙` |
 | `genealogy_given` | jie | 明确谱系前缀 + 连续 POS·Giv 姓名 + 右语法边界；不查 KB | `弟亮`、`其子仁果` 中的姓名 |
-| `foreign_title_name` | jie | 完整双字 POS·Giv + `可汗/单于` | `佗钵可汗` |
+| `foreign_title_name` | jie | 完整 1–3 字 BIO component + `可汗/单于`；紧邻完整人物 BIO 时合并 title+name | `佗钵可汗`、`柔然可汗阿那瓌` |
 | `foreign_suffix_name` | jie | 复姓 + BIO-Giv + 外族姓名后缀 + 右语法边界；不查 KB | `拓跋沙漠汗` |
 | `royal_title_name` | jie | `太子/世子/皇子/王子` + 完整双字 POS·Giv | `太子承乾` |
+| `surname_honorific` | jie | 完整姓氏 morphology + `公/君/侯/卿/郎` + 人物谓词、称呼或同位语 | `张公`、`荀卿`、`萧郎` |
+| `female_court_title` | jie | 严格命名/人物 frame 下的 `X夫人`，或姓氏 + 一字 appellation + `妃` | `华阳夫人`、`萧淑妃` |
 | `person_possessive` | jie | 完整人物 POS，或先行同节双字 handle + `庙/墓/祠/柩/第` | `比干庙`、`崇训墓` |
 | `pos_known_fullname_appos` | jie | fallback：高置信 `Sur + 完整 Giv`，且左侧为人物身份、官职或人物选择谓词 | `司徒刘敬`、`刺史罗尚` |
 | `multifief_jue_name` | jie | 完整 Geo BIO 封地 + `王/公/侯` + 高置信完整 BIO-Giv | `淮南王生`、`临淄王隆基` |
@@ -140,7 +144,7 @@ paragraph 用硬边界 `"\n"` 拼接后运行规则。输出时恢复到原 para
 | `explicit_title_frame` | jie | `子 + X君 + 立`，或高置信政权 + POS-Prs 谥号 + `公` | `子嗣君立`、`齐简公` |
 | `title_appellation` | jie | 仅用称号形态、当前 POS/句法和同节前文：语法化君主称号；局部引入的庙号简称；明确尾衔前的称号组件；受控政权 + 谥号 + 爵位 | `始皇`、`周世宗…世宗`、`太穆神皇后` 中的 `太穆`、`梁孝王` |
 | `coordinated_person_object` | jie | 受控对象引介词 + 两个独立 POS 证明的人物，中间为 `、` | `魏用犀首、张仪` |
-| `combined_evidence` | jie | candidate 上的独立证据族按显式 policy 联合；signal 可为 matched、missing 或 soft conflict，policy 明确授权可补偿的 conflict，hard veto 永远优先 | `以太平公主为女官`、Geo-misclassified `安禄山` |
+| `combined_evidence` | jie | candidate 上的独立证据族按严格组合或累计 family score 联合；同 family 只计一次，soft conflict 显式扣分，hard veto 永远优先 | `以太平公主为女官`、重复省称 `襄子`、Geo-misclassified `安禄山` |
 
 `corpus_xing2/corpus_given2` 是为 benchmark provenance 保留的旧名称，不再表示 corpus
 人物词典。它们使用完整 token span 作冲突否决：候选若完全由高置信
@@ -161,9 +165,46 @@ graded policy 只接受 exact model witness geometry。证据状态分为：
 - **hard veto**：clan/office continuation、政权用法、数量 continuation、较长姓名延续、
   标点/重叠等；任何票数都不能覆盖。
 
-同一模型派生的 POS、BIO、NER 不算三个独立 family。同卷 exact recurrence 可以作为
-`document_recurrence`，但 morphology anchor 必须来自同一 exact surface；Geo-conflict
-路径通常还要求完整 person morphology 在同卷占多数，或当前 occurrence 有 decisive
+hard veto 必须描述当前 occurrence，不能因为同一 surface 在本节另一处像政权或族群，就
+否决当前人物动作语境。例外仅限本节明确把 exact surface 定义为群体的结构，如
+`X数千骑/数万骑`、`谓之 X` 后又募集/集合 `X`，或同时出现 `X将军/X军` 的单位简称。
+`部/国/族` 与攻击对象等 polity frame 仍须结合当前 token morphology 和局部政权句法；
+当前完整人物 morphology 不能被另一 occurrence 覆盖。
+
+BIO continuation 只有在相邻 token 真正连续时才是 hard veto。标点即使被误标为 `I`，
+以及 `将` 等谓词被误标成姓名 `B`，都不能传播 continuation。当前 occurrence 若确实位于
+较长 BIO/NER 名称内部仍必须拒绝，例如 `高句丽` 内的 `高句`、`乙咄陆` 内的 `咄陆`；
+同节重复的外族全名只在明确的协调 `可汗/单于` 结构中辅助 continuation，不能因
+`马通军`、`杨郎何` 等 noisy model surface 截断人物名。
+
+office/title continuation 同样区分姓名与称号组件。`史良娣` 中的 `史良`、`慕容镇军`
+中的 `慕容镇`、`武平君畔` 中的 `武平` 是不完整 geometry；`车犂单于`、`始毕可汗`
+中的前段则是完整姓名。人物姓名在 `赐/封/拜 + 姓名 + 王/公/侯` 中也可保留；完整人物
+称号后的 `长子/长女` 是亲属结构，不是 office continuation。
+
+`cumulative-family-score` 是 family-level 累计 policy，不是 raw rule-count voting：
+
+- exact `model_ner_witness` 是 prerequisite，本身不增加多个模型票；
+- 同节 exact surface 的完整人物 morphology majority 与同节已接纳 exact surface 是较强
+  family，各权重 2；不得从同卷其他节导入 morphology；
+- 同节 recurrence 最多计 1 分；strict/decisive 当前人物句法、
+  当前 surname morphology 支持的姓氏形态、称号、谱系各权重 1；
+- translation exact identity 权重 2；最终生产路径必须加载经 manifest 校验的
+  translation evidence；
+- `geo_nat_morphology` 扣 2，`function_morphology` 扣 1，缺少当前人物 morphology 只记为
+  missing，不单独否决；
+- 总分至少 6，且至少四个不同 support family，才可 admission。
+
+累计 policy 不能传播既有错误 anchor。标点硬边界不算 syntax family；候选若出现前向或
+后向政权并列、直接 `X数千骑/数万骑`、`谓之 X` 且又按群体募集/集合、BIO 中段切尾、
+官职/称号 continuation，或当前是 `并兴/之道/不备/才能/参用` 等抽象类别 continuation，
+均产生 hard veto。由此同一累计门槛仍恢复 `世民/乾归/暮末/恐热` 等当前 occurrence
+可独立佐证的短称，同时拒绝 `铁勒/室韦/山棚/文武/罗门`，不使用 surface blacklist。
+
+同一模型派生的 POS、BIO、NER 不算三个独立 family。Agent 1 不生成也不读取同卷
+recurrence/morphology surface summary；recurrence、morphology anchor、title/genealogy
+anchor、polity/collective veto 都必须在当前节内，并来自同一 exact surface。Geo-conflict
+路径通常还要求完整 person morphology 在同节占多数，或当前 occurrence 有 decisive
 person syntax。Title witness 必须是 POS-Giv span 紧邻 `可汗/单于/公主`，若 title 后又
 紧邻另一个姓名 span，则前段按政权修饰语处理。Genealogy witness 只接受多字亲属引介，
 不用单字 `兄/弟` 的宽松 substring。
@@ -320,8 +361,14 @@ BIO 模型偶尔会把一个外族名拆成相邻实体 span。谱系规则只�
   Step 2 绑定 identity。这里的受控集合只描述称号语法、政权和明确非人物类别。
   规则同时拒绝高置信地名、政权/部族组件、长外族称号切尾、功能词跨界和更长地名
   内部片段，不抢占完整 `foreign_title_name/model_ner_name`，也不产生给名 handle。
-- `foreign_title_name` 将 `佗钵可汗/冒顿单于` 作为完整 title-glued 姓名，并产生
-  `佗钵/冒顿` handle。
+- `foreign_title_name` 接受完整 1–3 字 BIO component + `可汗/单于`。称号后若紧邻
+  完整人物 BIO，则合并整个 title+name，如 `柔然可汗阿那瓌`、`突骑施可汗苏禄`；
+  envoy designation、功能词 component、部/国/军 continuation 和不完整姓名 continuation
+  均拒绝。无后接姓名时产生 component handle；合并形态只产生后接姓名 handle。
+- `surname_honorific` 只接受完整姓氏 morphology + `公/君/侯/卿/郎`，并要求当前
+  occurrence 的人物谓词、称呼或同位语；`公主`、更长姓名和 office continuation 拒绝。
+- `female_court_title` 只接受严格命名/人物 frame 下的 `X夫人`，或完整姓氏 +
+  一字 appellation + `妃`；普通 `夫人/妃` 不据此准入。
 - `royal_title_name` 将 `太子承乾/世子方等/皇子弗陵` 作为完整 title-glued 姓名；
   `皇太子春秋鼎盛` 中的 `春秋` 是年龄表达，受语义保护而不标。
 - `empress_title` 识别 `太后/皇后`；`surname_empress` 只在 surname POS、model-derived
@@ -392,8 +439,10 @@ Model NER 称号另有三个 KB-free schema：
 
 这些 schema 不把 `伯/宗` 加入旧的全局 title suffix 集合。BIO component 必须从
 非 `I-` token 起始；地点后缀和移动到地点的结构均拒绝。已 admission 的完整称号可由
-`local_exact_title` 在同节传播。Pipeline 不注册通用 `local_exact_given`：仅凭同字、
-POS·Giv 和句首谓词仍会误标普通词。
+`local_exact_title` 在同节传播。Pipeline 不注册通用 `local_exact_given`：唯一例外是
+已经 admission 的普通 `anaphora` card 保留其唯一、更早、同节完整锚点 provenance，
+后续 exact 单字还必须有完整 POS·Giv 与严格人物句法。仅凭同字、POS·Giv 和句首谓词
+仍不能传播。
 
 明确禁止：
 
@@ -462,9 +511,19 @@ Agent 2 接收 Agent 1 的 occurrence cards，负责回答“是谁”。
 
 ### 8.2 当前基线
 
-正式可重复 benchmark 由 `benchmark.py` 生成，完整命令、输入定义和最新 JSON 见
-[`BENCHMARK.md`](BENCHMARK.md)。当前正式结果为 125,262 / 128,596 = **97.407%**；
-v1-only 为 3,334。以下表格保留最初 paragraph scope → jie scope 的历史对照：
+正式可重复 benchmark 只测量 Translation-assisted 最终输出，由 `benchmark.py` 生成；
+未加载译文的 default 路径仅作消融诊断，不作为正式指标。生产 v1 中逐 geometry 审核确认
+的错误 reference 记录在 `benchmark-reference-exclusions.jsonl`；benchmark 和 candidate
+audit 共用同一 loader，并验证 geometry 仍存在且正文 surface 未漂移。不得使用 Agent 1
+规则自动过滤 reference，也不得把排除数记作规则 recovery。完整命令、输入定义和最新 JSON
+见 [`BENCHMARK.md`](BENCHMARK.md)。当前 jie-only assisted audited 结果为
+124,864 / 128,330 = **97.299%**，剩余 audited v1 gap 为 3,466；raw 兼容诊断口径为
+124,866 / 128,596 = 97.099%，gap 3,730。以下表格保留最初
+paragraph scope → jie scope 的历史对照：
+
+除明确标为 raw compatibility、default ablation 或 attribution 的诊断表外，文档、报告和
+对外结论中的 “coverage”“gap”“final benchmark” 均只能指 audited Translation-assisted
+口径。
 
 | v1 kind | paragraph scope | jie scope |
 |---|---:|---:|
@@ -475,21 +534,22 @@ v1-only 为 3,334。以下表格保留最初 paragraph scope → jie scope 的�
 | feng | 88.7% | 89.3% |
 | **ALL** | **86.5%** | **93.3%** |
 
-最新 Agent 1 输出 169,422 spans，其中 125,284 与 v1 重叠，overlap proxy 为 73.948%。
+最新 Agent 1 输出 175,399 spans，其中 125,324 与 v1 重叠，overlap proxy 为 71.451%。
 这些 proxy 不是独立 precision；`太后/皇后`、政权王号、`丞相斯`、`其弟乙` 等真实表达
 在 v1 中大量欠标，必须结合人工例审。
 
-### 8.3 相对生产 v1 的 3,334 个未覆盖 span
+### 8.3 相对 audited 生产 v1 的未覆盖 span
 
-这是“v1 有、Agent 1 没有”的集合，不等同于 3,334 个 Agent 1 错误：v1 既包含
-真实召回，也包含卷级绑定和可疑误标。
+这是“audited v1 有、Agent 1 没有”的集合，不等同于 3,466 个 Agent 1 错误：尚未审计
+的 v1 仍可能包含卷级绑定和可疑误标。
 
 | v1 kind | 未覆盖 |
 |---|---:|
-| alias | 1,841 |
-| anaphora | 1,484 |
-| feng | 3 |
-| gloss | 6 |
+| alias | 2,368 |
+| anaphora | 1,091 |
+| feng | 6 |
+| gloss | 1 |
+| role | 0 |
 
 此前缺口的详细分桶已被本轮规则改变，不能继续当作当前计数。最新阶段结果显示：身份词和
 POS 全名补齐 alias；POS-derived handle 只在更早同节全名之后恢复省称；高置信功能词冲突

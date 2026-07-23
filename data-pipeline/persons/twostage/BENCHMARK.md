@@ -1,7 +1,8 @@
 # Agent 1 benchmark
 
-本页记录当前 `rules.py` Agent 1 相对生产 v1 的可重复兼容性 benchmark。最新机器可读
-结果见 [`benchmark-latest.json`](benchmark-latest.json)。
+本页记录当前 `rules.py` Agent 1 相对**已审计生产 v1 reference** 的可重复兼容性
+benchmark。最新机器可读结果见
+[`benchmark-latest.json`](benchmark-latest.json)。
 
 ## 运行方法
 
@@ -10,6 +11,7 @@
 ```powershell
 data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
   data-pipeline\persons\twostage\benchmark.py `
+  --translation-evidence-dir C:\temp\translation-evidence `
   --json data-pipeline\persons\twostage\benchmark-latest.json
 ```
 
@@ -17,96 +19,207 @@ data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
 
 ```powershell
 data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
-  data-pipeline\persons\twostage\benchmark.py --juans 23 69 97
-```
-
-可选译文 evidence 必须显式指定，且不覆盖正式 `benchmark-latest.json`：
-
-```powershell
-data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
   data-pipeline\persons\twostage\benchmark.py `
-  --juans 27 37 45 150 `
   --translation-evidence-dir C:\temp\translation-evidence `
+  --juans 23 69 97 `
   --json C:\temp\translation-evidence-benchmark.json
 ```
 
 全量运行会读取已有 POS·Giv cache；若正文变化或 cache 不存在，`pos_giv.py` 会自动重建
-相应卷的 cache。当前 warm-cache 全 294 卷通常约需一分钟。
+相应卷的 cache。本次 warm-cache 全 294 卷运行约 22 分钟。
 
 ## 固定口径
 
 - **Agent 1：** `twostage/rules.py`，`PRESET_RECALL`，所有规则以带圈编号节为作用域。
 - **v1 reference：** `web/public/text/persons/mentions/juan_NNN.json` 中
-  `source == "main"` 的生产 span。
+  `source == "main"` 的生产 span，减去
+  [`benchmark-reference-exclusions.jsonl`](benchmark-reference-exclusions.jsonl)
+  中逐 geometry 人工确认的错误 reference。
 - **匹配：** 必须是同一卷、同一 paragraph id，且半开字符区间 `[start,end)` 重叠。
 - **正文范围：** 全 294 卷的 main text；注文不参加本次比较。
+- **译文 evidence：** 正式 benchmark 必须加载已校验 manifest 的 paragraph-local evidence。
+  未加载译文的 default 路径只用于消融和归因，不作为最终指标。
 - **Agent 2：** 尚未开发，不参加 benchmark。
 - **旧 `persons-v2/`：** 是过时的 v1 ADD-only union，不是当前 Agent 1 输出，禁止作为
   v2 benchmark 输入。
 
 生产 v1 不是独立人工金标。它既漏掉 `丞相斯`、`其弟乙` 等真实人物表达，也含有卷级
-回指和普通词误标。因此：
+回指和普通词误标。benchmark 不使用 Agent 1 自身规则自动清洗 reference，以免形成循环
+评估；只排除有固定卷、段、offset、surface 和审计理由的 geometry。loader 会验证每条
+exclusion 仍存在于生产 v1 且正文切片未变化，失效时直接报错。因此：
 
 - `v1 coverage` 只表示 Agent 1 对生产行为的兼容覆盖，不等同于真实 recall；
 - `v1 overlap proxy` 只表示 Agent 1 span 与 v1 重叠的比例，不等同于 precision；
-- `Agent1 nonoverlap-v1` 不能直接算作 false positive，必须人工抽样。
+- `Agent1 nonoverlap-v1` 不能直接算作 false positive，必须逐条或按固定样本人工审计。
 
-译文 evidence 仍默认关闭，不进入下方正式 baseline。显式开启后的全 294 卷实验结果
-如下；机器可读输出应另存，不能覆盖 `benchmark-latest.json`。
-
-| 指标 | 默认 baseline | translation-assisted |
-|---|---:|---:|
-| v1 coverage | 123,953 / 128,596 (96.389%) | 124,575 / 128,596 (96.873%) |
-| v1-only gap | 4,643 | 4,021 |
-| assisted gap closure | - | 622 / 4,643 (13.40%) |
-| alias coverage | 85,350 / 88,619 (96.311%) | 85,746 / 88,619 (96.758%) |
-| anaphora coverage | 33,896 / 35,261 (96.129%) | 34,120 / 35,261 (96.764%) |
-| Agent 1 spans | 172,682 | 174,528 |
-| v1 overlap proxy | 72.021% | 71.661% |
-
-translation-assisted 输出比默认输出净多 1,846 个 span。译文路径仍只产生
-`translation_fullname`、`translation_anaphora`，以及由新完整姓名锚点触发的普通
-`anaphora`；默认路径不读取 translation evidence。
-
-precision 必须与 v1 overlap proxy 分开报告。此前 translation 路径的固定样本结果不能
-外推为本轮称号 precision。本轮先逐条审计 360 个不与 v1 重叠的候选称号：331 个明确
-成立、2 个非人物、27 个属于更长称号的尾部组件。收紧后删除两个非人物和无局部授权的
-长外族称号切尾；最终相对 fullname-anchor baseline 新增的 294 个 non-v1 称号中，
-291 个来自明确成立集合，另外 3 个是按既定组件政策保留的 `成康/贤文/成靖`。
+当前 exclusion ledger 有 266 条，全部来自最终 3,890 gap 的高频逐 occurrence 复核：
+76 条官职/政权官职内嵌切片，53 条普通词，48 条地点或军镇，40 条政权/部族/集体，
+30 条跨词短语，9 条地点/称号 partial，9 条版权页碰撞，以及 1 条 `长罗侯` 内的错误
+partial `罗侯`。例如 `法曹参军` 内的 `曹参`、`魏征西将军` 内的 `魏征`、`突骑施`、
+`三辅`、`有司` 和 `王必欲` 不再反复计作 Agent 1 漏标。raw v1 计数仍保存在 JSON，
+用于兼容性追踪。
 
 ## 最新全量结果
 
-运行时间：2026-07-18 UTC；Python 3.11.4；294 卷。结果 JSON 同时记录：
+运行时间：2026-07-21 UTC；Python 3.11.4；294 卷；Translation-assisted。结果 JSON
+同时记录：
 
-- rule-bundle SHA-256：`a9e6ff6ac3b1be4b5ee1b6ce058c39a35a26bffc538425f4f071b5cc7e7566db`
+- rule-bundle SHA-256：`f42baf069149a44c1dd50c90e8dbacdeec515113a1f76f3f58f4a39b2b6444cf`
 - `admin-places.json` SHA-256：`b6849b571ae31041ea362bb1d2a9c689a61da7e081aa5460cc10e162e1bd5370`
 
 后者使时序行政区证据变化不会被误当成“同一规则”的 benchmark。
 
 | 指标 | 结果 |
 |---|---:|
-| v1 main spans | 128,596 |
-| Agent 1 覆盖 v1 | 123,953 |
-| **v1 coverage** | **96.389%** |
-| v1-only | 4,643 |
-| Agent 1 spans | 172,682 |
-| Agent 1 spans overlapping v1 | 124,367 |
-| Agent 1 spans not overlapping v1 | 48,315 |
-| v1 overlap proxy | 72.021% |
+| raw v1 main spans | 128,596 |
+| audited exclusions | 266 |
+| **audited v1 main spans** | **128,330** |
+| Agent 1 覆盖 v1 | 124,864 |
+| **audited v1 coverage** | **97.299%** |
+| audited v1-only | 3,466 |
+| Agent 1 spans | 175,399 |
+| Agent 1 spans overlapping v1 | 125,324 |
+| Agent 1 spans not overlapping v1 | 50,075 |
+| v1 overlap proxy | 71.451% |
 
 两个 overlap 数不是一一对应计数：当两个系统的跨度切分不同，一个 span 可能与多个 span
-重叠，所以 `123,139` 与 `123,419` 可以不同。
+重叠。
 
 ### v1 coverage by kind
 
 | v1 kind | 覆盖 | 总数 | coverage | v1-only |
 |---|---:|---:|---:|---:|
-| alias | 85,350 | 88,619 | 96.311% | 3,269 |
-| anaphora | 33,896 | 35,261 | 96.129% | 1,365 |
-| feng | 355 | 363 | 97.796% | 8 |
+| alias | 85,985 | 88,353 | 97.320% | 2,368 |
+| anaphora | 34,170 | 35,261 | 96.906% | 1,091 |
+| feng | 357 | 363 | 98.347% | 6 |
 | gloss | 1,535 | 1,536 | 99.935% | 1 |
 | role | 2,817 | 2,817 | 100.000% | 0 |
-| **ALL** | **123,953** | **128,596** | **96.389%** | **4,643** |
+| **ALL** | **124,864** | **128,330** | **97.299%** | **3,466** |
+
+### 高频缺口称号规则
+
+对 audited residual 按 surface 频次排序只用于安排人工复核，不作为人物证据。复核后新增三类
+occurrence-local 规则：
+
+1. 完整局部 component 加固有称号 `公主`，容忍 model 将 component 拆成 Nat/Geo/Prs；
+2. 完整姓氏 morphology 加 `后/姬`；
+3. 完整 polity morphology 加 `上皇`，或加带人物 morphology 的 `X宗/X祖`。
+
+规则不包含公主、皇后或帝号 identity 名单，也没有降低累计 admission 门槛。针对
+`隋南阳公主`、`隋义成公主`、`王信公主之谗`、`许公主入觐`、`杨后起卒`、数字计数和
+verb-glued fragment 加入边界 control。70 个 focused test 通过后，先完成 default/assisted
+target rebuild，再审查全量 geometry。最终相对上一正式 assisted baseline：
+
+| delta | 数量 |
+|---|---:|
+| raw additions | 505 |
+| removals | 48 |
+| **net growth** | **457** |
+| exact audited-v1 recoveries | 95 |
+| exact audited-v1 regressions | 0 |
+| fuller-span replacements | 48 |
+| overlap benchmark gaps closed | 92 |
+
+505 个 addition 与 48 个 removal 已逐 geometry 复核。八个 exact recovery 先前已被较短
+baseline span overlap 覆盖，另有五个新 geometry 恢复了非 exact overlap，因此正式
+benchmark 净关闭 92 个 gap，而不是 95 个。典型恢复包括 `鲁元公主`、`太平公主`、
+`平阳昭公主`、`独孤后`、`韦后`、`栗姬`、`齐上皇` 和 `周高祖`；典型 replacement
+包括 `独孤`→`独孤后`、`姬房`→`徐姬`、bare temple title→完整 polity+temple title。
+
+### 剩余缺口 top-four 规则
+
+对 3,532 个 audited residual 从 candidate、称号句法、同节回指和 reference hygiene
+四个角度复核后，批量加入四类 jie-local 规则：
+
+1. 普通 `anaphora` card 保留唯一、更早、同节完整锚点 provenance；后续仅在完整
+   POS·Giv 和严格人物句法同时成立时传播；
+2. 完整 1–3 字 BIO component 加 `可汗/单于`；若后接完整人物 BIO，则合并完整
+   title+name geometry；
+3. 完整姓氏 morphology 加 `公/君/侯/卿/郎`，并要求人物谓词、称呼或同位语；
+4. 严格命名/人物 frame 下的 `X夫人`，以及姓氏 + 一字 appellation + `妃`。
+
+所有证据限于当前 numbered jie；没有人物 KB、surface 黑白名单或较低累计评分门槛。
+88 个 focused tests 覆盖 `公主` continuation、BIO continuation、功能词 component、
+envoy designation、同节 forward-only、跨节/later-only 和完整 title+name 边界。最终
+相对上一正式 assisted baseline：
+
+| delta | 数量 |
+|---|---:|
+| raw additions | 465 |
+| removals | 183 |
+| **net growth** | **282** |
+| audited v1 gap recoveries | 66 |
+| audited v1 regressions | 0 |
+| geometry replacements | 117 |
+| removal geometries classified as fuller-span replacements | 124 |
+| deliberate bad/generic removals | 59 |
+
+最终 648 个 delta geometry 已逐条审计：465 个 addition 均为人物 geometry；183 个
+removal 全部分为 fuller-span replacement 或 bad generic/partial removal。代表恢复包括
+`荀卿`、`张公`、`萧郎`、`萧淑妃`、`杨贵妃`、`老上单于`、`北单于` 和同节
+`布/肜/曜`；代表 replacement 包括 `狐鹿孤单于`、`柔然可汗阿那瓌`、
+`突骑施可汗苏禄` 和 `突骑施可汗吐火仙`。
+
+### 累计独立证据 policy
+
+最终 `cumulative-family-score` 对每个 family 最多计一次。jie morphology 与 admitted
+same-jie anchor 各计 2 分；same-jie recurrence、strict/decisive syntax、qualified
+name shape、title、genealogy 各计 1 分；paragraph-local translation exact identity 计
+2 分。Geo/Nat 与 function conflict 分别扣 2/1。必须有 exact model-NER prerequisite，
+总分至少 6 且至少四个不同 family；hard veto 始终先行，不能由累计分覆盖。所有人物
+surface anchor、recurrence、morphology aggregate、conflict 和 veto 均限制在当前编号节。
+
+`5 分 + 3 family` 已在最终 assisted candidate audit 上模拟并拒绝：
+
+- 会新增 840 个 candidate geometry，分布于 227 卷；
+- 其中 639 个与 v1 重叠、292 个精确关闭当前 v1 gap，另有 201 个完全不与 v1 重叠；
+- 826/840 仅由 `jie morphology + local anchor + recurrence` 支持，三个信号高度相关；
+- non-v1 中出现 `昭仪`、`山棚`、`元和`、`尚父`、`行事` 等明显非人物或角色词；
+- 两个既有低独立性 safeguard test 立即失败。
+
+因此正式 policy 保持 `6 分 + 4 family`，没有为追求 292 个 v1 recovery 而降低门槛，也没有
+启动无必要的 227 卷 rebuild。
+
+### hard-veto 严格度审计
+
+4,023 个 assisted gap 中，1,276 个只有 hard-vetoed exact candidate。对 raw family score
+至少 6 的 109 个 exact gap 已逐条复核：84 个属于 hard veto 过严，24 个是正确拒绝的
+polity、office/title partial 或其他错误 geometry，1 个仍有歧义。
+
+过严项主要来自三种结构问题：
+
+1. `local_polity_usage` / `jie_polity_usage` 把同一 surface 在节内另一处的 polity-like
+   用法传播成当前 occurrence 的硬否决，例如人物动作语境中的 `始毕`、`颉利`、`启民`。
+2. `longer_name_left/right_continuation` 只因相邻一两字组成 model NER surface 就否决，
+   即使相邻字实际是谓词或普通名词，例如 `穆之乃止`、`何逢马`。
+3. `nonperson_lexical_class` 对姓名内部的单字爵号/官职或地名词典碰撞过宽，例如
+   `公中缓`、`王敬则`、`姚令言`。
+
+修复没有改成“高分覆盖 veto”，也没有降低 `6 分 + 4 family` 门槛。polity、BIO/name
+continuation、office/title 和 lexical veto 均改为当前 occurrence 的 morphology、BIO、
+句法与边界判断；只有 `X数千骑/数万骑`、`谓之 X` 后又按群体募集，以及同一 surface
+同时构成 `X将军/X军` 等明确同节定义，才允许 exact-surface collective veto。
+
+60 个 focused test 通过后，先重建受影响卷并逐条审查，再完成 294 卷 assisted rebuild。
+相对上一正式 assisted baseline，raw geometry 为：
+
+| delta | 数量 |
+|---|---:|
+| additions | 173 |
+| removals | 26 |
+| **net growth** | **147** |
+| v1 recoveries | 134 |
+| v1 regressions | 1 |
+| geometry replacements | 10 |
+
+173 个 addition 已逐条复核，全部是人物 exact geometry。26 个 removal 分为 10 个更完整
+geometry replacement、12 个嵌入较长称号的坏 partial、4 个 polity/office/clan
+non-person span。唯一 v1 regression 是 `长罗侯` 内错误 partial `罗侯` 的移除，不是真实
+人物漏标。典型修复包括恢复 `车犂单于`、`始毕可汗`、`颉利可汗` 前的姓名，以及拒绝
+`高句丽` 内的 `高句`、`史良娣` 内的 `史良`、`慕容镇军` 内的 `慕容镇` 和单位用法
+`楼船`。最终净关闭 133 个 raw v1 gap，4,023→3,890；reference 审计另移除 266 个已确认错误
+geometry，因此该阶段 audited gap 为 3,624。这 266 条不是规则 recovery；后续高频称号
+规则以实际规则行为将 audited gap 降至 3,532，top-four 规则再降至当前正式的 3,466。
 
 完整的 Agent 1 `chunk_type` 数量、重叠数和 overlap proxy 保存在
 [`benchmark-latest.json`](benchmark-latest.json)。每次修改规则后，应重新执行同一命令并
@@ -172,7 +285,7 @@ v1 重叠；全部 55 个 non-v1 occurrence 已逐条检查，均为真实人物
 token `公 + 主` 即构成人物称号；BIO 的 `I` 起点会向左补齐一个被 POS 错分的首字，
 同时拒绝标点和 suffix 切尾。规则产生 135 个完整称号，逐条审计 135/135 为人物；
 它另触发 18 个同节 bare `公主` 回指。相对重复称号阶段，新增 153、移除 65，65 个
-移除全部由更完整的公主称号 span 替换。两项合计把正式 default coverage 从
+移除全部由更完整的公主称号 span 替换。两项合计把当时的 diagnostic default coverage 从
 95.536% 提高到 95.673%，gap 5,741→5,564；assisted coverage 为 96.113%，gap 4,998。
 
 ### 同节 exact propagation 与 partial-POS 修复
