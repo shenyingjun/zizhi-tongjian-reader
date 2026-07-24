@@ -16,13 +16,15 @@
   带 canonical paragraph hash 的可选 identity evidence；不保存译文正文。
 
 当前 **v1** 指 `web/public/text/persons/` 中的生产输出；**v2** 指当前 Agent 1 Tagger
-及未来 Agent 2 Identifier 的目标管线。Agent 2 尚未完成，因此目前只能评估 Agent 1 的
-画线跨度，不能声称已有完整 v2 数据集。`web/public/text/persons-v2/` 是旧的 ADD-only
-union 产物，已不能代表这里的最新实现。
+及未来 Agent 2 Identifier 的目标管线。`web/public/text/persons-v2/agent1/` 是当前
+Translation-assisted Agent 1 输出；`persons-v2/mentions/` 是早期 Stage 1/2
+姓名检测器独立生成的身份参考层。两层都不得复制或保留 `persons/mentions/` 的跨度。
+旧人物卡和出现索引可作为身份参考，但不能直接授权任何 v2 下划线。
 
-`stage1.py`、`stage2.py`、`run.py` 和 `build_v2.py` 属于较早的 shadow harness；其历史
-AGREE/RECOVER/LOST 数字不再作为当前 benchmark。新规则改动统一通过 `benchmark.py`
-复跑，并按 `SPEC.md` 的人工抽样要求审查。
+`stage1.py`、`stage2.py`、`run.py` 和 `build_v2.py` 属于较早的 shadow harness；
+`build_v2.py` 仍生成 app 的身份参考层，但 v1 mention 只允许进入 Stage 2 identity
+reference，不进入输出。历史 AGREE/RECOVER/LOST 数字不再作为当前 benchmark。新规则
+改动统一通过 `benchmark.py` 复跑，并按 `SPEC.md` 的人工抽样要求审查。
 
 最终输出必须加载 Translation evidence。仓库已包含 jie-scoped、无译文正文的
 `translation-evidence/`。需要从来源重新生成时，先逐卷恢复临时 mapping，再重建该目录：
@@ -49,10 +51,16 @@ data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
 和 `manifest.json`，两者都记录 `rules.py` 与行政区证据的 SHA-256。
 
 实验性 app 的“新”标注会读取 `web/public/text/persons-v2/agent1/` 中当前
-Translation-assisted Agent 1 输出，并将所有 occurrence 画为不可点击的下划线。为避免
-尚未被 Agent 1 恢复的生产 v1 span 消失，app 同时保留与 Agent 1 不重叠的旧
-`persons-v2/mentions/`；重叠时以当前 Agent 1 边界为准。尚未发布 Agent 1 sidecar 的卷
-完全回退到旧 `persons-v2/mentions/`。规则稳定并完成 targeted audit 后，可按卷发布：
+Translation-assisted Agent 1 输出，并将所有 occurrence 画为不可点击的下划线。app
+只在 `persons-v2/mentions/` 存在相同 exact geometry 时复用其 Stage 2 身份；该层不得
+新增、扩大或保留 Agent 1 未生成的下划线。尚未发布 Agent 1 sidecar 的卷可使用该独立
+检测层，但不得回退到 v1 mention。重建身份参考层：
+
+```powershell
+python data-pipeline\persons\twostage\build_v2.py
+```
+
+规则稳定并完成 targeted audit 后，可按卷发布 Agent 1：
 
 ```powershell
 python data-pipeline\persons\twostage\retag.py `
@@ -63,11 +71,8 @@ python data-pipeline\persons\twostage\retag.py `
 ```
 
 当前提交的 `persons-v2/agent1/` 覆盖全部 294 卷，manifest 规则 hash 与
-`benchmark-latest.json` 一致，共 174,837 个 Agent 1 span。与旧 ADD-only v2
-相比，app 的有效 union 有 55,772 个 raw additions、9,019 个 overlap geometry
-removals/replacements、净增长 46,753；非 replacement removals、audited-v1
-recoveries 和 audited-v1 regressions 均为 0。Agent 1 本身仍漏掉 3,585 个 audited
-v1 span，故这些不重叠的旧 span 必须保留为 fallback，不能把 sidecar 当作替换数据。
+`benchmark-latest.json` 一致。正式跨度与 audited-v1 的比较只由 `benchmark.py`
+报告；不能把 v1 span 并入 app 数据来提高覆盖率。
 
 经 targeted audit 确认的完整称号边界可发布到实验性 app 数据 `persons-v2/`。发布器只接受
 带译文 manifest 的 numbered-jie 输出，只扩展一个已绑定且被当前 `jue_name` 或

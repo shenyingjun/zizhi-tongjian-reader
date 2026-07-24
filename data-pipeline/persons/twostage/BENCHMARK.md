@@ -40,8 +40,9 @@ data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
 - **译文 evidence：** 正式 benchmark 必须加载已校验 manifest 的 paragraph-local evidence。
   未加载译文的 default 路径只用于消融和归因，不作为最终指标。
 - **Agent 2：** 尚未开发，不参加 benchmark。
-- **旧 `persons-v2/`：** 是过时的 v1 ADD-only union，不是当前 Agent 1 输出，禁止作为
-  v2 benchmark 输入。
+- **app `persons-v2/`：** 下划线 geometry 以 Translation-assisted Agent 1 sidecar
+  为准；`mentions/` 只为 exact geometry 提供独立 Stage 2 身份，不得并入 v1 span。
+  正式 benchmark 仍直接运行 Agent 1，不以 app identity 层作为输入。
 
 生产 v1 不是独立人工金标。它既漏掉 `丞相斯`、`其弟乙` 等真实人物表达，也含有卷级
 回指和普通词误标。benchmark 不使用 Agent 1 自身规则自动清洗 reference，以免形成循环
@@ -61,7 +62,7 @@ partial `罗侯`。例如 `法曹参军` 内的 `曹参`、`魏征西将军` 内
 
 ## 最新全量结果
 
-运行时间：2026-07-23 UTC；Python 3.11.4；294 卷；Translation-assisted。结果 JSON
+运行时间：2026-07-24 UTC；Python 3.11.4；294 卷；Translation-assisted。结果 JSON
 同时记录：
 
 - rule-bundle SHA-256：`52d11fb5412cfedfc2d6aae83ce45946a6dc32174b056852c5affe4ca6877d29`

@@ -246,42 +246,41 @@ interface JuanAgent1Occurrences {
   occurrences: Agent1Occurrence[];
 }
 
-function mergeAgent1Mentions(
+function bindAgent1Mentions(
   file: JuanAgent1Occurrences,
   bound: JuanPersonMentions | null,
 ): JuanPersonMentions {
-  const agent1 = file.occurrences
-    .filter(o => o.field === 'main')
-    .map(o => ({
-      pid: o.para_id,
-      ce_year: null,
-      source: 'main' as const,
-      start: o.start,
-      end: o.end,
-      surface: o.surface,
-      confidence: 'unresolved' as const,
-    }));
-  const agent1ByPid = new Map<number, PersonMention[]>();
-  for (const mention of agent1) {
-    const mentions = agent1ByPid.get(mention.pid) ?? [];
-    mentions.push(mention);
-    agent1ByPid.set(mention.pid, mentions);
-  }
-  const legacyFallback: PersonMention[] = [];
+  const identities = new Map<string, PersonMention>();
   for (const mention of bound?.mentions ?? []) {
     if (mention.source !== 'main') continue;
-    const accepted = agent1ByPid.get(mention.pid) ?? [];
-    if (accepted.some(
-      current => current.start < mention.end && mention.start < current.end,
-    )) continue;
-    accepted.push(mention);
-    agent1ByPid.set(mention.pid, accepted);
-    legacyFallback.push(mention);
+    identities.set(
+      `${mention.pid}:${mention.start}:${mention.end}:${mention.surface}`,
+      mention,
+    );
   }
+  const agent1 = file.occurrences
+    .filter(o => o.field === 'main')
+    .map(o => {
+      const identity = identities.get(
+        `${o.para_id}:${o.start}:${o.end}:${o.surface}`,
+      );
+      return {
+        pid: o.para_id,
+        ce_year: identity?.ce_year ?? null,
+        source: 'main' as const,
+        start: o.start,
+        end: o.end,
+        surface: o.surface,
+        person_id: identity?.person_id,
+        candidate_ids: identity?.candidate_ids,
+        kind: identity?.kind,
+        confidence: identity?.confidence ?? 'unresolved' as const,
+      };
+    });
   return {
     juan_no: file.juan,
     version: 1,
-    mentions: [...agent1, ...legacyFallback],
+    mentions: agent1,
   };
 }
 
@@ -374,7 +373,7 @@ export function loadPersonMentions(no: number): Promise<JuanPersonMentions | nul
           if (r.status === 404) return loadBoundMentions();
           if (!r.ok) throw new Error(`Agent 1 mentions ${no} ${r.status}`);
           const file = await r.json() as JuanAgent1Occurrences;
-          return mergeAgent1Mentions(file, await loadBoundMentions());
+          return bindAgent1Mentions(file, await loadBoundMentions());
         })
         .catch(error => {
           if (error instanceof TypeError) return loadBoundMentions();
