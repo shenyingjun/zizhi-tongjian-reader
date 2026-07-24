@@ -246,6 +246,45 @@ interface JuanAgent1Occurrences {
   occurrences: Agent1Occurrence[];
 }
 
+function mergeAgent1Mentions(
+  file: JuanAgent1Occurrences,
+  bound: JuanPersonMentions | null,
+): JuanPersonMentions {
+  const agent1 = file.occurrences
+    .filter(o => o.field === 'main')
+    .map(o => ({
+      pid: o.para_id,
+      ce_year: null,
+      source: 'main' as const,
+      start: o.start,
+      end: o.end,
+      surface: o.surface,
+      confidence: 'unresolved' as const,
+    }));
+  const agent1ByPid = new Map<number, PersonMention[]>();
+  for (const mention of agent1) {
+    const mentions = agent1ByPid.get(mention.pid) ?? [];
+    mentions.push(mention);
+    agent1ByPid.set(mention.pid, mentions);
+  }
+  const legacyFallback: PersonMention[] = [];
+  for (const mention of bound?.mentions ?? []) {
+    if (mention.source !== 'main') continue;
+    const accepted = agent1ByPid.get(mention.pid) ?? [];
+    if (accepted.some(
+      current => current.start < mention.end && mention.start < current.end,
+    )) continue;
+    accepted.push(mention);
+    agent1ByPid.set(mention.pid, accepted);
+    legacyFallback.push(mention);
+  }
+  return {
+    juan_no: file.juan,
+    version: 1,
+    mentions: [...agent1, ...legacyFallback],
+  };
+}
+
 // A resolved prior appearance shown in the person card (spoiler-filtered).
 export interface PersonAppearance {
   person_id: string;
@@ -335,21 +374,7 @@ export function loadPersonMentions(no: number): Promise<JuanPersonMentions | nul
           if (r.status === 404) return loadBoundMentions();
           if (!r.ok) throw new Error(`Agent 1 mentions ${no} ${r.status}`);
           const file = await r.json() as JuanAgent1Occurrences;
-          return {
-            juan_no: file.juan,
-            version: 1 as const,
-            mentions: file.occurrences
-              .filter(o => o.field === 'main')
-              .map(o => ({
-                pid: o.para_id,
-                ce_year: null,
-                source: 'main' as const,
-                start: o.start,
-                end: o.end,
-                surface: o.surface,
-                confidence: 'unresolved' as const,
-              })),
-          };
+          return mergeAgent1Mentions(file, await loadBoundMentions());
         })
         .catch(error => {
           if (error instanceof TypeError) return loadBoundMentions();
