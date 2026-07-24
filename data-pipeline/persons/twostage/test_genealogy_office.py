@@ -33,24 +33,43 @@ def make_ctx(text, gset, gspans=(), tokens=(), consumed_prefix=0):
 
 class GenealogyOfficeTest(unittest.TestCase):
     def test_office_between_kin_term_and_pos_given_name(self):
-        # 以其子[牙内诸军使]渥为 -> tag 渥 (office is skipped)
-        text = "\u4ee5\u5176\u5b50\u7259\u5185\u8bf8\u519b\u4f7f\u6e25\u4e3a"
-        ctx = make_ctx(text, gset={8}, gspans=[(8, 9)])
-        result = R.rule_genealogy_given(ctx, 1)
-        self.assertEqual(result, (8, 9, "\u6e25", "gloss_kin"))
+        text = "杨行密以其子牙内诸军使渥为宣州观察使"
+        start = text.index("渥")
+        ctx = make_ctx(text, gset={start}, gspans=[(start, start + 1)])
+        result = R.rule_genealogy_given(ctx, text.index("其子"))
+        self.assertEqual(result, (start, start + 1, "渥", "gloss_kin"))
 
     def test_office_with_place_prefix_and_multichar_given(self):
-        # 为其姪[天雄节度使]继勋求 -> tag 继勋; 天雄 is a place token inside the office,
-        # and 求 is an accepted right boundary.
-        text = (
-            "\u4e3a\u5176\u59ea\u5929\u96c4\u8282\u5ea6\u4f7f\u7ee7\u52cb\u6c42"
-        )
+        text = "茂贞遣判官赵锽如西川，为其姪天雄节度使继勋求婚"
+        kin_start = text.index("其姪")
+        place_start = text.index("天雄")
+        name_start = text.index("继勋")
         place = R.pos_giv.PosToken(
-            "\u5929\u96c4", 3, 5, "PROPN", "PROPN|NameType=Geo", "B-LOC"
+            "天雄",
+            place_start,
+            place_start + 2,
+            "PROPN",
+            "PROPN|NameType=Geo",
+            "B-LOC",
         )
-        ctx = make_ctx(text, gset={8, 9}, gspans=[(8, 10)], tokens=[place])
-        result = R.rule_genealogy_given(ctx, 1)
-        self.assertEqual(result, (8, 10, "\u7ee7\u52cb", "gloss_kin"))
+        ctx = make_ctx(
+            text,
+            gset={name_start, name_start + 1},
+            gspans=[(name_start, name_start + 2)],
+            tokens=[place],
+        )
+        result = R.rule_genealogy_given(ctx, kin_start)
+        self.assertEqual(
+            result,
+            (name_start, name_start + 2, "继勋", "gloss_kin"),
+        )
+
+    def test_direct_sibling_construction_tags_name_only(self):
+        text = "初，马殷弟賨，性沈勇"
+        start = text.index("賨")
+        ctx = make_ctx(text, gset={start}, gspans=[(start, start + 1)])
+        result = R.rule_genealogy_given(ctx, text.index("弟"))
+        self.assertEqual(result, (start, start + 1, "賨", "gloss_kin"))
 
     def test_bare_nephew_term_directly_before_name(self):
         # 为姪邺娶 -> tag 邺 (姪 is a newly recognised kinship term)
@@ -85,6 +104,58 @@ class GenealogyOfficeTest(unittest.TestCase):
         result = R.rule_genealogy_given(ctx, 0)
         self.assertEqual(result, (2, 4, "\u4ec1\u679c", "gloss_kin"))
 
+    def test_complete_bio_continuation_is_not_truncated(self):
+        text = "弟拔弥俄突，"
+        tokens = tuple(
+            R.pos_giv.PosToken(
+                char,
+                offset,
+                offset + 1,
+                "PROPN",
+                ("B-" if offset == 1 else "I-") + "PROPN|NameType=Giv",
+                "B" if offset == 1 else "I",
+                0.99,
+            )
+            for offset, char in enumerate(text[1:5], 1)
+        )
+        ctx = make_ctx(
+            text,
+            gset={1, 2, 3, 4},
+            gspans=[(1, 5)],
+            tokens=tokens,
+        )
+        self.assertEqual(
+            R.rule_genealogy_given(ctx, 0),
+            (1, 5, "拔弥俄突", "gloss_kin"),
+        )
+
+    def test_punctuation_mistagged_as_new_bio_does_not_continue_name(self):
+        text = "弟渥，为"
+        tokens = (
+            R.pos_giv.PosToken(
+                "渥", 1, 2, "PROPN", "B-PROPN|NameType=Giv", "B", 0.99
+            ),
+            R.pos_giv.PosToken(
+                "，", 2, 3, "PROPN", "B-PROPN|NameType=Giv", "B", 0.51
+            ),
+        )
+        ctx = make_ctx(
+            text,
+            gset={1, 2},
+            gspans=[(1, 2), (2, 3)],
+            tokens=tokens,
+        )
+        self.assertEqual(
+            R.rule_genealogy_given(ctx, 0),
+            (1, 2, "渥", "gloss_kin"),
+        )
+
+    def test_consumed_name_is_a_hard_veto(self):
+        text = "弟賨，"
+        ctx = make_ctx(text, gset={1}, gspans=[(1, 2)])
+        ctx.consumed[1] = True
+        self.assertIsNone(R.rule_genealogy_given(ctx, 0))
+
     def test_compound_surname_is_not_reinterpreted_as_kinship(self):
         text = "从长孙俭求"
         tokens = (
@@ -100,6 +171,72 @@ class GenealogyOfficeTest(unittest.TestCase):
         )
         ctx = make_ctx(text, gset={3}, gspans=[(3, 4)], tokens=tokens)
         self.assertIsNone(R.rule_genealogy_given(ctx, 1))
+
+    def test_genealogy_anchor_propagates_only_within_numbered_jie(self):
+        anchor_text = "①其子渥为"
+        anchor_token = R.pos_giv.PosToken(
+            "渥", 3, 4, "PROPN", "PROPN|NameType=Giv", None, 0.99
+        )
+        anchor_evidence = R.pos_giv.GivOffsets(
+            offsets={3},
+            spans=[(3, 4)],
+            tokens=(anchor_token,),
+        )
+        repeated_token = R.pos_giv.PosToken(
+            "渥", 0, 1, "PROPN", "PROPN|NameType=Giv", None, 0.99
+        )
+        repeated_evidence = R.pos_giv.GivOffsets(
+            offsets={0},
+            spans=[(0, 1)],
+            tokens=(repeated_token,),
+        )
+        corpus = R.Corpus(set(), {}, set())
+
+        same_jie = R.detect_juan(
+            1,
+            [
+                {"id": 0, "main": anchor_text, "ce_year": 1},
+                {"id": 1, "main": "渥，", "ce_year": 1},
+            ],
+            {0: anchor_evidence, 1: repeated_evidence},
+            corpus,
+            enabled=R.PRESET_RECALL,
+        )
+        self.assertTrue(
+            any(
+                card["para_id"] == 1
+                and card["start"] == 0
+                and card["surface"] == "渥"
+                and card["rule"] == "jie_anaphora"
+                for card in same_jie
+            )
+        )
+
+        next_jie = R.detect_juan(
+            1,
+            [
+                {"id": 0, "main": anchor_text, "ce_year": 1},
+                {"id": 1, "main": "②渥，", "ce_year": 1},
+            ],
+            {
+                0: anchor_evidence,
+                1: R.pos_giv.GivOffsets(
+                    offsets={1},
+                    spans=[(1, 2)],
+                    tokens=(repeated_token.shifted(1),),
+                ),
+            },
+            corpus,
+            enabled=R.PRESET_RECALL,
+        )
+        self.assertFalse(
+            any(
+                card["para_id"] == 1
+                and card["start"] == 1
+                and card["surface"] == "渥"
+                for card in next_jie
+            )
+        )
 
 
 if __name__ == "__main__":

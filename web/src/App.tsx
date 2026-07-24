@@ -966,7 +966,7 @@ export default function App() {
   const personSpansByPid = useMemo(() => {
     const m = new Map<number, PersonSpan[]>();
     for (const mt of mentions) {
-      if (mt.source !== 'main' || !mt.person_id) continue;
+      if (mt.source !== 'main' || (personVariant === 'v1' && !mt.person_id)) continue;
       const arr = m.get(mt.pid) ?? [];
       arr.push({
         start: mt.start,

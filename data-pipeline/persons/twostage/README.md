@@ -47,6 +47,31 @@ data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
 `retag.py` 默认先重建 `admin-places.json`；反复调试规则时可加
 `--skip-admin-rebuild`，也可用 `--juans 62 141` 只处理指定卷。输出目录包含每卷 JSON
 和 `manifest.json`，两者都记录 `rules.py` 与行政区证据的 SHA-256。
+
+实验性 app 的“新”标注会优先读取 `web/public/text/persons-v2/agent1/` 中当前
+Translation-assisted Agent 1 输出，并将所有 occurrence 画为不可点击的下划线；尚未发布
+Agent 1 sidecar 的卷暂时回退到旧 `persons-v2/mentions/`。规则稳定并完成 targeted audit
+后，可按卷发布：
+
+```powershell
+python data-pipeline\persons\twostage\retag.py `
+  --juans 265 `
+  --skip-admin-rebuild `
+  --translation-evidence-dir data-pipeline\persons\twostage\translation-evidence `
+  --output-dir web\public\text\persons-v2\agent1
+```
+
+经 targeted audit 确认的完整称号边界可发布到实验性 app 数据 `persons-v2/`。发布器只接受
+带译文 manifest 的 numbered-jie 输出，只扩展一个已绑定且被当前 `jue_name` 或
+`posthumous_emperor_title` span 严格包含的旧 mention，并保留其 `person_id`；它不读取或
+改写 benchmark reference `persons/`：
+
+```powershell
+python data-pipeline\persons\twostage\publish_app_mentions.py `
+  --occurrence-dir C:\temp\ztj-agent1-translation `
+  --juans 265
+```
+
 卷 113 的来源页明确标记译文缺失，因此其 evidence 是经来源 hash 验证的空记录，而非
 生成或猜测的译文证据。
 
