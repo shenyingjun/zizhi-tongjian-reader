@@ -58,12 +58,12 @@ class PublishAppMentionsTest(unittest.TestCase):
     def test_consumer_facing_juan265_has_full_boundaries(self):
         repo = Path(__file__).resolve().parents[3]
         path = (
-            repo / "web" / "public" / "text" / "persons-v2" / "mentions"
+            repo / "web" / "public" / "text" / "persons-v2" / "agent1"
             / "juan_265.json"
         )
-        mentions = json.loads(path.read_text(encoding="utf-8"))["mentions"]
+        mentions = json.loads(path.read_text(encoding="utf-8"))["occurrences"]
         geometries = {
-            (row["pid"], row["start"], row["end"], row["surface"])
+            (row["para_id"], row["start"], row["end"], row["surface"])
             for row in mentions
         }
         self.assertIn((11, 21, 24, "辉王祚"), geometries)
