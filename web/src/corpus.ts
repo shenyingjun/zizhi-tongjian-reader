@@ -233,6 +233,19 @@ export interface JuanPersonMentions {
   mentions: PersonMention[];
 }
 
+interface Agent1Occurrence {
+  para_id: number;
+  start: number;
+  end: number;
+  surface: string;
+  field: 'main';
+}
+
+interface JuanAgent1Occurrences {
+  juan: number;
+  occurrences: Agent1Occurrence[];
+}
+
 // A resolved prior appearance shown in the person card (spoiler-filtered).
 export interface PersonAppearance {
   person_id: string;
@@ -308,13 +321,41 @@ export function loadPersonMentions(no: number): Promise<JuanPersonMentions | nul
   let cached = _mentionsCache.get(no);
   if (!cached) {
     const padded = String(no).padStart(3, '0');
-    cached = fetch(`${BASE}text/${personsDir()}/mentions/juan_${padded}.json`)
+    const loadBoundMentions = () =>
+      fetch(`${BASE}text/${personsDir()}/mentions/juan_${padded}.json`)
       .then(r => {
         if (r.status === 404) return null;
         if (!r.ok) throw new Error(`mentions ${no} ${r.status}`);
         return r.json() as Promise<JuanPersonMentions>;
       })
       .catch(() => null);
+    cached = _personVariant === 'v2'
+      ? fetch(`${BASE}text/persons-v2/agent1/juan_${padded}.json`)
+        .then(async r => {
+          if (r.status === 404) return loadBoundMentions();
+          if (!r.ok) throw new Error(`Agent 1 mentions ${no} ${r.status}`);
+          const file = await r.json() as JuanAgent1Occurrences;
+          return {
+            juan_no: file.juan,
+            version: 1 as const,
+            mentions: file.occurrences
+              .filter(o => o.field === 'main')
+              .map(o => ({
+                pid: o.para_id,
+                ce_year: null,
+                source: 'main' as const,
+                start: o.start,
+                end: o.end,
+                surface: o.surface,
+                confidence: 'unresolved' as const,
+              })),
+          };
+        })
+        .catch(error => {
+          if (error instanceof TypeError) return loadBoundMentions();
+          throw error;
+        })
+      : loadBoundMentions();
     _mentionsCache.set(no, cached);
   }
   return cached;

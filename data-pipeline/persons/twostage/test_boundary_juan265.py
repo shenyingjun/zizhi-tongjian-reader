@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import unittest
+from pathlib import Path
 
 import rules as R
+import translation_evidence as TE
 
 PosToken = R.pos_giv.PosToken
 GivOffsets = R.pos_giv.GivOffsets
@@ -504,6 +507,94 @@ class Juan265BoundaryTest(unittest.TestCase):
         )
         rows = _rows(text, offsets={1}, spans=[(1, 2)], tokens=tokens)
         self.assertNotIn("宣帝", _surfaces(rows))
+
+
+class Juan265CorpusBoundaryTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        repo = Path(__file__).resolve().parents[3]
+        text_dir = repo / "web" / "public" / "text"
+        document = json.loads(
+            (text_dir / "juan_265.json").read_text(encoding="utf-8")
+        )
+        paragraphs = document["paragraphs"]
+        evidence = R.pos_giv.giv_for_juan(
+            265,
+            paragraphs,
+            text_dir / "persons" / "pos_giv",
+        )
+        corpus = R.load_corpus()
+        cls.default_rows = R.detect_juan(
+            265,
+            paragraphs,
+            evidence,
+            corpus,
+            enabled=R.PRESET_RECALL,
+            scan_notes=False,
+        )
+        translated = TE.load_juan(
+            Path(__file__).resolve().parent / "translation-evidence",
+            265,
+            paragraphs,
+        )
+        cls.assisted_rows = R.detect_juan(
+            265,
+            paragraphs,
+            evidence,
+            corpus,
+            enabled=R.PRESET_RECALL,
+            scan_notes=False,
+            translation_evidence=translated,
+        )
+
+    def test_real_paragraph_uses_full_title_name_boundaries(self):
+        expected = {
+            (11, 21, 24, "辉王祚", "jue_name"),
+            (11, 66, 69, "昭宣帝", "posthumous_emperor_title"),
+        }
+        rejected = {
+            (11, 22, 24, "王祚"),
+            (11, 66, 68, "昭宣"),
+        }
+        for mode, rows in (
+            ("default", self.default_rows),
+            ("assisted", self.assisted_rows),
+        ):
+            geometries = {
+                (
+                    row["para_id"],
+                    row["start"],
+                    row["end"],
+                    row["surface"],
+                    row["rule"],
+                )
+                for row in rows
+                if row.get("field") == "main"
+            }
+            truncated = {geometry[:4] for geometry in geometries}
+            with self.subTest(mode=mode):
+                self.assertTrue(expected <= geometries)
+                self.assertTrue(rejected.isdisjoint(truncated))
+
+    def test_real_paragraph_keeps_nearby_empress_control(self):
+        expected = (11, 40, 42, "皇后", "empress_title")
+        for mode, rows in (
+            ("default", self.default_rows),
+            ("assisted", self.assisted_rows),
+        ):
+            geometries = {
+                (
+                    row["para_id"],
+                    row["start"],
+                    row["end"],
+                    row["surface"],
+                    row["rule"],
+                )
+                for row in rows
+                if row.get("field") == "main"
+            }
+            with self.subTest(mode=mode):
+                self.assertIn(expected, geometries)
 
 
 if __name__ == "__main__":
