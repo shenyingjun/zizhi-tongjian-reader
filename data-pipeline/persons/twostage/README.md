@@ -48,10 +48,11 @@ data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
 `--skip-admin-rebuild`，也可用 `--juans 62 141` 只处理指定卷。输出目录包含每卷 JSON
 和 `manifest.json`，两者都记录 `rules.py` 与行政区证据的 SHA-256。
 
-实验性 app 的“新”标注会优先读取 `web/public/text/persons-v2/agent1/` 中当前
-Translation-assisted Agent 1 输出，并将所有 occurrence 画为不可点击的下划线；尚未发布
-Agent 1 sidecar 的卷暂时回退到旧 `persons-v2/mentions/`。规则稳定并完成 targeted audit
-后，可按卷发布：
+实验性 app 的“新”标注会读取 `web/public/text/persons-v2/agent1/` 中当前
+Translation-assisted Agent 1 输出，并将所有 occurrence 画为不可点击的下划线。为避免
+尚未被 Agent 1 恢复的生产 v1 span 消失，app 同时保留与 Agent 1 不重叠的旧
+`persons-v2/mentions/`；重叠时以当前 Agent 1 边界为准。尚未发布 Agent 1 sidecar 的卷
+完全回退到旧 `persons-v2/mentions/`。规则稳定并完成 targeted audit 后，可按卷发布：
 
 ```powershell
 python data-pipeline\persons\twostage\retag.py `
@@ -60,6 +61,13 @@ python data-pipeline\persons\twostage\retag.py `
   --translation-evidence-dir data-pipeline\persons\twostage\translation-evidence `
   --output-dir web\public\text\persons-v2\agent1
 ```
+
+当前提交的 `persons-v2/agent1/` 覆盖全部 294 卷，manifest 规则 hash 与
+`benchmark-latest.json` 一致，共 174,837 个 Agent 1 span。与旧 ADD-only v2
+相比，app 的有效 union 有 55,772 个 raw additions、9,019 个 overlap geometry
+removals/replacements、净增长 46,753；非 replacement removals、audited-v1
+recoveries 和 audited-v1 regressions 均为 0。Agent 1 本身仍漏掉 3,585 个 audited
+v1 span，故这些不重叠的旧 span 必须保留为 fallback，不能把 sidecar 当作替换数据。
 
 经 targeted audit 确认的完整称号边界可发布到实验性 app 数据 `persons-v2/`。发布器只接受
 带译文 manifest 的 numbered-jie 输出，只扩展一个已绑定且被当前 `jue_name` 或
