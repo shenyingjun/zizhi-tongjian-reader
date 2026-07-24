@@ -904,9 +904,8 @@ export default function App() {
     try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
   };
 
-  // Open the dock on its 纪年 view (mobile right-edge swipe entry point). On
-  // mobile applySubject({kind:'years'}) collapses the sheet to peek, so we
-  // re-raise it to half here to actually slide the drawer in.
+  // Open the dock on its 纪年 view. applySubject({kind:'years'}) normally
+  // collapses the mobile drawer, so re-raise it after clearing lookup state.
   const openDockYears = () => {
     goToYears();
     setSheetDetent('half');
@@ -1528,7 +1527,7 @@ export default function App() {
                 type="button"
                 className={'seg-btn' + (subject.kind === 'years' ? ' is-on' : '')}
                 aria-pressed={subject.kind === 'years'}
-                onClick={goToYears}
+                onClick={openDockYears}
               >纪年</button>
               <button
                 type="button"
