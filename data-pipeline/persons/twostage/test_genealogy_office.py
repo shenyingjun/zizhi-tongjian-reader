@@ -64,6 +64,19 @@ class GenealogyOfficeTest(unittest.TestCase):
             (name_start, name_start + 2, "继勋", "gloss_kin"),
         )
 
+    def test_cishi_between_kin_term_and_given_before_zhi(self):
+        text = "楚王殷以其弟永州刺史存知桂州事"
+        start = text.index("存")
+        ctx = make_ctx(text, gset={start}, gspans=[(start, start + 1)])
+        result = R.rule_genealogy_given(ctx, text.index("其弟"))
+        self.assertEqual(result, (start, start + 1, "存", "gloss_kin"))
+
+    def test_arbitrary_shi_suffix_is_not_treated_as_an_office(self):
+        text = "其弟永州从史存知事"
+        start = text.index("存")
+        ctx = make_ctx(text, gset={start}, gspans=[(start, start + 1)])
+        self.assertIsNone(R.rule_genealogy_given(ctx, 0))
+
     def test_direct_sibling_construction_tags_name_only(self):
         text = "初，马殷弟賨，性沈勇"
         start = text.index("賨")

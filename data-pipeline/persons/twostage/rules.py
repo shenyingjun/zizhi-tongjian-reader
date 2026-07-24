@@ -2542,12 +2542,13 @@ GENEALOGY_RIGHT = (
     NAMESTART | PERSON_LEFT_VERBS | PERSON_RIGHT_PRED
     | set("而不大独等兵事节自于行继临淫懦顾说将令讨勒奉上尚娶袭封拜诣入出进守谋摄监已相夺"
           "所代部有统分嗣南妻举又居引用夜镇贼趋蒸异恨俱掌取仍权友闻皆驰非主同乳早幽谕"
-          "往闚抚既应篡求")
+          "往闚抚既应篡求知")
 )
 # Office-final characters that can close an office/title sitting between a kinship
 # term and the given name (其子[牙内诸军使]渥 / 其姪[天雄节度使]继勋). The office is
 # skipped, never tagged; the following POS-given name is the person.
 GENEALOGY_OFFICE_SUFFIX = set("使尹令牧守丞尉卿监帅傅保师郎将督射")
+GENEALOGY_OFFICE_TAILS = ("刺史",)
 GENEALOGY_STATE_PHRASES = {
     "新昏", "尚幼", "幼弱", "年少", "年幼", "未冠", "无子",
 }
@@ -2604,9 +2605,14 @@ def _skip_kin_office(ctx, j):
     t, gset, consumed = ctx.t, ctx.gset, ctx.consumed
     limit = min(len(t), j + 8)
     for m in range(j + 2, limit + 1):
-        if m not in gset or t[m - 1] not in GENEALOGY_OFFICE_SUFFIX:
+        if m not in gset:
             continue
         office = t[j:m]
+        if (
+            t[m - 1] not in GENEALOGY_OFFICE_SUFFIX
+            and not office.endswith(GENEALOGY_OFFICE_TAILS)
+        ):
+            continue
         if set(office) & (NAMESTART | GLOSS_SEP):
             continue
         if any(off in gset for off in range(j, m)) or any(consumed[j:m]):
