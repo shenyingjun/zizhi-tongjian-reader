@@ -1,14 +1,16 @@
 """Recover prose-free Translation evidence mappings one juan at a time.
 
 The source page is read in memory and is never persisted. Person entities detected
-in each translated segment must also occur in its paired source-original segment.
-Each resulting canonical occurrence is then restricted to a uniquely aligned
-numbered jie before it can become eligible evidence.
+in each translated segment must either occur in its paired source-original segment
+or align to an abbreviated mention in the corresponding source sentence. Each
+resulting canonical occurrence is then restricted to a uniquely aligned numbered
+jie before it can become eligible evidence.
 """
 from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import difflib
 import hashlib
 import json
 import os
@@ -31,12 +33,22 @@ SOURCE_URL = (
 )
 MODEL = "uer/roberta-base-finetuned-cluener2020-chinese"
 MIN_NER_SCORE = 0.75
+MIN_SENTENCE_ALIGNMENT_SCORE = 0.17
 ORIGINAL_MARKER = "\u3010\u539f\u6587\u3011"
 TRANSLATION_MARKER = "\u3010\u8bd1\u6587\u3011"
 MISSING_TRANSLATION_NOTICE = "\u672c\u5377\u8bd1\u6587\u7f3a\u5931"
 _CC = OpenCC("t2s")
 _CJK = re.compile(r"[\u3400-\u9fff]+")
+_SENTENCE = re.compile(r"[^\u3002\uff01\uff1f\uff1b]+[\u3002\uff01\uff1f\uff1b]?")
+_HU_SANSHENG_NOTE = re.compile(
+    r"\u3014\u3016\u80e1\u4e09\u7701\u6ce8\u3017.*?\u3015",
+    re.DOTALL,
+)
 _SESSION = requests.Session()
+_COREFERENCE_HANDLE_VETO = set(
+    "\u4e4b\u5176\u4e43\u800c\u4ee5\u4e8e\u4e0e\u4e3a\u6240"
+    "\u8005\u4e5f\u77e3\u7109\u4e4e\u516e"
+)
 _PERSON_TITLE_CONTINUATIONS = (
     "\u5b50", "\u516c", "\u4faf", "\u738b", "\u541b", "\u540e", "\u5983",
     "\u59ec", "\u592b\u4eba", "\u5148\u751f",
@@ -323,6 +335,260 @@ def _occurrences(text: str, normalized_surface: str):
         start = normalized_text.find(normalized_surface, start + 1)
 
 
+def _coreference_handles(normalized_identity: str) -> tuple[str, ...]:
+    if len(normalized_identity) < 2 or normalized_identity.endswith("\u66f0"):
+        return ()
+    lengths = (2, 1) if len(normalized_identity) >= 3 else (1,)
+    return tuple(
+        normalized_identity[-length:]
+        for length in lengths
+        if (
+            normalized_identity[-length:] != normalized_identity
+            and not set(normalized_identity[-length:]) <= _COREFERENCE_HANDLE_VETO
+        )
+    )
+
+
+def _occurrence_matches_source_pair(
+    text: str,
+    start: int,
+    end: int,
+    normalized_source: str,
+) -> bool:
+    normalized_handle = _normalize(text[start:end])
+    sentence_start = max(
+        (text.rfind(terminator, 0, start) for terminator in "\u3002\uff01\uff1f\uff1b"),
+        default=-1,
+    ) + 1
+    sentence_ends = [
+        position
+        for terminator in "\u3002\uff01\uff1f\uff1b"
+        if (position := text.find(terminator, end)) >= 0
+    ]
+    sentence_end = min(sentence_ends, default=len(text))
+    left = _normalize(text[max(sentence_start, start - 12):start])
+    right = _normalize(text[end:min(sentence_end, end + 12)])
+    for width in range(6, 1, -1):
+        left_context = left[-width:]
+        right_context = right[:width]
+        if (
+            len(left_context) + len(right_context) >= 4
+            and left_context + normalized_handle + right_context
+            in normalized_source
+        ):
+            return True
+    return False
+
+
+def _sentences(text: str, *, strip_hu_notes: bool = False) -> tuple[str, ...]:
+    if strip_hu_notes:
+        text = _HU_SANSHENG_NOTE.sub("", text)
+    return tuple(
+        normalized
+        for match in _SENTENCE.finditer(text)
+        if (normalized := _normalize(match.group()))
+    )
+
+
+def _aligned_source_sentences(
+    pair: SourcePair,
+    normalized_identity: str,
+    normalized_handle: str,
+) -> tuple[str, ...]:
+    source_sentences = tuple(
+        sentence
+        for sentence in _sentences(pair.original, strip_hu_notes=True)
+        if normalized_handle in sentence
+    )
+    translation_sentences = tuple(
+        sentence
+        for sentence in _sentences(pair.translation)
+        if normalized_identity in sentence
+    )
+    if not source_sentences or not translation_sentences:
+        return ()
+
+    aligned = set()
+    for translation_sentence in translation_sentences:
+        score, source_sentence = max(
+            (
+                difflib.SequenceMatcher(
+                    None,
+                    source_sentence,
+                    translation_sentence,
+                    autojunk=False,
+                ).ratio(),
+                source_sentence,
+            )
+            for source_sentence in source_sentences
+        )
+        if score >= MIN_SENTENCE_ALIGNMENT_SCORE:
+            aligned.add(source_sentence)
+    return tuple(sorted(aligned))
+
+
+def _map_translation_coreference(
+    juan: int,
+    pair: SourcePair,
+    aligned: tuple[Jie, ...],
+    entity: PersonEntity,
+    source_url: str,
+    handle_owners: dict[str, set[str]],
+) -> list[dict]:
+    normalized_entity = _normalize(entity.surface)
+    normalized_pair_source = _normalize(pair.original)
+    if normalized_entity in normalized_pair_source:
+        return []
+
+    anchors_by_jie = {}
+    for jie in aligned:
+        anchors = []
+        for paragraph_index, paragraph in enumerate(jie.paragraphs):
+            text = paragraph.get("main", "") or ""
+            for start, end in _occurrences(text, normalized_entity):
+                if any(
+                    text.startswith(suffix, end)
+                    for suffix in _PERSON_TITLE_CONTINUATIONS
+                ):
+                    continue
+                anchors.append(
+                    (
+                        paragraph_index,
+                        start,
+                        text[start:end],
+                    )
+                )
+        if anchors:
+            anchors_by_jie[jie.index] = (jie, anchors)
+    if len(anchors_by_jie) > 1:
+        return []
+
+    if anchors_by_jie:
+        jie, anchors = next(iter(anchors_by_jie.values()))
+        anchor_paragraph, anchor_start, identity_surface = min(anchors)
+        anchored = True
+    elif len(aligned) == 1 and entity.score >= 0.90:
+        jie = aligned[0]
+        anchor_paragraph = anchor_start = -1
+        identity_surface = entity.surface
+        anchored = False
+    else:
+        return []
+
+    rows = []
+    handles = [
+        handle
+        for handle in _coreference_handles(normalized_entity)
+        if (
+            handle in normalized_pair_source
+            and handle_owners.get(handle) == {normalized_entity}
+        )
+    ]
+    if not handles:
+        return []
+    normalized_handle = handles[0]
+    aligned_source_sentences = _aligned_source_sentences(
+        pair,
+        normalized_entity,
+        normalized_handle,
+    )
+    if not aligned_source_sentences:
+        return []
+    for paragraph_index, paragraph in enumerate(jie.paragraphs):
+        text = paragraph.get("main", "") or ""
+        for start, end in _occurrences(text, normalized_handle):
+            if (
+                anchored
+                and (paragraph_index, start) <= (anchor_paragraph, anchor_start)
+            ):
+                continue
+            if not any(
+                _occurrence_matches_source_pair(
+                    text,
+                    start,
+                    end,
+                    source_sentence,
+                )
+                for source_sentence in aligned_source_sentences
+            ):
+                continue
+            rows.append(
+                {
+                    "juan": juan,
+                    "repo_para_id": int(paragraph["id"]),
+                    "repo_jie_index": jie.index,
+                    "repo_jie_number": jie.number,
+                    "identity_surface": identity_surface,
+                    "translation_ner_name": entity.surface,
+                    "translation_ner_score": entity.score,
+                    "original_start": start,
+                    "original_end": end,
+                    "original_surface": text[start:end],
+                    "normalized_original_surface": normalized_handle,
+                    "transfer_mode": "anchor_given",
+                    "mapping_status": (
+                        "mapped_translation_coreference_unique_jie"
+                        if anchored
+                        else "mapped_translation_expansion_unique_jie"
+                    ),
+                    "source_kind": (
+                        "ziyexing_modern_chinese_translation_coreference"
+                    ),
+                    "source_page": (
+                        f"{source_url}#pair-{pair.index + 1}"
+                    ),
+                }
+            )
+    return rows
+
+
+def _drop_ambiguous_coreferences(rows: list[dict]) -> list[dict]:
+    identities_by_geometry = {}
+    identities_by_jie_handle = {}
+    for row in rows:
+        if str(row["mapping_status"]).startswith("flagged_"):
+            continue
+        geometry = (
+            int(row["repo_para_id"]),
+            int(row["original_start"]),
+            int(row["original_end"]),
+        )
+        identities_by_geometry.setdefault(geometry, set()).add(
+            str(row["identity_surface"])
+        )
+        jie = int(row["repo_jie_index"])
+        identity = _normalize(str(row["identity_surface"]))
+        for handle in _coreference_handles(identity):
+            identities_by_jie_handle.setdefault((jie, handle), set()).add(identity)
+    return [
+        row
+        for row in rows
+        if (
+            row.get("transfer_mode") != "anchor_given"
+            or (
+                len(
+                    identities_by_geometry[
+                        (
+                            int(row["repo_para_id"]),
+                            int(row["original_start"]),
+                            int(row["original_end"]),
+                        )
+                    ]
+                ) == 1
+                and len(
+                    identities_by_jie_handle.get(
+                        (
+                            int(row["repo_jie_index"]),
+                            _normalize(str(row["original_surface"])),
+                        ),
+                        (),
+                    )
+                ) == 1
+            )
+        )
+    ]
+
+
 def map_pair(
     juan: int,
     pair: SourcePair,
@@ -332,10 +598,34 @@ def map_pair(
 ) -> list[dict]:
     source_original = _normalize(pair.original)
     aligned = aligned_jies(pair.original, jies)
+    handle_owners: dict[str, set[str]] = {}
+    for entity in people:
+        normalized_entity = _normalize(entity.surface)
+        if normalized_entity.endswith("\u66f0"):
+            continue
+        if normalized_entity in source_original:
+            continue
+        for handle in _coreference_handles(normalized_entity):
+            if handle in source_original:
+                handle_owners.setdefault(handle, set()).add(normalized_entity)
+                break
     rows = []
     for entity in people:
         normalized_entity = _normalize(entity.surface)
+        if normalized_entity.endswith("\u66f0"):
+            continue
         if len(normalized_entity) < 2 or normalized_entity not in source_original:
+            if len(normalized_entity) >= 2:
+                rows.extend(
+                    _map_translation_coreference(
+                        juan,
+                        pair,
+                        aligned,
+                        entity,
+                        source_url,
+                        handle_owners,
+                    )
+                )
             continue
         matching_jies = [
             jie
@@ -423,6 +713,7 @@ def recover_juan(juan: int, ner: TranslationNer) -> tuple[dict, list[dict]]:
                 source_url,
             )
         )
+    rows = _drop_ambiguous_coreferences(rows)
     deduplicated = {}
     for row in rows:
         key = (
@@ -486,8 +777,9 @@ def main() -> None:
         "translation_ner_model": MODEL,
         "minimum_ner_score": MIN_NER_SCORE,
         "policy": (
-            "person NER plus paired source-original exact identity; canonical "
-            "occurrence must align to one unique numbered jie"
+            "person NER plus paired source-original exact identity or unique "
+            "sentence-aligned abbreviated mention; canonical occurrence must "
+            "align to one unique numbered jie"
         ),
     }
 

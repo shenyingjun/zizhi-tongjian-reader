@@ -893,6 +893,34 @@ def rule_translation_given(ctx, i):
             or (prev in NAMESTART and nxt in PERSON_RIGHT_PRED)
         )
     )
+    handle_tokens = ctx.tokens_for(i, end)
+    person_to_predicate_boundary = (
+        len(handle_tokens) == 2
+        and all(token.end - token.start == 1 for token in handle_tokens)
+        and handle_tokens[0].pos == "PROPN"
+        and any(
+            name_type in handle_tokens[0].tag
+            for name_type in ("NameType=Prs", "NameType=Giv")
+        )
+        and handle_tokens[1].pos in {"VERB", "AUX"}
+        and handle_tokens[1].score is not None
+        and handle_tokens[1].score >= POS_FUNCTION_VETO_SCORE
+    )
+    sentence_aligned_two_char = (
+        candidate.get("translation_coreference")
+        and candidate.get("strict_local_owner", False)
+        and end - i == 2
+        and not person_to_predicate_boundary
+        and surface[-1] not in JUE_HEAD
+        and surface not in OFFICE_TITLES
+        and (
+            not _local_nat_or_geo(ctx, i, end)
+            or candidate.get("mapping_status")
+            == "mapped_translation_coreference_unique_jie"
+            or candidate.get("same_jie_trusted_surface", False)
+        )
+        and not _occurrence_has_polity_frame(ctx, i, end)
+    )
     if (
         not 1 <= end - i <= 2
         or ctx.t[i:end] != surface
@@ -902,7 +930,19 @@ def rule_translation_given(ctx, i):
         or surface == "从容"
         or embedded_fullname
         or (
+            candidate.get("translation_coreference")
+            and end - i == 1
+            and any(
+                ctx.t[i:candidate_end] in ctx.corpus.ner
+                for candidate_end in range(
+                    end + 1,
+                    min(len(ctx.t), end + 2) + 1,
+                )
+            )
+        )
+        or (
             not strict_local_frame
+            and not sentence_aligned_two_char
             and (
                 _translation_identity_overextended(ctx, candidate)
                 or not _translation_given_syntax_ok(ctx, i, end)
@@ -911,6 +951,26 @@ def rule_translation_given(ctx, i):
     ):
         return None
     return (i, end, surface, "translation_anaphora")
+
+
+def _mark_translation_surface_propagation(ctx, candidates):
+    """Propagate one trusted exact handle only within the current numbered jie."""
+    grouped = collections.defaultdict(list)
+    for candidate in candidates:
+        surface = candidate["surface"]
+        if (
+            candidate.get("translation_coreference")
+            and len(surface) == 2
+            and surface[-1] not in JUE_HEAD
+        ):
+            grouped[(candidate["identity_surface"], surface)].append(candidate)
+    for same_surface in grouped.values():
+        if any(
+            not _local_nat_or_geo(ctx, candidate["start"], candidate["end"])
+            for candidate in same_surface
+        ):
+            for candidate in same_surface:
+                candidate["same_jie_trusted_surface"] = True
 
 
 # ── rules: each yields (start, end, surface, chunk_type) ─────────────────────
@@ -5441,6 +5501,18 @@ def detect_anaphora(ctx, cards):
                                 )
                             )
                         )
+                        or any(
+                            L == 1
+                            and t[i:candidate_end] in ctx.corpus.ner
+                            for candidate_end in range(
+                                i + 2,
+                                min(len(t), i + 3) + 1,
+                            )
+                        )
+                        and any(
+                            anchor.get("translation_coreference")
+                            for anchor in active_external
+                        )
                     )
                 )
                 if name_continuation:
@@ -6697,6 +6769,14 @@ def detect_juan(
                             "identity_surface": identity_surface,
                             "strict_identity": strict_identity,
                             "mode": candidate.get("transfer_mode"),
+                            "mapping_status": candidate.get("mapping_status"),
+                            "translation_coreference": (
+                                candidate.get("source_kind")
+                                == (
+                                    "ziyexing_modern_chinese_translation_"
+                                    "coreference"
+                                )
+                            ),
                         }
                         mode = candidate.get("transfer_mode")
                         if (
@@ -6711,6 +6791,19 @@ def detect_juan(
                     handles.update(
                         _handles_of(identity_surface, "translation_identity")
                     )
+                    coreference_handles = {
+                        str(candidate.get("normalized_surface", ""))
+                        for candidate in identity.get("candidates", ())
+                        if (
+                            candidate.get("eligible")
+                            and candidate.get("transfer_mode") == "anchor_given"
+                            and candidate.get("source_kind")
+                            == (
+                                "ziyexing_modern_chinese_translation_"
+                                "coreference"
+                            )
+                        )
+                    }
                     eligible_starts = [
                         off + int(candidate["start"])
                         for candidate in identity.get("candidates", ())
@@ -6729,6 +6822,9 @@ def detect_juan(
                                 "anchor_start": off - 1,
                                 "identity_surface": identity_surface,
                                 "handle": handle,
+                                "translation_coreference": (
+                                    handle in coreference_handles
+                                ),
                             }
                         )
                         if eligible_starts:
@@ -6739,6 +6835,9 @@ def detect_juan(
                                     "anchor_start": min(eligible_starts),
                                     "identity_surface": identity_surface,
                                     "handle": handle,
+                                    "translation_coreference": (
+                                        handle in coreference_handles
+                                    ),
                                 }
                             )
             parts.append(t)
@@ -6769,6 +6868,7 @@ def detect_juan(
             evidence_audit=[] if evidence_audit is not None else None,
         )
         ctx.translation_anchors = tuple(blk_translation_anchors)
+        _mark_translation_surface_propagation(ctx, blk_translation_mentions)
         by_start = collections.defaultdict(list)
         for candidate in blk_translation_fullnames + blk_translation_mentions:
             by_start[candidate["start"]].append(candidate)
