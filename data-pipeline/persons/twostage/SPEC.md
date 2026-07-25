@@ -119,7 +119,7 @@ veto 优先于全部正向证据。输出 card 保存 `evidence_policy`、`evide
 | `princess_title` | jie | 完整 BIO 称号组件 + 独立 NOUN tokens `公 + 主`；可补齐一个被 POS 错分但由后续 `I` 证明的首字；无 BIO component 时仅接纳同节重复的完整二字 component，并拒绝动词吞并；不查 NER/人物 KB | `太平公主`、`安乐公主`、`全公主` |
 | `pos_given_local_frame` | jie | 最后 fallback：完整高置信 POS-Giv + 严格当前人物句法；在 anaphora 后执行，并拒绝姓氏后切尾、右侧姓名 continuation 和可扩展 model NER 人名 | `昌为人`、`召拜式为中郎` 中的省称 |
 | `local_title_anchor` | jie | model NER 称号 + 完整 token 边界 + 当前人物谓词；由同节更早高置信 card 授权，或由更早同形文本 + 完整 PROPN 称号组件 + 更严格当前句法授权；拒绝功能/数量组件、姓名切尾和连续爵号 | `赵襄子…襄子弗与`、`沛公…沛公引兵` |
-| `local_exact_surface` | jie | 同节任一可信同形姓名 card + 当前 model NER、完整 token/姓名硬边界及人物 NameType signal；较长的已接纳姓氏全名还可贡献完整双字 handle；拒绝称号来源、政权/族群 frame、嵌入更长姓名、动词/功能结构和地理 continuation | 同节重复的完整姓名或双字 given |
+| `local_exact_surface` | jie | 同节任一可信同形姓名 card + 当前 model NER、完整 token/姓名硬边界及人物 NameType signal；较长的已接纳姓氏全名还可贡献完整双字 handle；人物选择动词可容忍当前 occurrence 的 POS 误判；拒绝称号来源、政权/族群 frame、嵌入更长姓名、未授权动词/功能结构和地理 continuation | 同节重复的完整姓名或双字 given |
 | `local_exact_title` | jie | 同节任一可信同形称号 card + 当前完整 PROPN 称号组件和边界；拒绝高歧义 `子` fallback、连续爵号、官职及嵌套姓名 | 同节重复的 `X公/X王/X君/X侯` |
 | `block_appos` | jie | BLOCK 称谓/关系 + 完整人物 POS + 右边界 | `平阳侯曹参` 中的 `曹参` |
 | `struct_fuxing` | jie | 复姓 + POS·Giv | `慕容垂` |
@@ -129,10 +129,11 @@ veto 优先于全部正向证据。输出 card 保存 `evidence_policy`、`evide
 | `role_bio_name` | jie | 身份词 + 完整 BIO-Giv；身份词留在线外 | `胡僧[慧范]`、`尼[法静]` |
 | `corpus_given2` | jie | 兼容 rule id；完整双字 POS·Giv + 姓名边界 | `道济` |
 | `semantic_given2` | jie | 完整双字 POS·Giv + 人物句法框架 | `劝望之`、`为师道所亲信`、`与望之有隙` |
-| `genealogy_given` | jie | 明确谱系前缀（含 姪/侄）+ 连续 POS·Giv 姓名 + 右语法边界；谱系词与姓名间可夹一个官名并跳过；不查 KB | `弟亮`、`其子仁果`、`其姪天雄节度使继勋` 中的姓名 |
+| `genealogy_given` | jie | 明确谱系前缀（含 姪/侄、`之子/其妹`）+ 连续 POS·Giv 姓名 + 右语法边界；谱系词与姓名间可夹一个官名并跳过；受控的 `子 X 立/嗣/代` 和封立列表成立；不查 KB | `弟亮`、`其子仁果`、`温韬之子延濬`、`子扫剌立` 中的姓名 |
 | `foreign_title_name` | jie | 完整 1–3 字 BIO component + `可汗/单于`；紧邻完整人物 BIO 时合并 title+name | `佗钵可汗`、`柔然可汗阿那瓌` |
 | `foreign_suffix_name` | jie | 复姓 + BIO-Giv + 外族姓名后缀 + 右语法边界；不查 KB | `拓跋沙漠汗` |
-| `royal_title_name` | jie | `太子/世子/皇子/王子` + 完整双字 POS·Giv | `太子承乾` |
+| `royal_title_name` | jie | `太子/世子/皇子/王子` + 完整一至二字 POS·Giv；输出完整 title+given geometry，标点 continuation 硬否决 | `太子承乾`、`皇子据` |
+| `structural_identity_name` | jie | 完整 BIO-Giv surface + 当前 occurrence 的人物身份结构：官职、政权/族属 + `人/相/酋`、官职 + `臣`、显式亲属主语，或完整 `X主` 称号；不查人物 KB | `韩相侠累` 中的 `侠累`、`齐人少翁` 中的 `少翁`、`奚酋秃馁` 中的 `秃馁`、`皇泰主` |
 | `surname_honorific` | jie | 完整姓氏 morphology + `公/君/侯/卿/郎` + 人物谓词、称呼或同位语 | `张公`、`荀卿`、`萧郎` |
 | `female_court_title` | jie | 严格命名/人物 frame 下的 `X夫人`，或姓氏 + 一字 appellation + `妃` | `华阳夫人`、`萧淑妃` |
 | `person_possessive` | jie | 完整人物 POS，或先行同节双字 handle + `庙/墓/祠/柩/第` | `比干庙`、`崇训墓` |
@@ -399,6 +400,20 @@ BIO 模型偶尔会把一个外族名拆成相邻实体 span。谱系规则只�
 > 若发现一个疑似省称，只向前查找同一节内更早的全名或全名等价锚点；
 > 找到则标注锚点和省称，找不到就不标。
 
+疑似 bare given/anaphor 只允许四种授权来源：
+
+1. 同一编号节内更早的完整姓名；
+2. 当前或更早的完整 `title + given` geometry，例如 `吴越王镠`、`燕主垂`、
+   `秦主登`、`皇子据`；
+3. 当前 occurrence 的明确亲属结构，例如 `弟賨`、`温韬之子延濬`；
+4. 同一亲属/封立列表的协调延续，例如 `弟賨为左相，存为右相`、
+   `子友文为博王，友珪为郢王`。
+
+仅有 POS·Giv、model NER、标点边界、译文 owner、同卷或另一节中的历史身份均不构成
+授权。主 pass 产生的 bare-given hypothesis 必须在建立 anaphora roster **之前**过滤并
+释放其 geometry，不能反过来污染同节 recurrence、morphology 或 cumulative evidence。
+硬功能词、政权、地名、军镇和 BIO continuation veto 不能被累计分数覆盖。
+
 具体流程：
 
 1. 对整个节运行谱系预扫描和姓名/称谓规则，产生锚点。
@@ -415,6 +430,9 @@ BIO 模型偶尔会把一个外族名拆成相邻实体 span。谱系规则只�
      下一字是亲属/领属成分、谓词或受控修饰语时才穿透，例如 `寄父、胜非、弘遂`；
    - 无 POS 时，必须由同节先行锚点和受控人物谓词共同证明；当前受控扩展包括
      `遣/命/引/闻/问/怒/使/从/纳/听/拒/救`；
+   - `拜 + handle + 行政区 + 官职` 是受控的直接任命结构；handle 必须只有一个更早的
+     同节人物锚点。该 occurrence 可纠正被后续行政区牵连的 Geo 误标，但不能以累计分数
+     穿透其他地名 veto；
    - 若单字 handle 被 POS 标成 ADV/AUX 等功能词，只允许两个更窄的覆盖：
      `劝/从/遣 + handle + 高置信谓词`，或严格句界后的
      `handle + 人物谓词`；handle 在本节必须只有一个更早全名来源，`当` 明确否决；
@@ -539,9 +557,9 @@ Agent 2 接收 Agent 1 的 occurrence cards，负责回答“是谁”。
 的错误 reference 记录在 `benchmark-reference-exclusions.jsonl`；benchmark 和 candidate
 audit 共用同一 loader，并验证 geometry 仍存在且正文 surface 未漂移。不得使用 Agent 1
 规则自动过滤 reference，也不得把排除数记作规则 recovery。完整命令、输入定义和最新 JSON
-见 [`BENCHMARK.md`](BENCHMARK.md)。当前 jie-only assisted audited 结果为
-124,864 / 128,330 = **97.299%**，剩余 audited v1 gap 为 3,466；raw 兼容诊断口径为
-124,866 / 128,596 = 97.099%，gap 3,730。以下表格保留最初
+见 [`BENCHMARK.md`](BENCHMARK.md)。当前 paragraph-mapped、jie-confined assisted audited
+结果为 124,447 / 128,330 = **96.974%**，剩余 audited v1 gap 为 3,883；raw 兼容诊断
+口径为 124,449 / 128,596 = 96.775%，gap 4,147。以下表格保留最初
 paragraph scope → jie scope 的历史对照：
 
 除明确标为 raw compatibility、default ablation 或 attribution 的诊断表外，文档、报告和

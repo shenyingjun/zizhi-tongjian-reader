@@ -34,6 +34,7 @@ SOURCE_URL = (
 MODEL = "uer/roberta-base-finetuned-cluener2020-chinese"
 MIN_NER_SCORE = 0.75
 MIN_SENTENCE_ALIGNMENT_SCORE = 0.17
+MIN_PARAGRAPH_ALIGNMENT_MARGIN = 0.05
 ORIGINAL_MARKER = "\u3010\u539f\u6587\u3011"
 TRANSLATION_MARKER = "\u3010\u8bd1\u6587\u3011"
 MISSING_TRANSLATION_NOTICE = "\u672c\u5377\u8bd1\u6587\u7f3a\u5931"
@@ -408,23 +409,146 @@ def _aligned_source_sentences(
     if not source_sentences or not translation_sentences:
         return ()
 
-    aligned = set()
-    for translation_sentence in translation_sentences:
-        score, source_sentence = max(
-            (
-                difflib.SequenceMatcher(
-                    None,
-                    source_sentence,
-                    translation_sentence,
-                    autojunk=False,
-                ).ratio(),
+    scores = [
+        [
+            difflib.SequenceMatcher(
+                None,
                 source_sentence,
+                translation_sentence,
+                autojunk=False,
+            ).ratio()
+            for translation_sentence in translation_sentences
+        ]
+        for source_sentence in source_sentences
+    ]
+    best = [
+        [0.0] * (len(translation_sentences) + 1)
+        for _ in range(len(source_sentences) + 1)
+    ]
+    decision = [
+        [""] * (len(translation_sentences) + 1)
+        for _ in range(len(source_sentences) + 1)
+    ]
+    for source_index in range(1, len(source_sentences) + 1):
+        for translation_index in range(1, len(translation_sentences) + 1):
+            options = [
+                (best[source_index - 1][translation_index], "source"),
+                (best[source_index][translation_index - 1], "translation"),
+            ]
+            score = scores[source_index - 1][translation_index - 1]
+            if score >= MIN_SENTENCE_ALIGNMENT_SCORE:
+                options.append(
+                    (
+                        best[source_index - 1][translation_index - 1] + score,
+                        "match",
+                    )
+                )
+            best[source_index][translation_index], decision[source_index][
+                translation_index
+            ] = max(options, key=lambda option: (option[0], option[1] == "match"))
+
+    aligned_indexes = []
+    source_index = len(source_sentences)
+    translation_index = len(translation_sentences)
+    while source_index and translation_index:
+        step = decision[source_index][translation_index]
+        if step == "match":
+            aligned_indexes.append(source_index - 1)
+            source_index -= 1
+            translation_index -= 1
+        elif step == "source":
+            source_index -= 1
+        else:
+            translation_index -= 1
+    return tuple(source_sentences[index] for index in reversed(aligned_indexes))
+
+
+def _paragraph_alignment_score(source_sentence: str, paragraph_text: str) -> float:
+    paragraph_sentences = _sentences(paragraph_text)
+    if not paragraph_sentences:
+        return 0.0
+    return max(
+        difflib.SequenceMatcher(
+            None,
+            source_sentence,
+            paragraph_sentence,
+            autojunk=False,
+        ).ratio()
+        for paragraph_sentence in paragraph_sentences
+    )
+
+
+def _paragraph_mapped_occurrences(
+    pair: SourcePair,
+    jies: tuple[Jie, ...],
+    normalized_identity: str,
+    normalized_surface: str,
+) -> tuple[tuple[Jie, int, dict, int, int], ...]:
+    source_sentences = _aligned_source_sentences(
+        pair,
+        normalized_identity,
+        normalized_surface,
+    )
+    if not source_sentences:
+        return ()
+
+    occurrences = []
+    for jie in jies:
+        if jie.index == 0:
+            continue
+        for paragraph_index, paragraph in enumerate(jie.paragraphs):
+            text = paragraph.get("main", "") or ""
+            for start, end in _occurrences(text, normalized_surface):
+                occurrences.append((jie, paragraph_index, paragraph, start, end))
+
+    mapped = {}
+    for source_sentence in source_sentences:
+        by_paragraph = {}
+        for occurrence in occurrences:
+            jie, paragraph_index, paragraph, start, end = occurrence
+            text = paragraph.get("main", "") or ""
+            normalized_paragraph = _normalize(text)
+            paragraph_contained = (
+                normalized_paragraph
+                and (
+                    normalized_paragraph in source_sentence
+                    or source_sentence in normalized_paragraph
+                )
             )
-            for source_sentence in source_sentences
+            if not paragraph_contained and not _occurrence_matches_source_pair(
+                text, start, end, source_sentence
+            ):
+                continue
+            by_paragraph.setdefault(int(paragraph["id"]), []).append(occurrence)
+        if not by_paragraph:
+            continue
+
+        ranked = sorted(
+            (
+                _paragraph_alignment_score(
+                    source_sentence,
+                    rows[0][2].get("main", "") or "",
+                ),
+                pid,
+                rows,
+            )
+            for pid, rows in by_paragraph.items()
         )
-        if score >= MIN_SENTENCE_ALIGNMENT_SCORE:
-            aligned.add(source_sentence)
-    return tuple(sorted(aligned))
+        best_score, _, best_rows = ranked[-1]
+        if (
+            len(ranked) > 1
+            and best_score - ranked[-2][0] < MIN_PARAGRAPH_ALIGNMENT_MARGIN
+        ):
+            continue
+        for occurrence in best_rows:
+            paragraph = occurrence[2]
+            key = (
+                int(paragraph["id"]),
+                occurrence[3],
+                occurrence[4],
+            )
+            mapped[key] = occurrence
+    return tuple(mapped[key] for key in sorted(mapped))
 
 
 def _map_translation_coreference(
@@ -438,6 +562,26 @@ def _map_translation_coreference(
     normalized_entity = _normalize(entity.surface)
     normalized_pair_source = _normalize(pair.original)
     if normalized_entity in normalized_pair_source:
+        return []
+
+    handles = [
+        handle
+        for handle in _coreference_handles(normalized_entity)
+        if (
+            handle in normalized_pair_source
+            and handle_owners.get(handle) == {normalized_entity}
+        )
+    ]
+    if not handles:
+        return []
+    normalized_handle = handles[0]
+    mapped_occurrences = _paragraph_mapped_occurrences(
+        pair,
+        aligned,
+        normalized_entity,
+        normalized_handle,
+    )
+    if not mapped_occurrences:
         return []
 
     anchors_by_jie = {}
@@ -459,86 +603,44 @@ def _map_translation_coreference(
                     )
                 )
         if anchors:
-            anchors_by_jie[jie.index] = (jie, anchors)
-    if len(anchors_by_jie) > 1:
-        return []
-
-    if anchors_by_jie:
-        jie, anchors = next(iter(anchors_by_jie.values()))
-        anchor_paragraph, anchor_start, identity_surface = min(anchors)
-        anchored = True
-    elif len(aligned) == 1 and entity.score >= 0.90:
-        jie = aligned[0]
-        anchor_paragraph = anchor_start = -1
-        identity_surface = entity.surface
-        anchored = False
-    else:
-        return []
+            anchors_by_jie[jie.index] = min(anchors)
 
     rows = []
-    handles = [
-        handle
-        for handle in _coreference_handles(normalized_entity)
-        if (
-            handle in normalized_pair_source
-            and handle_owners.get(handle) == {normalized_entity}
-        )
-    ]
-    if not handles:
-        return []
-    normalized_handle = handles[0]
-    aligned_source_sentences = _aligned_source_sentences(
-        pair,
-        normalized_entity,
-        normalized_handle,
-    )
-    if not aligned_source_sentences:
-        return []
-    for paragraph_index, paragraph in enumerate(jie.paragraphs):
+    for jie, paragraph_index, paragraph, start, end in mapped_occurrences:
         text = paragraph.get("main", "") or ""
-        for start, end in _occurrences(text, normalized_handle):
-            if (
-                anchored
-                and (paragraph_index, start) <= (anchor_paragraph, anchor_start)
-            ):
+        anchor = anchors_by_jie.get(jie.index)
+        if anchor is not None:
+            anchor_paragraph, anchor_start, identity_surface = anchor
+            if (paragraph_index, start) <= (anchor_paragraph, anchor_start):
                 continue
-            if not any(
-                _occurrence_matches_source_pair(
-                    text,
-                    start,
-                    end,
-                    source_sentence,
-                )
-                for source_sentence in aligned_source_sentences
-            ):
-                continue
-            rows.append(
-                {
-                    "juan": juan,
-                    "repo_para_id": int(paragraph["id"]),
-                    "repo_jie_index": jie.index,
-                    "repo_jie_number": jie.number,
-                    "identity_surface": identity_surface,
-                    "translation_ner_name": entity.surface,
-                    "translation_ner_score": entity.score,
-                    "original_start": start,
-                    "original_end": end,
-                    "original_surface": text[start:end],
-                    "normalized_original_surface": normalized_handle,
-                    "transfer_mode": "anchor_given",
-                    "mapping_status": (
-                        "mapped_translation_coreference_unique_jie"
-                        if anchored
-                        else "mapped_translation_expansion_unique_jie"
-                    ),
-                    "source_kind": (
-                        "ziyexing_modern_chinese_translation_coreference"
-                    ),
-                    "source_page": (
-                        f"{source_url}#pair-{pair.index + 1}"
-                    ),
-                }
-            )
+            status = "mapped_translation_coreference_paragraph"
+        elif entity.score >= 0.90:
+            anchor_start = -1
+            identity_surface = entity.surface
+            status = "mapped_translation_expansion_paragraph"
+        else:
+            continue
+        rows.append(
+            {
+                "juan": juan,
+                "repo_para_id": int(paragraph["id"]),
+                "repo_jie_index": jie.index,
+                "repo_jie_number": jie.number,
+                "identity_surface": identity_surface,
+                "translation_ner_name": entity.surface,
+                "translation_ner_score": entity.score,
+                "original_start": start,
+                "original_end": end,
+                "original_surface": text[start:end],
+                "normalized_original_surface": normalized_handle,
+                "transfer_mode": "anchor_given",
+                "mapping_status": status,
+                "source_kind": (
+                    "ziyexing_modern_chinese_translation_coreference"
+                ),
+                "source_page": f"{source_url}#pair-{pair.index + 1}",
+            }
+        )
     return rows
 
 
@@ -635,17 +737,34 @@ def map_pair(
         if not matching_jies:
             continue
         unique_jie = len(matching_jies) == 1
-        status = (
-            "mapped_exact_unique_jie"
-            if unique_jie
-            else "flagged_multi_jie_identity"
-        )
+        mapped_geometry = {
+            (int(paragraph["id"]), start, end)
+            for _, _, paragraph, start, end in (
+                _paragraph_mapped_occurrences(
+                    pair,
+                    tuple(matching_jies),
+                    normalized_entity,
+                    normalized_entity,
+                )
+                if not unique_jie
+                else ()
+            )
+        }
         for jie in matching_jies:
             for paragraph in jie.paragraphs:
                 text = paragraph.get("main", "") or ""
                 for start, end in _occurrences(text, normalized_entity):
                     surface = text[start:end]
-                    occurrence_status = status
+                    geometry = (int(paragraph["id"]), start, end)
+                    occurrence_status = (
+                        "mapped_exact_unique_jie"
+                        if unique_jie
+                        else (
+                            "mapped_exact_paragraph"
+                            if geometry in mapped_geometry
+                            else "flagged_multi_jie_identity"
+                        )
+                    )
                     if (
                         unique_jie
                         and any(

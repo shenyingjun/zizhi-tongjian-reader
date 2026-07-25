@@ -53,7 +53,7 @@ exclusion 仍存在于生产 v1 且正文切片未变化，失效时直接报错
 - `v1 overlap proxy` 只表示 Agent 1 span 与 v1 重叠的比例，不等同于 precision；
 - `Agent1 nonoverlap-v1` 不能直接算作 false positive，必须逐条或按固定样本人工审计。
 
-当前 exclusion ledger 有 266 条，全部来自最终 3,890 gap 的高频逐 occurrence 复核：
+当前 exclusion ledger 有 266 条，来自 residual gap 的高频逐 occurrence 复核：
 76 条官职/政权官职内嵌切片，53 条普通词，48 条地点或军镇，40 条政权/部族/集体，
 30 条跨词短语，9 条地点/称号 partial，9 条版权页碰撞，以及 1 条 `长罗侯` 内的错误
 partial `罗侯`。例如 `法曹参军` 内的 `曹参`、`魏征西将军` 内的 `魏征`、`突骑施`、
@@ -62,10 +62,10 @@ partial `罗侯`。例如 `法曹参军` 内的 `曹参`、`魏征西将军` 内
 
 ## 最新全量结果
 
-运行时间：2026-07-24 UTC；Python 3.11.4；294 卷；Translation-assisted。结果 JSON
+运行时间：2026-07-25 UTC；Python 3.11.4；294 卷；Translation-assisted。结果 JSON
 同时记录：
 
-- rule-bundle SHA-256：`52d11fb5412cfedfc2d6aae83ce45946a6dc32174b056852c5affe4ca6877d29`
+- rule-bundle SHA-256：`da12c944ddfd1628258274d788461d8601b42caf09741b7592ebe93d5dcbb808`
 - `admin-places.json` SHA-256：`b6849b571ae31041ea362bb1d2a9c689a61da7e081aa5460cc10e162e1bd5370`
 
 后者使时序行政区证据变化不会被误当成“同一规则”的 benchmark。
@@ -75,13 +75,13 @@ partial `罗侯`。例如 `法曹参军` 内的 `曹参`、`魏征西将军` 内
 | raw v1 main spans | 128,596 |
 | audited exclusions | 266 |
 | **audited v1 main spans** | **128,330** |
-| Agent 1 覆盖 v1 | 124,745 |
-| **audited v1 coverage** | **97.206%** |
-| audited v1-only | 3,585 |
-| Agent 1 spans | 174,837 |
-| Agent 1 spans overlapping v1 | 125,138 |
-| Agent 1 spans not overlapping v1 | 49,699 |
-| v1 overlap proxy | 71.574% |
+| Agent 1 覆盖 v1 | 124,447 |
+| **audited v1 coverage** | **96.974%** |
+| audited v1-only | 3,883 |
+| Agent 1 spans | 172,366 |
+| Agent 1 spans overlapping v1 | 124,525 |
+| Agent 1 spans not overlapping v1 | 47,841 |
+| v1 overlap proxy | 72.245% |
 
 两个 overlap 数不是一一对应计数：当两个系统的跨度切分不同，一个 span 可能与多个 span
 重叠。
@@ -90,26 +90,33 @@ partial `罗侯`。例如 `法曹参军` 内的 `曹参`、`魏征西将军` 内
 
 | v1 kind | 覆盖 | 总数 | coverage | v1-only |
 |---|---:|---:|---:|---:|
-| alias | 85,988 | 88,353 | 97.323% | 2,365 |
-| anaphora | 34,050 | 35,261 | 96.566% | 1,211 |
-| feng | 355 | 363 | 97.796% | 8 |
-| gloss | 1,535 | 1,536 | 99.935% | 1 |
+| alias | 85,421 | 88,353 | 96.681% | 2,932 |
+| anaphora | 34,326 | 35,261 | 97.348% | 935 |
+| feng | 354 | 363 | 97.521% | 9 |
+| gloss | 1,529 | 1,536 | 99.544% | 7 |
 | role | 2,817 | 2,817 | 100.000% | 0 |
-| **ALL** | **124,745** | **128,330** | **97.206%** | **3,585** |
+| **ALL** | **124,447** | **128,330** | **96.974%** | **3,883** |
 
-### Jie-scoped Translation evidence recovery
+### Paragraph-mapped Translation evidence recovery
 
-The deleted legacy Translation asset was not reproducible, so the current checked-in asset was
-recovered deterministically from the attributable source pages. It contains no source or
-translation prose: only NER identities, canonical offsets, source hashes, and unique numbered-jie
-assignments. All 294 evidence files pass manifest, paragraph hash, offset, and jie checks. Juan 113
-is an empty evidence file because its source explicitly states that the translation is missing.
+The checked-in mapping is recovered deterministically from attributable source pages in source
+order. Source and translation sentences are aligned monotonically, then each accepted occurrence
+is resolved to one canonical paragraph inside its numbered jie. The asset contains no source or
+translation prose: only NER identities, canonical offsets, source hashes, and scope assignments.
+All 294 evidence files pass manifest, paragraph hash, offset, and jie checks. Juan 113 is empty
+because its source explicitly states that the translation is missing.
 
-Against the same rule bundle, the no-Translation ablation covers 124,312/128,330 (96.869%) with
-4,018 gaps. The recovered evidence therefore closes 433 audited gaps and adds 0.337 percentage
-points. It produces 1,066 net additional Agent 1 spans: 436 overlap audited v1 and 630 do not.
-The old deleted evidence reported 97.299%; the reproducible recovery is 119 covered spans lower,
-so the old number is retained only as historical context and is not the current benchmark.
+The mapping contains 104,823 candidates: 77,404 exact and 27,419 regenerated `anchor_given`.
+Paragraph resolution reduces unresolved multi-jie exact candidates from the old 10,691 to 5,138;
+71,851 exact candidates are now paragraph/jie eligible. Evidence generation emits 77,856
+paragraph-scoped identities.
+
+Against the same final rule bundle, the prior checked-in evidence covers
+124,303/128,330 (96.862%) with 4,027 gaps. Paragraph-mapped evidence covers 144 additional audited
+v1 spans, reaching 124,447/128,330 (96.974%). Raw geometry accounting is separate: **382
+additions, 18 removals, net growth +364, and 18 fuller-span replacements**. The complete audit
+reviewed every addition and removal: all 382 additions are valid person geometry, every removal is
+replaced, and there are zero audited-v1 regressions attributable to the evidence swap.
 
 ### 高频缺口称号规则
 

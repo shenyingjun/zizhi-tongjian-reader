@@ -1,12 +1,12 @@
 {
   "schema_version": 2,
   "juan": 254,
-  "mapping_sha256": "3de28d3a6fd599201ba2f4c6023c03f70d0495eb71d007c0b14d930daa750f32",
+  "mapping_sha256": "9733b04ea91e8e233167c15fc1b31c7ddee6335ceb58ea835bfa79a854f5fe55",
   "mapping_method": {
     "alignment_scope": "canonical_numbered_jie",
     "translation_ner_model": "uer/roberta-base-finetuned-cluener2020-chinese",
     "minimum_ner_score": 0.75,
-    "policy": "person NER plus paired source-original exact identity; canonical occurrence must align to one unique numbered jie"
+    "policy": "person NER plus paired source-original exact identity or unique sentence-aligned abbreviated mention; canonical occurrence must align to one unique numbered jie"
   },
   "paragraphs": {
     "2": {
@@ -106,9 +106,21 @@
         },
         {
           "identity_surface": "诸葛爽",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 15,
+              "end": 18,
+              "surface": "诸葛爽",
+              "normalized_surface": "诸葛爽",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-1",
+              "ner_score": 0.920840322971344
+            },
             {
               "start": 15,
               "end": 18,
@@ -156,9 +168,21 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 29,
+              "end": 31,
+              "surface": "黄巢",
+              "normalized_surface": "黄巢",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-1",
+              "ner_score": 0.9881131649017334
+            },
             {
               "start": 29,
               "end": 31,
@@ -220,7 +244,7 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -229,8 +253,8 @@
               "surface": "黄巢",
               "normalized_surface": "黄巢",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-1",
               "ner_score": 0.9881131649017334
@@ -241,8 +265,8 @@
               "surface": "黄巢",
               "normalized_surface": "黄巢",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-1",
               "ner_score": 0.9881131649017334
@@ -313,6 +337,39 @@
       "jie_index": 6,
       "jie_number": 6,
       "identities": [
+        {
+          "identity_surface": "唐玄宗",
+          "eligible_anchor": true,
+          "handles": [
+            "玄宗"
+          ],
+          "candidates": [
+            {
+              "start": 179,
+              "end": 181,
+              "surface": "玄宗",
+              "normalized_surface": "玄宗",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-2",
+              "ner_score": 0.9150592684745789
+            },
+            {
+              "start": 269,
+              "end": 271,
+              "surface": "玄宗",
+              "normalized_surface": "玄宗",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-2",
+              "ner_score": 0.9150592684745789
+            }
+          ]
+        },
         {
           "identity_surface": "崔沆",
           "eligible_anchor": true,
@@ -731,8 +788,8 @@
               "surface": "黄巢",
               "normalized_surface": "黄巢",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-3",
               "ner_score": 0.8013777732849121
@@ -963,6 +1020,39 @@
       "jie_number": 9,
       "identities": [
         {
+          "identity_surface": "张承范",
+          "eligible_anchor": true,
+          "handles": [
+            "承范"
+          ],
+          "candidates": [
+            {
+              "start": 8,
+              "end": 10,
+              "surface": "承范",
+              "normalized_surface": "承范",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-5",
+              "ner_score": 0.992401123046875
+            },
+            {
+              "start": 192,
+              "end": 194,
+              "surface": "承范",
+              "normalized_surface": "承范",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-5",
+              "ner_score": 0.992401123046875
+            }
+          ]
+        },
+        {
           "identity_surface": "舒翰",
           "eligible_anchor": true,
           "handles": [],
@@ -1063,6 +1153,63 @@
       "jie_number": 9,
       "identities": [
         {
+          "identity_surface": "张承范",
+          "eligible_anchor": true,
+          "handles": [
+            "承范"
+          ],
+          "candidates": [
+            {
+              "start": 9,
+              "end": 11,
+              "surface": "承范",
+              "normalized_surface": "承范",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-6",
+              "ner_score": 0.9930202960968018
+            },
+            {
+              "start": 74,
+              "end": 76,
+              "surface": "承范",
+              "normalized_surface": "承范",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-6",
+              "ner_score": 0.9930202960968018
+            },
+            {
+              "start": 119,
+              "end": 121,
+              "surface": "承范",
+              "normalized_surface": "承范",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-6",
+              "ner_score": 0.9930202960968018
+            },
+            {
+              "start": 144,
+              "end": 146,
+              "surface": "承范",
+              "normalized_surface": "承范",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-6",
+              "ner_score": 0.9930202960968018
+            }
+          ]
+        },
+        {
           "identity_surface": "王师会",
           "eligible_anchor": true,
           "handles": [],
@@ -1135,7 +1282,7 @@
         },
         {
           "identity_surface": "王重荣",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -1144,8 +1291,8 @@
               "surface": "王重荣",
               "normalized_surface": "王重荣",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-6",
               "ner_score": 0.9956385493278503
@@ -1270,8 +1417,8 @@
               "surface": "黄巢",
               "normalized_surface": "黄巢",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-7",
               "ner_score": 0.9931478500366211
@@ -1365,8 +1512,8 @@
               "surface": "黄巢",
               "normalized_surface": "黄巢",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-7",
               "ner_score": 0.9931478500366211
@@ -1617,7 +1764,7 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -1631,6 +1778,18 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-7",
               "ner_score": 0.9931478500366211
+            },
+            {
+              "start": 3,
+              "end": 5,
+              "surface": "黄巢",
+              "normalized_surface": "黄巢",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-8",
+              "ner_score": 0.9889026880264282
             }
           ]
         }
@@ -1661,6 +1820,48 @@
           ]
         },
         {
+          "identity_surface": "朱存",
+          "eligible_anchor": true,
+          "handles": [
+            "存"
+          ],
+          "candidates": [
+            {
+              "start": 47,
+              "end": 48,
+              "surface": "存",
+              "normalized_surface": "存",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-8",
+              "ner_score": 0.954487681388855
+            }
+          ]
+        },
+        {
+          "identity_surface": "朱昱",
+          "eligible_anchor": true,
+          "handles": [
+            "昱"
+          ],
+          "candidates": [
+            {
+              "start": 45,
+              "end": 46,
+              "surface": "昱",
+              "normalized_surface": "昱",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-8",
+              "ner_score": 0.9585659503936768
+            }
+          ]
+        },
+        {
           "identity_surface": "朱温",
           "eligible_anchor": true,
           "handles": [],
@@ -1681,7 +1882,7 @@
         },
         {
           "identity_surface": "罗元杲",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -1690,8 +1891,8 @@
               "surface": "罗元杲",
               "normalized_surface": "罗元杲",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-8",
               "ner_score": 0.9907827377319336
@@ -1700,7 +1901,7 @@
         },
         {
           "identity_surface": "诸葛爽",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -1709,8 +1910,8 @@
               "surface": "诸葛爽",
               "normalized_surface": "诸葛爽",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-8",
               "ner_score": 0.9751551151275635
@@ -1721,8 +1922,8 @@
               "surface": "诸葛爽",
               "normalized_surface": "诸葛爽",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-8",
               "ner_score": 0.9751551151275635
@@ -1731,7 +1932,7 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -1745,6 +1946,18 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-7",
               "ner_score": 0.9931478500366211
+            },
+            {
+              "start": 13,
+              "end": 15,
+              "surface": "黄巢",
+              "normalized_surface": "黄巢",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-8",
+              "ner_score": 0.9889026880264282
             }
           ]
         }
@@ -2030,7 +2243,7 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -2039,8 +2252,8 @@
               "surface": "黄巢",
               "normalized_surface": "黄巢",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-10",
               "ner_score": 0.9937220811843872
@@ -2125,7 +2338,7 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -2134,8 +2347,8 @@
               "surface": "黄巢",
               "normalized_surface": "黄巢",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-10",
               "ner_score": 0.9937220811843872
@@ -2151,9 +2364,21 @@
       "identities": [
         {
           "identity_surface": "王处存",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 6,
+              "end": 9,
+              "surface": "王处存",
+              "normalized_surface": "王处存",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-11",
+              "ner_score": 0.996981143951416
+            },
             {
               "start": 6,
               "end": 9,
@@ -2177,7 +2402,7 @@
       "identities": [
         {
           "identity_surface": "朱温",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -2186,8 +2411,8 @@
               "surface": "朱温",
               "normalized_surface": "朱温",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-11",
               "ner_score": 0.9921668767929077
@@ -2196,7 +2421,7 @@
         },
         {
           "identity_surface": "王处存",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -2205,8 +2430,8 @@
               "surface": "王处存",
               "normalized_surface": "王处存",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-11",
               "ner_score": 0.996981143951416
@@ -2215,7 +2440,7 @@
         },
         {
           "identity_surface": "王重荣",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -2224,8 +2449,8 @@
               "surface": "王重荣",
               "normalized_surface": "王重荣",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-11",
               "ner_score": 0.9960007667541504
@@ -2234,7 +2459,7 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -2243,8 +2468,8 @@
               "surface": "黄巢",
               "normalized_surface": "黄巢",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-11",
               "ner_score": 0.9886104464530945
@@ -2388,9 +2613,21 @@
       "identities": [
         {
           "identity_surface": "唐弘夫",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 10,
+              "end": 13,
+              "surface": "唐弘夫",
+              "normalized_surface": "唐弘夫",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-12",
+              "ner_score": 0.9950578212738037
+            },
             {
               "start": 10,
               "end": 13,
@@ -2400,8 +2637,8 @@
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
               "source_kind": "ziyexing_modern_chinese_translation",
-              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-12",
-              "ner_score": 0.9950578212738037
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
+              "ner_score": 0.9941909313201904
             }
           ]
         },
@@ -2426,9 +2663,21 @@
         },
         {
           "identity_surface": "程宗楚",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 19,
+              "end": 22,
+              "surface": "程宗楚",
+              "normalized_surface": "程宗楚",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-12",
+              "ner_score": 0.9947831034660339
+            },
             {
               "start": 19,
               "end": 22,
@@ -2438,16 +2687,61 @@
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
               "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
+              "ner_score": 0.9905663132667542
+            }
+          ]
+        },
+        {
+          "identity_surface": "郑凝绩",
+          "eligible_anchor": true,
+          "handles": [
+            "凝绩"
+          ],
+          "candidates": [
+            {
+              "start": 45,
+              "end": 47,
+              "surface": "凝绩",
+              "normalized_surface": "凝绩",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-12",
-              "ner_score": 0.9947831034660339
+              "ner_score": 0.994892418384552
+            },
+            {
+              "start": 51,
+              "end": 53,
+              "surface": "凝绩",
+              "normalized_surface": "凝绩",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-12",
+              "ner_score": 0.994892418384552
             }
           ]
         },
         {
           "identity_surface": "郑畋",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 1,
+              "end": 3,
+              "surface": "郑畋",
+              "normalized_surface": "郑畋",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-12",
+              "ner_score": 0.9953123331069946
+            },
             {
               "start": 1,
               "end": 3,
@@ -2457,16 +2751,28 @@
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
               "source_kind": "ziyexing_modern_chinese_translation",
-              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-12",
-              "ner_score": 0.9953123331069946
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
+              "ner_score": 0.9862855672836304
             }
           ]
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 24,
+              "end": 26,
+              "surface": "黄巢",
+              "normalized_surface": "黄巢",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-12",
+              "ner_score": 0.9857092499732971
+            },
             {
               "start": 24,
               "end": 26,
@@ -2476,8 +2782,8 @@
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
               "source_kind": "ziyexing_modern_chinese_translation",
-              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-12",
-              "ner_score": 0.9857092499732971
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
+              "ner_score": 0.9208416938781738
             }
           ]
         }
@@ -2618,9 +2924,21 @@
       "identities": [
         {
           "identity_surface": "王铎",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 13,
+              "end": 15,
+              "surface": "王铎",
+              "normalized_surface": "王铎",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-14",
+              "ner_score": 0.9941861629486084
+            },
             {
               "start": 13,
               "end": 15,
@@ -2644,7 +2962,7 @@
       "identities": [
         {
           "identity_surface": "郑畋",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -2653,8 +2971,8 @@
               "surface": "郑畋",
               "normalized_surface": "郑畋",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-14",
               "ner_score": 0.9732509851455688
@@ -2708,7 +3026,7 @@
         },
         {
           "identity_surface": "郑从谠",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -2717,8 +3035,8 @@
               "surface": "郑从谠",
               "normalized_surface": "郑从谠",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-14",
               "ner_score": 0.993859589099884
@@ -2791,9 +3109,21 @@
       "identities": [
         {
           "identity_surface": "朱温",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 4,
+              "end": 6,
+              "surface": "朱温",
+              "normalized_surface": "朱温",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-14",
+              "ner_score": 0.9965701699256897
+            },
             {
               "start": 4,
               "end": 6,
@@ -2810,9 +3140,21 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 1,
+              "end": 3,
+              "surface": "黄巢",
+              "normalized_surface": "黄巢",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-14",
+              "ner_score": 0.9928654432296753
+            },
             {
               "start": 1,
               "end": 3,
@@ -2836,9 +3178,21 @@
       "identities": [
         {
           "identity_surface": "李鋋",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 25,
+              "end": 27,
+              "surface": "李鋋",
+              "normalized_surface": "李鋋",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
+              "ner_score": 0.9895685911178589
+            },
             {
               "start": 25,
               "end": 27,
@@ -2855,9 +3209,21 @@
         },
         {
           "identity_surface": "陈敬瑄",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 5,
+              "end": 8,
+              "surface": "陈敬瑄",
+              "normalized_surface": "陈敬瑄",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
+              "ner_score": 0.9959990382194519
+            },
             {
               "start": 5,
               "end": 8,
@@ -2874,9 +3240,21 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 30,
+              "end": 32,
+              "surface": "黄巢",
+              "normalized_surface": "黄巢",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
+              "ner_score": 0.9208416938781738
+            },
             {
               "start": 30,
               "end": 32,
@@ -2900,7 +3278,7 @@
       "identities": [
         {
           "identity_surface": "唐弘夫",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -2914,12 +3292,24 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-12",
               "ner_score": 0.9950578212738037
+            },
+            {
+              "start": 67,
+              "end": 70,
+              "surface": "唐弘夫",
+              "normalized_surface": "唐弘夫",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
+              "ner_score": 0.9941909313201904
             }
           ]
         },
         {
           "identity_surface": "尚让",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -2928,8 +3318,8 @@
               "surface": "尚让",
               "normalized_surface": "尚让",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
               "ner_score": 0.9936219453811646
@@ -2957,7 +3347,7 @@
         },
         {
           "identity_surface": "程宗楚",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -2971,12 +3361,24 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-12",
               "ner_score": 0.9947831034660339
+            },
+            {
+              "start": 53,
+              "end": 56,
+              "surface": "程宗楚",
+              "normalized_surface": "程宗楚",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
+              "ner_score": 0.9905663132667542
             }
           ]
         },
         {
           "identity_surface": "郑畋",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -2990,12 +3392,24 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-12",
               "ner_score": 0.9953123331069946
+            },
+            {
+              "start": 5,
+              "end": 7,
+              "surface": "郑畋",
+              "normalized_surface": "郑畋",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
+              "ner_score": 0.9862855672836304
             }
           ]
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3009,6 +3423,18 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-12",
               "ner_score": 0.9857092499732971
+            },
+            {
+              "start": 76,
+              "end": 78,
+              "surface": "黄巢",
+              "normalized_surface": "黄巢",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
+              "ner_score": 0.9208416938781738
             }
           ]
         }
@@ -3021,7 +3447,7 @@
       "identities": [
         {
           "identity_surface": "尚让",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3030,8 +3456,8 @@
               "surface": "尚让",
               "normalized_surface": "尚让",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
               "ner_score": 0.9936219453811646
@@ -3130,7 +3556,7 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3139,8 +3565,8 @@
               "surface": "黄巢",
               "normalized_surface": "黄巢",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-16",
               "ner_score": 0.996536135673523
@@ -3156,7 +3582,7 @@
       "identities": [
         {
           "identity_surface": "诸葛爽",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3167,6 +3593,18 @@
               "transfer_mode": "exact",
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-8",
+              "ner_score": 0.9751551151275635
+            },
+            {
+              "start": 7,
+              "end": 10,
+              "surface": "诸葛爽",
+              "normalized_surface": "诸葛爽",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-16",
               "ner_score": 0.9956923127174377
@@ -3182,9 +3620,21 @@
       "identities": [
         {
           "identity_surface": "拓跋思恭",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 5,
+              "end": 9,
+              "surface": "拓跋思恭",
+              "normalized_surface": "拓跋思恭",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-16",
+              "ner_score": 0.9940706491470337
+            },
             {
               "start": 5,
               "end": 9,
@@ -3194,16 +3644,28 @@
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
               "source_kind": "ziyexing_modern_chinese_translation",
-              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-16",
-              "ner_score": 0.9940706491470337
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-24",
+              "ner_score": 0.9930526614189148
             }
           ]
         },
         {
           "identity_surface": "李孝昌",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 28,
+              "end": 31,
+              "surface": "李孝昌",
+              "normalized_surface": "李孝昌",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-16",
+              "ner_score": 0.9962654113769531
+            },
             {
               "start": 28,
               "end": 31,
@@ -3298,7 +3760,7 @@
       "identities": [
         {
           "identity_surface": "拓跋思恭",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3312,6 +3774,18 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-16",
               "ner_score": 0.9940706491470337
+            },
+            {
+              "start": 2,
+              "end": 6,
+              "surface": "拓跋思恭",
+              "normalized_surface": "拓跋思恭",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-17",
+              "ner_score": 0.9834845066070557
             }
           ]
         }
@@ -3324,7 +3798,7 @@
       "identities": [
         {
           "identity_surface": "朱玫",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3333,8 +3807,8 @@
               "surface": "朱玫",
               "normalized_surface": "朱玫",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-17",
               "ner_score": 0.9955407381057739
@@ -3381,9 +3855,21 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 1,
+              "end": 3,
+              "surface": "黄巢",
+              "normalized_surface": "黄巢",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-17",
+              "ner_score": 0.9649156928062439
+            },
             {
               "start": 1,
               "end": 3,
@@ -3426,9 +3912,21 @@
         },
         {
           "identity_surface": "拓跋思恭",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 24,
+              "end": 28,
+              "surface": "拓跋思恭",
+              "normalized_surface": "拓跋思恭",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-17",
+              "ner_score": 0.9834845066070557
+            },
             {
               "start": 24,
               "end": 28,
@@ -3445,7 +3943,7 @@
         },
         {
           "identity_surface": "王处存",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3454,8 +3952,8 @@
               "surface": "王处存",
               "normalized_surface": "王处存",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-17",
               "ner_score": 0.9972607493400574
@@ -3508,6 +4006,84 @@
       "jie_number": 21,
       "identities": [
         {
+          "identity_surface": "唐弘夫",
+          "eligible_anchor": true,
+          "handles": [
+            "弘夫"
+          ],
+          "candidates": [
+            {
+              "start": 20,
+              "end": 22,
+              "surface": "弘夫",
+              "normalized_surface": "弘夫",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-18",
+              "ner_score": 0.9966633319854736
+            },
+            {
+              "start": 161,
+              "end": 163,
+              "surface": "弘夫",
+              "normalized_surface": "弘夫",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-18",
+              "ner_score": 0.9966633319854736
+            }
+          ]
+        },
+        {
+          "identity_surface": "王处存",
+          "eligible_anchor": true,
+          "handles": [
+            "处存"
+          ],
+          "candidates": [
+            {
+              "start": 25,
+              "end": 27,
+              "surface": "处存",
+              "normalized_surface": "处存",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-18",
+              "ner_score": 0.9975330829620361
+            },
+            {
+              "start": 97,
+              "end": 99,
+              "surface": "处存",
+              "normalized_surface": "处存",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-18",
+              "ner_score": 0.9975330829620361
+            },
+            {
+              "start": 184,
+              "end": 186,
+              "surface": "处存",
+              "normalized_surface": "处存",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-18",
+              "ner_score": 0.9975330829620361
+            }
+          ]
+        },
+        {
           "identity_surface": "程宗楚",
           "eligible_anchor": true,
           "handles": [],
@@ -3528,7 +4104,7 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3539,6 +4115,18 @@
               "transfer_mode": "exact",
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-17",
+              "ner_score": 0.9649156928062439
+            },
+            {
+              "start": 3,
+              "end": 5,
+              "surface": "黄巢",
+              "normalized_surface": "黄巢",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-18",
               "ner_score": 0.9974454045295715
@@ -3592,7 +4180,7 @@
         },
         {
           "identity_surface": "朱温",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3601,8 +4189,8 @@
               "surface": "朱温",
               "normalized_surface": "朱温",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-18",
               "ner_score": 0.990409255027771
@@ -3720,7 +4308,7 @@
       "identities": [
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3729,8 +4317,8 @@
               "surface": "黄巢",
               "normalized_surface": "黄巢",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-19",
               "ner_score": 0.9631761908531189
@@ -3746,7 +4334,7 @@
       "identities": [
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3755,8 +4343,8 @@
               "surface": "黄巢",
               "normalized_surface": "黄巢",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-19",
               "ner_score": 0.9631761908531189
@@ -3772,7 +4360,7 @@
       "identities": [
         {
           "identity_surface": "契苾璋",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3781,8 +4369,8 @@
               "surface": "契苾璋",
               "normalized_surface": "契苾璋",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-20",
               "ner_score": 0.9937779903411865
@@ -3791,7 +4379,7 @@
         },
         {
           "identity_surface": "李克用",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3800,8 +4388,8 @@
               "surface": "李克用",
               "normalized_surface": "李克用",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-20",
               "ner_score": 0.9938807487487793
@@ -3810,7 +4398,7 @@
         },
         {
           "identity_surface": "郑从谠",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -3819,8 +4407,8 @@
               "surface": "郑从谠",
               "normalized_surface": "郑从谠",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-20",
               "ner_score": 0.9894437193870544
@@ -3869,6 +4457,27 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-20",
               "ner_score": 0.9966482520103455
+            }
+          ]
+        },
+        {
+          "identity_surface": "杨守亮",
+          "eligible_anchor": true,
+          "handles": [
+            "守亮"
+          ],
+          "candidates": [
+            {
+              "start": 173,
+              "end": 175,
+              "surface": "守亮",
+              "normalized_surface": "守亮",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-20",
+              "ner_score": 0.993708074092865
             }
           ]
         }
@@ -4159,7 +4768,7 @@
       "identities": [
         {
           "identity_surface": "郑畋",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -4170,6 +4779,18 @@
               "transfer_mode": "exact",
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-30",
+              "ner_score": 0.9925154447555542
+            },
+            {
+              "start": 8,
+              "end": 10,
+              "surface": "郑畋",
+              "normalized_surface": "郑畋",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-21",
               "ner_score": 0.9949071407318115
@@ -4249,9 +4870,21 @@
       "identities": [
         {
           "identity_surface": "朱玫",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 7,
+              "end": 9,
+              "surface": "朱玫",
+              "normalized_surface": "朱玫",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-21",
+              "ner_score": 0.9960019588470459
+            },
             {
               "start": 7,
               "end": 9,
@@ -4287,9 +4920,21 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 13,
+              "end": 15,
+              "surface": "黄巢",
+              "normalized_surface": "黄巢",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-21",
+              "ner_score": 0.9728438854217529
+            },
             {
               "start": 13,
               "end": 15,
@@ -4332,7 +4977,7 @@
         },
         {
           "identity_surface": "李鋋",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -4344,6 +4989,18 @@
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
               "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
+              "ner_score": 0.9895685911178589
+            },
+            {
+              "start": 7,
+              "end": 9,
+              "surface": "李鋋",
+              "normalized_surface": "李鋋",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-21",
               "ner_score": 0.9928932189941406
             }
@@ -4351,7 +5008,7 @@
         },
         {
           "identity_surface": "陈敬瑄",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -4362,6 +5019,18 @@
               "transfer_mode": "exact",
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-23",
+              "ner_score": 0.9965789914131165
+            },
+            {
+              "start": 35,
+              "end": 38,
+              "surface": "陈敬瑄",
+              "normalized_surface": "陈敬瑄",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-21",
               "ner_score": 0.9968339800834656
@@ -4389,7 +5058,7 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -4400,6 +5069,18 @@
               "transfer_mode": "exact",
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-15",
+              "ner_score": 0.9208416938781738
+            },
+            {
+              "start": 28,
+              "end": 30,
+              "surface": "黄巢",
+              "normalized_surface": "黄巢",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-21",
               "ner_score": 0.9728438854217529
@@ -4593,7 +5274,7 @@
         },
         {
           "identity_surface": "陈敬瑄",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -4602,8 +5283,8 @@
               "surface": "陈敬瑄",
               "normalized_surface": "陈敬瑄",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-23",
               "ner_score": 0.9965789914131165
@@ -4675,6 +5356,39 @@
           ]
         },
         {
+          "identity_surface": "田令孜",
+          "eligible_anchor": true,
+          "handles": [
+            "令孜"
+          ],
+          "candidates": [
+            {
+              "start": 136,
+              "end": 138,
+              "surface": "令孜",
+              "normalized_surface": "令孜",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-24",
+              "ner_score": 0.9960970282554626
+            },
+            {
+              "start": 351,
+              "end": 353,
+              "surface": "令孜",
+              "normalized_surface": "令孜",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-24",
+              "ner_score": 0.9960970282554626
+            }
+          ]
+        },
+        {
           "identity_surface": "高祖",
           "eligible_anchor": true,
           "handles": [],
@@ -4702,7 +5416,7 @@
       "identities": [
         {
           "identity_surface": "拓跋思恭",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -4716,12 +5430,24 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-16",
               "ner_score": 0.9940706491470337
+            },
+            {
+              "start": 16,
+              "end": 20,
+              "surface": "拓跋思恭",
+              "normalized_surface": "拓跋思恭",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-24",
+              "ner_score": 0.9930526614189148
             }
           ]
         },
         {
           "identity_surface": "朱温",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -4733,6 +5459,18 @@
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
               "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-14",
+              "ner_score": 0.9965701699256897
+            },
+            {
+              "start": 28,
+              "end": 30,
+              "surface": "朱温",
+              "normalized_surface": "朱温",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-24",
               "ner_score": 0.9970589876174927
             }
@@ -4740,7 +5478,7 @@
         },
         {
           "identity_surface": "李孝昌",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -4754,12 +5492,24 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-32",
               "ner_score": 0.9970958828926086
+            },
+            {
+              "start": 6,
+              "end": 9,
+              "surface": "李孝昌",
+              "normalized_surface": "李孝昌",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-24",
+              "ner_score": 0.996558666229248
             }
           ]
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -4773,6 +5523,18 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-18",
               "ner_score": 0.9974454045295715
+            },
+            {
+              "start": 25,
+              "end": 27,
+              "surface": "黄巢",
+              "normalized_surface": "黄巢",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-24",
+              "ner_score": 0.9906917810440063
             }
           ]
         }
@@ -4785,7 +5547,7 @@
       "identities": [
         {
           "identity_surface": "朱玫",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -4797,6 +5559,18 @@
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
               "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-21",
+              "ner_score": 0.9960019588470459
+            },
+            {
+              "start": 26,
+              "end": 28,
+              "surface": "朱玫",
+              "normalized_surface": "朱玫",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-24",
               "ner_score": 0.9972835183143616
             }
@@ -4804,7 +5578,7 @@
         },
         {
           "identity_surface": "王处存",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -4815,6 +5589,18 @@
               "transfer_mode": "exact",
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-17",
+              "ner_score": 0.9972607493400574
+            },
+            {
+              "start": 6,
+              "end": 9,
+              "surface": "王处存",
+              "normalized_surface": "王处存",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-24",
               "ner_score": 0.9974605441093445
@@ -4969,6 +5755,48 @@
           ]
         },
         {
+          "identity_surface": "王审知",
+          "eligible_anchor": true,
+          "handles": [
+            "审知"
+          ],
+          "candidates": [
+            {
+              "start": 84,
+              "end": 86,
+              "surface": "审知",
+              "normalized_surface": "审知",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-25",
+              "ner_score": 0.9819741249084473
+            }
+          ]
+        },
+        {
+          "identity_surface": "王审邽",
+          "eligible_anchor": true,
+          "handles": [
+            "审邽"
+          ],
+          "candidates": [
+            {
+              "start": 81,
+              "end": 83,
+              "surface": "审邽",
+              "normalized_surface": "审邽",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-25",
+              "ner_score": 0.9867303371429443
+            }
+          ]
+        },
+        {
           "identity_surface": "王潮",
           "eligible_anchor": true,
           "handles": [],
@@ -5084,7 +5912,7 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -5093,8 +5921,8 @@
               "surface": "黄巢",
               "normalized_surface": "黄巢",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-26",
               "ner_score": 0.9828236103057861
@@ -5110,7 +5938,7 @@
       "identities": [
         {
           "identity_surface": "拓跋思恭",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -5124,6 +5952,18 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-16",
               "ner_score": 0.9940706491470337
+            },
+            {
+              "start": 9,
+              "end": 13,
+              "surface": "拓跋思恭",
+              "normalized_surface": "拓跋思恭",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-26",
+              "ner_score": 0.9333972334861755
             }
           ]
         }
@@ -5255,7 +6095,7 @@
       "identities": [
         {
           "identity_surface": "周宝",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -5264,8 +6104,8 @@
               "surface": "周宝",
               "normalized_surface": "周宝",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-27",
               "ner_score": 0.9883831739425659
@@ -5326,7 +6166,7 @@
       "identities": [
         {
           "identity_surface": "周宝",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -5335,8 +6175,8 @@
               "surface": "周宝",
               "normalized_surface": "周宝",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-27",
               "ner_score": 0.9883831739425659
@@ -5428,6 +6268,34 @@
         }
       ]
     },
+    "88": {
+      "text_sha256": "e57caa456ad9a3bb43d7cde361df196e27b8a613fb742fb4a4149136a9f790b0",
+      "jie_index": 65,
+      "jie_number": 48,
+      "identities": [
+        {
+          "identity_surface": "李震",
+          "eligible_anchor": true,
+          "handles": [
+            "震"
+          ],
+          "candidates": [
+            {
+              "start": 7,
+              "end": 8,
+              "surface": "震",
+              "normalized_surface": "震",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-28",
+              "ner_score": 0.9500139951705933
+            }
+          ]
+        }
+      ]
+    },
     "89": {
       "text_sha256": "fe251c55f82afb9d61af36bc8cb9933af3fbedebbbd5f15e083bf50ef61cc678",
       "jie_index": 66,
@@ -5473,7 +6341,7 @@
         },
         {
           "identity_surface": "高浔",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -5482,8 +6350,8 @@
               "surface": "高浔",
               "normalized_surface": "高浔",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-28",
               "ner_score": 0.982860803604126
@@ -5584,6 +6452,27 @@
               "ner_score": 0.9925154447555542
             }
           ]
+        },
+        {
+          "identity_surface": "郑相公",
+          "eligible_anchor": true,
+          "handles": [
+            "相公"
+          ],
+          "candidates": [
+            {
+              "start": 81,
+              "end": 83,
+              "surface": "相公",
+              "normalized_surface": "相公",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-29",
+              "ner_score": 0.9068706631660461
+            }
+          ]
         }
       ]
     },
@@ -5608,6 +6497,27 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-29",
               "ner_score": 0.9948558211326599
+            }
+          ]
+        },
+        {
+          "identity_surface": "曹存实",
+          "eligible_anchor": true,
+          "handles": [
+            "存实"
+          ],
+          "candidates": [
+            {
+              "start": 27,
+              "end": 29,
+              "surface": "存实",
+              "normalized_surface": "存实",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-29",
+              "ner_score": 0.9862727522850037
             }
           ]
         }
@@ -5639,9 +6549,21 @@
         },
         {
           "identity_surface": "朱温",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
+            {
+              "start": 12,
+              "end": 14,
+              "surface": "朱温",
+              "normalized_surface": "朱温",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-30",
+              "ner_score": 0.9956748485565186
+            },
             {
               "start": 12,
               "end": 14,
@@ -5651,8 +6573,8 @@
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
               "source_kind": "ziyexing_modern_chinese_translation",
-              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-30",
-              "ner_score": 0.9956748485565186
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-33",
+              "ner_score": 0.990824818611145
             }
           ]
         }
@@ -5717,11 +6639,23 @@
               "surface": "郑畋",
               "normalized_surface": "郑畋",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-30",
               "ner_score": 0.9925154447555542
+            },
+            {
+              "start": 2,
+              "end": 4,
+              "surface": "郑畋",
+              "normalized_surface": "郑畋",
+              "transfer_mode": "exact",
+              "mapping_status": "flagged_multi_jie_identity",
+              "eligible": false,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-33",
+              "ner_score": 0.9593312740325928
             }
           ]
         }
@@ -6042,7 +6976,7 @@
         },
         {
           "identity_surface": "拓跋思恭",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -6051,8 +6985,8 @@
               "surface": "拓跋思恭",
               "normalized_surface": "拓跋思恭",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-32",
               "ner_score": 0.9832122325897217
@@ -6080,7 +7014,7 @@
         },
         {
           "identity_surface": "李孝昌",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -6089,8 +7023,8 @@
               "surface": "李孝昌",
               "normalized_surface": "李孝昌",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-32",
               "ner_score": 0.9970958828926086
@@ -6099,7 +7033,7 @@
         },
         {
           "identity_surface": "杨复光",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -6108,8 +7042,8 @@
               "surface": "杨复光",
               "normalized_surface": "杨复光",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-32",
               "ner_score": 0.9969820976257324
@@ -6118,7 +7052,7 @@
         },
         {
           "identity_surface": "王处存",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -6127,8 +7061,8 @@
               "surface": "王处存",
               "normalized_surface": "王处存",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-32",
               "ner_score": 0.9967696666717529
@@ -6281,6 +7215,27 @@
           ]
         },
         {
+          "identity_surface": "郑从谠",
+          "eligible_anchor": true,
+          "handles": [
+            "从谠"
+          ],
+          "candidates": [
+            {
+              "start": 242,
+              "end": 244,
+              "surface": "从谠",
+              "normalized_surface": "从谠",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-32",
+              "ner_score": 0.9924375414848328
+            }
+          ]
+        },
+        {
           "identity_surface": "郑昌图",
           "eligible_anchor": true,
           "handles": [],
@@ -6296,6 +7251,27 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-32",
               "ner_score": 0.9973176121711731
+            }
+          ]
+        },
+        {
+          "identity_surface": "郑畋",
+          "eligible_anchor": true,
+          "handles": [
+            "畋"
+          ],
+          "candidates": [
+            {
+              "start": 252,
+              "end": 253,
+              "surface": "畋",
+              "normalized_surface": "畋",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-32",
+              "ner_score": 0.9914118051528931
             }
           ]
         },
@@ -6327,7 +7303,7 @@
       "identities": [
         {
           "identity_surface": "朱温",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -6341,6 +7317,18 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-14",
               "ner_score": 0.9965701699256897
+            },
+            {
+              "start": 4,
+              "end": 6,
+              "surface": "朱温",
+              "normalized_surface": "朱温",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-32",
+              "ner_score": 0.9954233765602112
             }
           ]
         },
@@ -6365,7 +7353,7 @@
         },
         {
           "identity_surface": "黄巢",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -6376,6 +7364,18 @@
               "transfer_mode": "exact",
               "mapping_status": "flagged_multi_jie_identity",
               "eligible": false,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-14",
+              "ner_score": 0.9928654432296753
+            },
+            {
+              "start": 1,
+              "end": 3,
+              "surface": "黄巢",
+              "normalized_surface": "黄巢",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-32",
               "ner_score": 0.9968276023864746
@@ -6410,7 +7410,7 @@
         },
         {
           "identity_surface": "郑畋",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -6424,6 +7424,18 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-21",
               "ner_score": 0.9949071407318115
+            },
+            {
+              "start": 12,
+              "end": 14,
+              "surface": "郑畋",
+              "normalized_surface": "郑畋",
+              "transfer_mode": "exact",
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-33",
+              "ner_score": 0.9593312740325928
             }
           ]
         }
@@ -6436,7 +7448,7 @@
       "identities": [
         {
           "identity_surface": "朱温",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -6445,8 +7457,8 @@
               "surface": "朱温",
               "normalized_surface": "朱温",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-33",
               "ner_score": 0.990824818611145
@@ -6500,7 +7512,7 @@
         },
         {
           "identity_surface": "李昌言",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -6509,8 +7521,8 @@
               "surface": "李昌言",
               "normalized_surface": "李昌言",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-33",
               "ner_score": 0.9945713877677917
@@ -6545,7 +7557,7 @@
         },
         {
           "identity_surface": "王铎",
-          "eligible_anchor": false,
+          "eligible_anchor": true,
           "handles": [],
           "candidates": [
             {
@@ -6554,8 +7566,8 @@
               "surface": "王铎",
               "normalized_surface": "王铎",
               "transfer_mode": "exact",
-              "mapping_status": "flagged_multi_jie_identity",
-              "eligible": false,
+              "mapping_status": "mapped_exact_paragraph",
+              "eligible": true,
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-33",
               "ner_score": 0.9959981441497803
@@ -7090,6 +8102,147 @@
       "jie_number": 13,
       "identities": [
         {
+          "identity_surface": "吕用之",
+          "eligible_anchor": true,
+          "handles": [
+            "用之"
+          ],
+          "candidates": [
+            {
+              "start": 0,
+              "end": 2,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-36",
+              "ner_score": 0.9916257858276367
+            },
+            {
+              "start": 40,
+              "end": 42,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-36",
+              "ner_score": 0.9916257858276367
+            },
+            {
+              "start": 69,
+              "end": 71,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-36",
+              "ner_score": 0.9916257858276367
+            },
+            {
+              "start": 79,
+              "end": 81,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-36",
+              "ner_score": 0.9916257858276367
+            },
+            {
+              "start": 266,
+              "end": 268,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-36",
+              "ner_score": 0.9916257858276367
+            },
+            {
+              "start": 299,
+              "end": 301,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-36",
+              "ner_score": 0.9916257858276367
+            },
+            {
+              "start": 431,
+              "end": 433,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-36",
+              "ner_score": 0.9916257858276367
+            },
+            {
+              "start": 444,
+              "end": 446,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-36",
+              "ner_score": 0.9916257858276367
+            },
+            {
+              "start": 449,
+              "end": 451,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-36",
+              "ner_score": 0.9916257858276367
+            },
+            {
+              "start": 515,
+              "end": 517,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-36",
+              "ner_score": 0.9916257858276367
+            },
+            {
+              "start": 557,
+              "end": 559,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-36",
+              "ner_score": 0.9916257858276367
+            }
+          ]
+        },
+        {
           "identity_surface": "张守一",
           "eligible_anchor": true,
           "handles": [],
@@ -7167,11 +8320,240 @@
         }
       ]
     },
+    "120": {
+      "text_sha256": "76215bd8361745c4e4c6c3aa1156797b0ccc935a601a8ded1e58e00d8f851ca2",
+      "jie_index": 80,
+      "jie_number": 13,
+      "identities": [
+        {
+          "identity_surface": "吕用之",
+          "eligible_anchor": true,
+          "handles": [
+            "用之"
+          ],
+          "candidates": [
+            {
+              "start": 0,
+              "end": 2,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-37",
+              "ner_score": 0.9904261231422424
+            },
+            {
+              "start": 40,
+              "end": 42,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-37",
+              "ner_score": 0.9904261231422424
+            },
+            {
+              "start": 69,
+              "end": 71,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-37",
+              "ner_score": 0.9904261231422424
+            }
+          ]
+        }
+      ]
+    },
+    "121": {
+      "text_sha256": "0f24efcfaeee3af20de21c9370f1dddac8904d3e9bc9cfb63b8babf24931d7c6",
+      "jie_index": 80,
+      "jie_number": 13,
+      "identities": [
+        {
+          "identity_surface": "吕用之",
+          "eligible_anchor": true,
+          "handles": [
+            "用之"
+          ],
+          "candidates": [
+            {
+              "start": 0,
+              "end": 2,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-37",
+              "ner_score": 0.9904261231422424
+            },
+            {
+              "start": 49,
+              "end": 51,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-37",
+              "ner_score": 0.9904261231422424
+            }
+          ]
+        }
+      ]
+    },
+    "122": {
+      "text_sha256": "fde9425a50a4bdcf839fecc267032baaf5899aaf137722dba20d993b67ac3e37",
+      "jie_index": 80,
+      "jie_number": 13,
+      "identities": [
+        {
+          "identity_surface": "吕用之",
+          "eligible_anchor": true,
+          "handles": [
+            "用之"
+          ],
+          "candidates": [
+            {
+              "start": 0,
+              "end": 2,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-37",
+              "ner_score": 0.9904261231422424
+            },
+            {
+              "start": 64,
+              "end": 66,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-37",
+              "ner_score": 0.9904261231422424
+            },
+            {
+              "start": 86,
+              "end": 88,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-37",
+              "ner_score": 0.9904261231422424
+            },
+            {
+              "start": 102,
+              "end": 104,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-37",
+              "ner_score": 0.9904261231422424
+            }
+          ]
+        }
+      ]
+    },
+    "123": {
+      "text_sha256": "7926abebc07a7429a3a68bdc853da7f85dcb91564ec366c39e0ab2868b868a4c",
+      "jie_index": 80,
+      "jie_number": 13,
+      "identities": [
+        {
+          "identity_surface": "吕用之",
+          "eligible_anchor": true,
+          "handles": [
+            "用之"
+          ],
+          "candidates": [
+            {
+              "start": 22,
+              "end": 24,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-38",
+              "ner_score": 0.9911134243011475
+            },
+            {
+              "start": 60,
+              "end": 62,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-38",
+              "ner_score": 0.9911134243011475
+            }
+          ]
+        }
+      ]
+    },
     "124": {
       "text_sha256": "9ee41225cf021040dcdd9d4afa6c6326a488a082ef5baa2183e458f9fac93993",
       "jie_index": 80,
       "jie_number": 13,
       "identities": [
+        {
+          "identity_surface": "吕用之",
+          "eligible_anchor": true,
+          "handles": [
+            "用之"
+          ],
+          "candidates": [
+            {
+              "start": 0,
+              "end": 2,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-38",
+              "ner_score": 0.9911134243011475
+            },
+            {
+              "start": 40,
+              "end": 42,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-38",
+              "ner_score": 0.9911134243011475
+            }
+          ]
+        },
         {
           "identity_surface": "张守一",
           "eligible_anchor": true,
@@ -7188,6 +8570,67 @@
               "source_kind": "ziyexing_modern_chinese_translation",
               "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-38",
               "ner_score": 0.9919424057006836
+            }
+          ]
+        },
+        {
+          "identity_surface": "高骈",
+          "eligible_anchor": true,
+          "handles": [
+            "骈"
+          ],
+          "candidates": [
+            {
+              "start": 33,
+              "end": 34,
+              "surface": "骈",
+              "normalized_surface": "骈",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_expansion_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-38",
+              "ner_score": 0.9420647621154785
+            }
+          ]
+        }
+      ]
+    },
+    "126": {
+      "text_sha256": "ebc89ffda6a90c5dcb2332ce928b8cc8d2e60a43dbd02923072f60c08795a550",
+      "jie_index": 80,
+      "jie_number": 13,
+      "identities": [
+        {
+          "identity_surface": "吕用之",
+          "eligible_anchor": true,
+          "handles": [
+            "用之"
+          ],
+          "candidates": [
+            {
+              "start": 0,
+              "end": 2,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-39",
+              "ner_score": 0.9891899228096008
+            },
+            {
+              "start": 94,
+              "end": 96,
+              "surface": "用之",
+              "normalized_surface": "用之",
+              "transfer_mode": "anchor_given",
+              "mapping_status": "mapped_translation_coreference_paragraph",
+              "eligible": true,
+              "source_kind": "ziyexing_modern_chinese_translation_coreference",
+              "source_page": "http://www.ziyexing.com/files-5/zizhitongjian/zizhitongjian_254.htm#pair-39",
+              "ner_score": 0.9891899228096008
             }
           ]
         }

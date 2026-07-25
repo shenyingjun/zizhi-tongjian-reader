@@ -427,6 +427,33 @@ class CombinedEvidenceIntegrationTest(unittest.TestCase):
 
         self.assertFalse(any(row["surface"] == "\u592a\u5e73\u516c\u4e3b" for row in rows))
 
+    def test_translation_exact_cannot_override_office_continuation(self):
+        context = R.Ctx(
+            "容管经略使阳旻",
+            set(),
+            R.Corpus({"容管"}, {}, set()),
+            241,
+            1,
+            None,
+            681,
+        )
+        context.translation_fullnames = {
+            0: {
+                "start": 0,
+                "end": 2,
+                "surface": "容管",
+                "identity_surface": "容管",
+            }
+        }
+
+        candidate = next(
+            row
+            for row in R._combined_candidate_lattice(context, [])
+            if row.surface == "容管"
+        )
+
+        self.assertIn("office_continuation", candidate.vetoes)
+
     def test_jie_collective_frame_is_a_generic_veto_source(self):
         corpus = R.Corpus(set(), {}, set())
         context = R.Ctx(
