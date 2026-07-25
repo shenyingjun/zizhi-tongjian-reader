@@ -11,7 +11,7 @@ benchmark。最新机器可读结果见
 ```powershell
 data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
   data-pipeline\persons\twostage\benchmark.py `
-  --translation-evidence-dir data-pipeline\persons\twostage\translation-evidence `
+  --translation-evidence-dir data-pipeline\persons\twostage\translation\evidence `
   --json data-pipeline\persons\twostage\benchmark-latest.json
 ```
 
@@ -20,7 +20,7 @@ data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
 ```powershell
 data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
   data-pipeline\persons\twostage\benchmark.py `
-  --translation-evidence-dir data-pipeline\persons\twostage\translation-evidence `
+  --translation-evidence-dir data-pipeline\persons\twostage\translation\evidence `
   --juans 23 69 97 `
   --json C:\temp\translation-evidence-benchmark.json
 ```

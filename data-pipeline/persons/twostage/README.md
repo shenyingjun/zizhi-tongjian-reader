@@ -14,7 +14,7 @@
 - [`retag.py`](retag.py)：用当前规则输出不带人物身份的 occurrence cards，不覆盖生产 v1。
 - [`translation_evidence.py`](translation_evidence.py)：把离线译文 NER/mapping 输出转换为
   带 canonical paragraph hash 的可选 identity evidence；不保存译文正文。
-- [`translation-mapping-recovered.json`](translation-mapping-recovered.json)：全 294 卷、
+- [`translation/mapping.json`](translation/mapping.json)：全 294 卷、
   source-order paragraph alignment 的可复现 mapping；不保存原文或译文正文。
 
 当前 **v1** 指 `web/public/text/persons/` 中的生产输出；**v2** 指当前 Agent 1 Tagger
@@ -30,22 +30,22 @@ reference，不进入输出。历史 AGREE/RECOVER/LOST 数字不再作为当前
 
 最终输出必须加载 Translation evidence。仓库已包含 paragraph-mapped、jie-confined、
 无译文正文的
-`translation-evidence/`。需要从来源重新生成时，先逐卷恢复临时 mapping，再重建该目录：
+`translation/evidence/`。需要从来源重新生成时，先逐卷恢复 mapping，再重建该目录：
 
 ```powershell
 data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
   data-pipeline\persons\twostage\recover_translation_mapping.py `
   --juans (1..294) `
-  --mapping-json data-pipeline\persons\twostage\translation-mapping-recovered.json
+  --mapping-json data-pipeline\persons\twostage\translation\mapping.json
 
 data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
   data-pipeline\persons\twostage\translation_evidence.py `
-  --mapping-json data-pipeline\persons\twostage\translation-mapping-recovered.json `
-  --output-dir data-pipeline\persons\twostage\translation-evidence
+  --mapping-json data-pipeline\persons\twostage\translation\mapping.json `
+  --output-dir data-pipeline\persons\twostage\translation\evidence
 
 data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
   data-pipeline\persons\twostage\retag.py `
-  --translation-evidence-dir data-pipeline\persons\twostage\translation-evidence `
+  --translation-evidence-dir data-pipeline\persons\twostage\translation\evidence `
   --output-dir C:\temp\ztj-agent1-final
 ```
 
@@ -69,7 +69,7 @@ python data-pipeline\persons\twostage\build_v2.py
 python data-pipeline\persons\twostage\retag.py `
   --juans 265 `
   --skip-admin-rebuild `
-  --translation-evidence-dir data-pipeline\persons\twostage\translation-evidence `
+  --translation-evidence-dir data-pipeline\persons\twostage\translation\evidence `
   --output-dir web\public\text\persons-v2\agent1
 ```
 
@@ -99,7 +99,7 @@ data-pipeline\.venv-ner\Scripts\python.exe -X utf8 `
   data-pipeline\persons\twostage\retag.py `
   --juans 27 37 45 150 `
   --skip-admin-rebuild `
-  --translation-evidence-dir data-pipeline\persons\twostage\translation-evidence `
+  --translation-evidence-dir data-pipeline\persons\twostage\translation\evidence `
   --output-dir C:\temp\ztj-agent1-translation
 ```
 

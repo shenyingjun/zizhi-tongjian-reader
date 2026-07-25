@@ -533,7 +533,7 @@ class Juan265CorpusBoundaryTest(unittest.TestCase):
             scan_notes=False,
         )
         translated = TE.load_juan(
-            Path(__file__).resolve().parent / "translation-evidence",
+            Path(__file__).resolve().parent / "translation" / "evidence",
             265,
             paragraphs,
         )
