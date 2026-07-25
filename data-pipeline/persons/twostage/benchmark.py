@@ -46,8 +46,11 @@ def _pct(n: int, d: int) -> float:
 def run(
     juans: list[int],
     translation_evidence_dir: Path | None = None,
+    workers: int = 1,
 ) -> dict:
     started = time.perf_counter()
+    if workers and workers > 1:
+        R.DETECT_WORKERS = workers
     corpus = R.load_corpus()
     all_exclusions = BR.load_exclusions()
     exclusions = {
@@ -263,8 +266,18 @@ def main() -> None:
         type=Path,
         help="optional paragraph-scoped translation identity evidence",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help=(
+            "split each juan's jie-blocks across this many worker processes "
+            "(default 1 = serial). Metrics are identical regardless of value; "
+            "4 is a good default on multi-core machines."
+        ),
+    )
     args = parser.parse_args()
-    result = run(args.juans, args.translation_evidence_dir)
+    result = run(args.juans, args.translation_evidence_dir, workers=args.workers)
     print_report(result)
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
