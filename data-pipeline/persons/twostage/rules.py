@@ -54,6 +54,14 @@ from pathlib import Path
 # set to "0" for the old per-paragraph scope.
 ANAPHORA_BLOCK = os.environ.get("ZTJ_ANAPHORA_BLOCK", "1") != "0"
 
+# Optional intra-juan parallelism: split a juan's jie-blocks across this many worker
+# processes. Default 1 = serial, byte-identical to the original single-threaded path.
+# Detection is GIL-bound pure Python, so processes (not threads) are used.
+try:
+    DETECT_WORKERS = max(1, int(os.environ.get("ZTJ_DETECT_WORKERS", "1") or "1"))
+except ValueError:
+    DETECT_WORKERS = 1
+
 
 def rules_bundle_sha256():
     """Hash every source file that can change Agent-1 admission behavior."""
@@ -4843,6 +4851,16 @@ def _next_token_is_high_conf_verb(ctx, start):
 
 
 def _complete_person_pos(ctx, start, end):
+    cache = ctx._cache_complete_pos
+    key = (start, end)
+    if key in cache:
+        return cache[key]
+    result = _complete_person_pos_uncached(ctx, start, end)
+    cache[key] = result
+    return result
+
+
+def _complete_person_pos_uncached(ctx, start, end):
     tokens = ctx.tokens_for(start, end)
     if not tokens or tokens[0].start != start or tokens[-1].end != end:
         return False
@@ -4865,6 +4883,16 @@ def _complete_person_pos(ctx, start, end):
 
 
 def _high_confidence_name_pos(ctx, start, end):
+    cache = ctx._cache_high_conf
+    key = (start, end)
+    if key in cache:
+        return cache[key]
+    result = _high_confidence_name_pos_uncached(ctx, start, end)
+    cache[key] = result
+    return result
+
+
+def _high_confidence_name_pos_uncached(ctx, start, end):
     tokens = ctx.tokens_for(start, end)
     return (
         bool(tokens)
@@ -6869,6 +6897,7 @@ class Ctx:
         "jie_person_morphology_majority_surfaces",
         "jie_person_title_surfaces",
         "evidence_audit",
+        "_cache_tokens_for", "_cache_complete_pos", "_cache_high_conf",
     )
 
     def __init__(
@@ -6907,20 +6936,34 @@ class Ctx:
             jie_person_title_surfaces
         )
         self.evidence_audit = evidence_audit
+        # Per-Ctx memo caches for pure predicates that depend only on the immutable
+        # tokens/gspans of this block. A fresh Ctx is built per jie-block, so these
+        # never leak across blocks or juans.
+        self._cache_tokens_for = {}
+        self._cache_complete_pos = {}
+        self._cache_high_conf = {}
 
     def token_at(self, offset):
         return self._token_by_offset.get(offset)
 
     def tokens_for(self, start, end):
+        cache = self._cache_tokens_for
+        key = (start, end)
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
         tokens = []
         cursor = start
         while cursor < end:
             token = self.token_at(cursor)
             if token is None or token.start != cursor or token.end > end:
+                cache[key] = ()
                 return ()
             tokens.append(token)
             cursor = token.end
-        return tuple(tokens) if cursor == end else ()
+        result = tuple(tokens) if cursor == end else ()
+        cache[key] = result
+        return result
 
     def year_at(self, offset):
         if self.ce is not None:
@@ -7127,6 +7170,155 @@ def _jie_person_title_surfaces(paras, giv, corpus):
     return frozenset(surfaces)
 
 
+def _run_block(payload, corpus, enabled, scan_notes, want_audit):
+    """Run all rules over one assembled jie-block and return its cards.
+
+    This is the ctx-dependent tail of what ``detect_juan`` does per block, factored
+    out so blocks can be executed serially or across worker processes. It is a pure
+    function of ``payload`` + ``corpus`` (both immutable per block), so the choice of
+    executor cannot change the output.
+    """
+    ctx = Ctx(
+        payload["blocktext"], payload["gset"], corpus,
+        payload["juan_no"], payload["bsec"], None, None,
+        gspans=payload["gspans"],
+        tokens=payload["tokens"],
+        year_ranges=payload["year_ranges"],
+        jie_person_surfaces=payload["jie_person_surfaces"],
+        jie_partial_person_surfaces=payload["jie_partial_person_surfaces"],
+        jie_person_morphology_majority_surfaces=(
+            payload["jie_person_morphology_majority_surfaces"]
+        ),
+        jie_person_title_surfaces=payload["jie_person_title_surfaces"],
+        evidence_audit=[] if want_audit else None,
+    )
+    ctx.translation_anchors = tuple(payload["translation_anchors"])
+    _mark_translation_surface_propagation(ctx, payload["translation_mentions"])
+    by_start = collections.defaultdict(list)
+    for candidate in payload["translation_fullnames"] + payload["translation_mentions"]:
+        by_start[candidate["start"]].append(candidate)
+    for start, same_start in by_start.items():
+        if len({
+            candidate["identity_surface"] for candidate in same_start
+        }) != 1:
+            continue
+        strict_local_owner = all(
+            candidate["strict_identity"] for candidate in same_start
+        )
+        for modes, target in (
+            ({"exact"}, ctx.translation_fullnames),
+            ({"anchor_given", "title_given"}, ctx.translation_mentions),
+        ):
+            eligible = [
+                candidate
+                for candidate in same_start
+                if candidate["mode"] in modes
+            ]
+            if not eligible:
+                continue
+            selected = max(
+                eligible,
+                key=lambda row: row["end"] - row["start"],
+            )
+            selected["strict_local_owner"] = strict_local_owner
+            target[start] = selected
+    pmap = payload["pmap"]
+    main_cards = []
+    for c in detect_para(ctx, enabled):
+        s = c["start"]
+        for a, b, pid, ce in pmap:                # re-stamp to the containing paragraph
+            if a <= s < b:
+                c["start"] -= a
+                c["end"] -= a
+                c["para_id"] = pid
+                c["ce_year"] = ce
+                break
+        c["field"] = "main"
+        main_cards.append(c)
+    audit_rows = []
+    if want_audit:
+        for row in ctx.evidence_audit:
+            s = row["start"]
+            for a, b, pid, ce in pmap:
+                if a <= s < b:
+                    row["start"] -= a
+                    row["end"] -= a
+                    row["para_id"] = pid
+                    row["ce_year"] = ce
+                    row["juan"] = payload["juan_no"]
+                    row["sec"] = payload["bsec"]
+                    break
+            else:
+                continue
+            audit_rows.append(row)
+    notes_cards = []
+    if scan_notes:
+        # Hu Sanxing commentary: same rules, offsets into each paragraph's notes.
+        # Notes stay paragraph-local (they carry no POS·Giv cache and no roster).
+        for para in payload["bparas"]:
+            ntext = "".join(n.get("text", "") or "" for n in para.get("notes", []))
+            if not ntext:
+                continue
+            nctx = Ctx(ntext, set(), corpus, payload["juan_no"], payload["bsec"],
+                       para.get("id"), para.get("ce_year"))
+            for c in detect_para(nctx, enabled):
+                c["field"] = "notes"
+                notes_cards.append(c)
+    return main_cards, audit_rows, notes_cards
+
+
+_WORKER_CORPUS = None
+_DETECT_POOL = None
+_DETECT_POOL_WORKERS = 0
+
+
+def _worker_init():
+    global _WORKER_CORPUS
+    _WORKER_CORPUS = load_corpus()
+
+
+def _run_block_pool(payload, enabled, scan_notes, want_audit):
+    return _run_block(payload, _WORKER_CORPUS, enabled, scan_notes, want_audit)
+
+
+def _get_detect_pool(workers):
+    """Lazily create and reuse one process pool for the whole run so the per-worker
+    corpus load is paid once, not per juan."""
+    global _DETECT_POOL, _DETECT_POOL_WORKERS
+    if _DETECT_POOL is not None and _DETECT_POOL_WORKERS == workers:
+        return _DETECT_POOL
+    from concurrent.futures import ProcessPoolExecutor
+    if _DETECT_POOL is not None:
+        _DETECT_POOL.shutdown()
+    _DETECT_POOL = ProcessPoolExecutor(
+        max_workers=workers, initializer=_worker_init
+    )
+    _DETECT_POOL_WORKERS = workers
+    return _DETECT_POOL
+
+
+def _run_blocks(payloads, corpus, enabled, scan_notes, want_audit):
+    workers = DETECT_WORKERS
+    if workers <= 1 or len(payloads) <= 1:
+        return [
+            _run_block(payload, corpus, enabled, scan_notes, want_audit)
+            for payload in payloads
+        ]
+    try:
+        pool = _get_detect_pool(workers)
+        futures = [
+            pool.submit(_run_block_pool, payload, enabled, scan_notes, want_audit)
+            for payload in payloads
+        ]
+        return [future.result() for future in futures]
+    except Exception:
+        # Any pool failure falls back to the deterministic serial path.
+        return [
+            _run_block(payload, corpus, enabled, scan_notes, want_audit)
+            for payload in payloads
+        ]
+
+
 def detect_juan(
     juan_no,
     paras,
@@ -7140,6 +7332,7 @@ def detect_juan(
     if enabled is None:
         enabled = {r[0] for r in RULES}
     out = []
+    payloads = []
     for bsec, bparas in _blocks_of(paras):
         # Assemble the 节 as ONE text: every rule (anchors, gloss prepass, anaphora
         # postpass) runs over the whole block. SEC_SEP is a hard boundary so no name
@@ -7258,87 +7451,33 @@ def detect_juan(
         for anchor in blk_translation_jie_anchors:
             anchor["end"] = len(blocktext)
         blk_translation_anchors.extend(blk_translation_jie_anchors)
-        ctx = Ctx(
-            blocktext, blk_gset, corpus, juan_no, bsec, None, None,
-            gspans=blk_gspans,
-            tokens=blk_tokens,
-            year_ranges=blk_year_ranges,
-            jie_person_surfaces=jie_person_surfaces,
-            jie_partial_person_surfaces=jie_partial_person_surfaces,
-            jie_person_morphology_majority_surfaces=(
+        payloads.append({
+            "blocktext": blocktext,
+            "gset": blk_gset,
+            "gspans": blk_gspans,
+            "tokens": blk_tokens,
+            "year_ranges": blk_year_ranges,
+            "juan_no": juan_no,
+            "bsec": bsec,
+            "jie_person_surfaces": jie_person_surfaces,
+            "jie_partial_person_surfaces": jie_partial_person_surfaces,
+            "jie_person_morphology_majority_surfaces": (
                 jie_person_morphology_majority_surfaces
             ),
-            jie_person_title_surfaces=jie_person_title_surfaces,
-            evidence_audit=[] if evidence_audit is not None else None,
-        )
-        ctx.translation_anchors = tuple(blk_translation_anchors)
-        _mark_translation_surface_propagation(ctx, blk_translation_mentions)
-        by_start = collections.defaultdict(list)
-        for candidate in blk_translation_fullnames + blk_translation_mentions:
-            by_start[candidate["start"]].append(candidate)
-        for start, same_start in by_start.items():
-            if len({
-                candidate["identity_surface"] for candidate in same_start
-            }) != 1:
-                continue
-            strict_local_owner = all(
-                candidate["strict_identity"] for candidate in same_start
-            )
-            for modes, target in (
-                ({"exact"}, ctx.translation_fullnames),
-                ({"anchor_given", "title_given"}, ctx.translation_mentions),
-            ):
-                eligible = [
-                    candidate
-                    for candidate in same_start
-                    if candidate["mode"] in modes
-                ]
-                if not eligible:
-                    continue
-                selected = max(
-                    eligible,
-                    key=lambda row: row["end"] - row["start"],
-                )
-                selected["strict_local_owner"] = strict_local_owner
-                target[start] = selected
-        for c in detect_para(ctx, enabled):
-            s = c["start"]
-            for a, b, para in pmap:                # re-stamp to the containing paragraph
-                if a <= s < b:
-                    c["start"] -= a
-                    c["end"] -= a
-                    c["para_id"] = para.get("id")
-                    c["ce_year"] = para.get("ce_year")
-                    break
-            c["field"] = "main"
-            out.append(c)
+            "jie_person_title_surfaces": jie_person_title_surfaces,
+            "translation_anchors": list(blk_translation_anchors),
+            "translation_mentions": blk_translation_mentions,
+            "translation_fullnames": blk_translation_fullnames,
+            "pmap": [(a, b, para.get("id"), para.get("ce_year")) for a, b, para in pmap],
+            "bparas": bparas,
+        })
+    for main_cards, audit_rows, notes_cards in _run_blocks(
+        payloads, corpus, enabled, scan_notes, evidence_audit is not None
+    ):
+        out.extend(main_cards)
         if evidence_audit is not None:
-            for row in ctx.evidence_audit:
-                s = row["start"]
-                for a, b, para in pmap:
-                    if a <= s < b:
-                        row["start"] -= a
-                        row["end"] -= a
-                        row["para_id"] = para.get("id")
-                        row["ce_year"] = para.get("ce_year")
-                        row["juan"] = juan_no
-                        row["sec"] = bsec
-                        break
-                else:
-                    continue
-                evidence_audit.append(row)
-        if scan_notes:
-            # Hu Sanxing commentary: same rules, offsets into each paragraph's notes.
-            # Notes stay paragraph-local (they carry no POS·Giv cache and no roster).
-            for para in bparas:
-                ntext = "".join(n.get("text", "") or "" for n in para.get("notes", []))
-                if not ntext:
-                    continue
-                nctx = Ctx(ntext, set(), corpus, juan_no, bsec, para.get("id"),
-                           para.get("ce_year"))
-                for c in detect_para(nctx, enabled):
-                    c["field"] = "notes"
-                    out.append(c)
+            evidence_audit.extend(audit_rows)
+        out.extend(notes_cards)
     if translation_evidence:
         baseline = detect_juan(
             juan_no,
