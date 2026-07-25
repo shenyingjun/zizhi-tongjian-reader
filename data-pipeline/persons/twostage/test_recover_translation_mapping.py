@@ -36,12 +36,18 @@ class RecoverTranslationMappingTest(unittest.TestCase):
         self.assertEqual({1}, {row["repo_jie_index"] for row in rows})
 
     def test_flags_identity_that_spans_two_aligned_jies(self):
-        original = ("魏斯、赵籍至。魏斯曰。韩虔至。魏斯归。") * 3
-        pair = R.SourcePair(0, original, "魏斯后来归来。")
+        jies = R._jies(
+            [
+                {"id": 0, "main": "周纪一"},
+                {"id": 1, "main": "①魏斯至。"},
+                {"id": 2, "main": "②魏斯至。"},
+            ]
+        )
+        pair = R.SourcePair(0, "魏斯至。魏斯至。", "魏斯到达。")
         rows = R.map_pair(
             1,
             pair,
-            self.jies,
+            jies,
             (R.PersonEntity("魏斯", 0.99),),
             "https://example.test/juan-1",
         )
@@ -52,6 +58,99 @@ class RecoverTranslationMappingTest(unittest.TestCase):
                 row["mapping_status"] == "flagged_multi_jie_identity"
                 for row in rows
             )
+        )
+
+    def test_maps_repeated_identity_to_translation_aligned_paragraph(self):
+        pair = R.SourcePair(
+            0,
+            "魏斯、赵籍至。魏斯曰。韩虔至。魏斯归。",
+            "韩虔到达。魏斯归。",
+        )
+        rows = R.map_pair(
+            1,
+            pair,
+            self.jies,
+            (R.PersonEntity("魏斯", 0.99),),
+            "https://example.test/juan-1",
+        )
+
+        eligible = [
+            row
+            for row in rows
+            if row["mapping_status"] == "mapped_exact_paragraph"
+        ]
+        self.assertEqual([(4, "魏斯")], [
+            (row["repo_para_id"], row["original_surface"])
+            for row in eligible
+        ])
+        self.assertTrue(
+            all(
+                row["mapping_status"] == "flagged_multi_jie_identity"
+                for row in rows
+                if row not in eligible
+            )
+        )
+
+    def test_longer_matching_paragraph_beats_contained_decoy(self):
+        jies = R._jies(
+            [
+                {"id": 0, "main": "周纪一"},
+                {"id": 1, "main": "①魏斯守城，赵籍相助。"},
+                {"id": 2, "main": "②魏斯守城。"},
+            ]
+        )
+        pair = R.SourcePair(
+            0,
+            "魏斯守城，赵籍助之。",
+            "魏斯守城，赵籍帮助他。",
+        )
+
+        rows = R.map_pair(
+            1,
+            pair,
+            jies,
+            (R.PersonEntity("魏斯", 0.99),),
+            "https://example.test/juan-1",
+        )
+
+        self.assertEqual(
+            [(1, "mapped_exact_paragraph")],
+            [
+                (row["repo_para_id"], row["mapping_status"])
+                for row in rows
+                if not row["mapping_status"].startswith("flagged_")
+            ],
+        )
+
+    def test_independent_translation_sentences_can_map_separate_jies(self):
+        jies = R._jies(
+            [
+                {"id": 0, "main": "周纪一"},
+                {"id": 1, "main": "①魏斯守城。"},
+                {"id": 2, "main": "②魏斯归国。"},
+            ]
+        )
+        pair = R.SourcePair(
+            0,
+            "魏斯守城。魏斯归国。",
+            "魏斯守城。魏斯归国。",
+        )
+
+        rows = R.map_pair(
+            1,
+            pair,
+            jies,
+            (R.PersonEntity("魏斯", 0.99),),
+            "https://example.test/juan-1",
+        )
+
+        self.assertEqual(
+            [(1, 1), (2, 2)],
+            [
+                (row["repo_para_id"], row["repo_jie_index"])
+                for row in rows
+                if row["mapping_status"] == "mapped_exact_paragraph"
+            ],
         )
 
     def test_translation_only_expansion_is_not_mapped(self):
@@ -97,7 +196,7 @@ class RecoverTranslationMappingTest(unittest.TestCase):
         self.assertEqual("慕容垂", rows[0]["identity_surface"])
         self.assertEqual("anchor_given", rows[0]["transfer_mode"])
         self.assertEqual(
-            "mapped_translation_coreference_unique_jie",
+            "mapped_translation_coreference_paragraph",
             rows[0]["mapping_status"],
         )
 
@@ -197,7 +296,7 @@ class RecoverTranslationMappingTest(unittest.TestCase):
 
         self.assertEqual(["垂"], [row["original_surface"] for row in rows])
         self.assertEqual(
-            "mapped_translation_expansion_unique_jie",
+            "mapped_translation_expansion_paragraph",
             rows[0]["mapping_status"],
         )
 
@@ -757,6 +856,106 @@ class RecoverTranslationMappingTest(unittest.TestCase):
         hit = rules.rule_translation_given(context, 0)
 
         self.assertEqual((0, 2, "汉宾", "translation_anaphora"), hit)
+
+    def test_paragraph_mapped_handle_overrides_local_geo_tag(self):
+        text = "汉宾心未可知。"
+        context = rules.Ctx(
+            text,
+            {0, 1},
+            rules.Corpus(set(), {}, set()),
+            261,
+            1,
+            1,
+            -1,
+            gspans=((0, 2),),
+            tokens=(
+                rules.pos_giv.PosToken(
+                    "汉", 0, 1, "PROPN", "PROPN|NameType=Nat", None, 0.99
+                ),
+                rules.pos_giv.PosToken(
+                    "宾", 1, 2, "NOUN", "NOUN", None, 0.99
+                ),
+            ),
+        )
+        context.translation_mentions = {
+            0: {
+                "start": 0,
+                "end": 2,
+                "surface": "汉宾",
+                "identity_surface": "陈汉宾",
+                "strict_identity": True,
+                "strict_local_owner": True,
+                "translation_coreference": True,
+                "mapping_status": "mapped_translation_coreference_paragraph",
+            }
+        }
+
+        hit = rules.rule_translation_given(context, 0)
+
+        self.assertEqual((0, 2, "汉宾", "translation_anaphora"), hit)
+
+    def test_translation_handle_rejects_office_title_continuation(self):
+        text = "武衞将军王鉴"
+        context = rules.Ctx(
+            text,
+            {0},
+            rules.Corpus(set(), {}, set()),
+            101,
+            1,
+            1,
+            -1,
+            gspans=((0, 1),),
+            tokens=(
+                rules.pos_giv.PosToken(
+                    "武", 0, 1, "PROPN", "PROPN|NameType=Giv", None, 0.99
+                ),
+            ),
+        )
+        context.translation_mentions = {
+            0: {
+                "start": 0,
+                "end": 1,
+                "surface": "武",
+                "identity_surface": "苻武",
+                "strict_identity": True,
+                "strict_local_owner": True,
+                "translation_coreference": True,
+                "mapping_status": "mapped_translation_expansion_paragraph",
+            }
+        }
+
+        self.assertIsNone(rules.rule_translation_given(context, 0))
+
+    def test_translation_fullname_rejects_bare_compound_surname(self):
+        text = "出连辅政至"
+        context = rules.Ctx(
+            text,
+            {0, 1},
+            rules.Corpus({"出连"}, {}, set()),
+            120,
+            1,
+            1,
+            -1,
+            gspans=((0, 2), (2, 4)),
+            tokens=(
+                rules.pos_giv.PosToken(
+                    "出", 0, 1, "PROPN", "B-PROPN|NameType=Giv", "B", 0.99
+                ),
+                rules.pos_giv.PosToken(
+                    "连", 1, 2, "PROPN", "I-PROPN|NameType=Giv", "I", 0.99
+                ),
+            ),
+        )
+        context.translation_fullnames = {
+            0: {
+                "start": 0,
+                "end": 2,
+                "surface": "出连",
+                "identity_surface": "出连",
+            }
+        }
+
+        self.assertIsNone(rules.rule_translation_fullname(context, 0))
 
     def test_same_jie_trusted_surface_overrides_one_local_geo_tag(self):
         text = "叔陵至。叔陵兵可千人。"
