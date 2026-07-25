@@ -43,9 +43,12 @@ def run(
     output_dir: Path,
     rebuild_admin_places: bool = True,
     translation_evidence_dir: Path | None = None,
+    workers: int = 1,
 ) -> dict:
     if not juans or any(juan < 1 or juan > 294 for juan in juans):
         raise ValueError("juans must contain values from 1 through 294")
+    if workers and workers > 1:
+        R.DETECT_WORKERS = workers
     if rebuild_admin_places:
         _write_admin_places()
 
@@ -191,12 +194,23 @@ def main() -> None:
             "so production behavior is unchanged"
         ),
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help=(
+            "split each juan's jie-blocks across this many worker processes "
+            "(default 1 = serial). Output is byte-identical regardless of value; "
+            "4 is a good default on multi-core machines."
+        ),
+    )
     args = parser.parse_args()
     result = run(
         args.juans,
         args.output_dir,
         rebuild_admin_places=not args.skip_admin_rebuild,
         translation_evidence_dir=args.translation_evidence_dir,
+        workers=args.workers,
     )
     print(
         f"wrote {result['total_occurrences']} occurrences for "
