@@ -13,9 +13,11 @@ from pathlib import Path
 from pilot import TEXT, _load, build_blind_task
 
 
-SEED = 20260729
-EXCLUDED_JUANS = {12, 13, 27, 44, 52, 76, 207, 248}
+EXCLUDED_JUANS = {
+    12, 13, 21, 27, 44, 52, 76, 201, 204, 207, 225, 248, 251,
+}
 RANDOM_JUANS = 3
+CHALLENGE_COHORT = 5
 ROLE_TERMS = (
     "太后", "太子", "皇后", "皇帝", "丞相", "大将军", "皇太后",
 )
@@ -43,24 +45,27 @@ def _term_counts(text: str, terms: tuple[str, ...]) -> dict[str, int]:
 def select_sealed(
     sources: dict[int, dict],
     *,
-    seed: int = SEED,
+    seed: int,
 ) -> list[dict]:
     available = sorted(set(sources) - EXCLUDED_JUANS)
     if len(available) < RANDOM_JUANS + 2:
         raise ValueError("at least five unconsumed juans are required")
-    random_juans = random.Random(seed).sample(available, RANDOM_JUANS)
+    rng = random.Random(seed)
+    random_juans = rng.sample(available, RANDOM_JUANS)
     remaining = [juan for juan in available if juan not in random_juans]
     texts = {juan: _text(sources[juan]) for juan in remaining}
 
     def take_challenge(role: str, terms: tuple[str, ...]) -> dict:
-        juan = max(
+        cohort = sorted(
             remaining,
             key=lambda value: (
                 sum(texts[value].count(term) for term in terms),
                 len(texts[value]),
                 -value,
             ),
-        )
+            reverse=True,
+        )[:CHALLENGE_COHORT]
+        juan = rng.choice(cohort)
         remaining.remove(juan)
         counts = _term_counts(texts[juan], terms)
         return {
@@ -84,6 +89,8 @@ def prepare_sealed(
     output_dir: Path,
     model_dir: Path,
     selected_model_path: Path,
+    *,
+    seed: int | None = None,
 ) -> dict:
     if output_dir.exists():
         raise FileExistsError(f"sealed output already exists: {output_dir}")
@@ -99,22 +106,25 @@ def prepare_sealed(
         if path.is_file():
             sources[juan] = _load(path)
             source_paths[juan] = path
-    selected = select_sealed(sources)
+    selection_seed = seed if seed is not None else secrets.randbits(128)
+    selected = select_sealed(sources, seed=selection_seed)
 
     manifest = {
         "schema_version": 1,
         "status": "sealed_before_annotation",
-        "selection_seed": SEED,
+        "selection_seed": selection_seed,
         "selection_policy": {
             "probability_random": (
                 "three juans sampled uniformly without replacement from all "
                 "available unconsumed juans"
             ),
             "role_appellation_challenge": (
-                "highest raw-text count of the predeclared role terms"
+                "private-seed draw from the five highest raw-text counts of "
+                "the predeclared role terms"
             ),
             "foreign_title_challenge": (
-                "highest raw-text count of the predeclared foreign-title terms"
+                "private-seed draw from the five highest raw-text counts of "
+                "the predeclared foreign-title terms"
             ),
         },
         "excluded_juans": sorted(EXCLUDED_JUANS),

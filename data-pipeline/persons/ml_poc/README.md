@@ -196,7 +196,8 @@ python p3_sealed.py `
   --selected-model <round1-selected.json>
 ```
 
-The command verifies the model hash, excludes every consumed juan, writes three
-uniform-random and two challenge tasks, and records selection metadata only in the
+The command verifies the model hash, excludes every consumed or aborted sealed
+juan, writes three uniform-random tasks and two private-seed draws from the
+predeclared top-five challenge cohorts, and records selection metadata only in the
 private manifest. Do not run model or rule inference until all five blind tasks are
 complete and locked.
