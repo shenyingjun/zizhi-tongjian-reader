@@ -148,6 +148,12 @@ For a single naming predicate, tag only its result (`字[季]`, `更名曰[询]`
 When a continuous construction such as `姓 X 字 Y` jointly supplies the complete
 available naming description and its pieces do not independently form that
 description, tag the full expression: `即常安[姓武字仲]`.
+When coordinated persons share a right-hand appellation, tag each concrete
+conjunct's actual surface, including an elliptical first conjunct:
+`乌孙[大]、[小昆弥]` and `[广平]、[巨鹿]、[乐成王]`. A plural expression is
+taggable only when it clearly refers to a specific group whose members are anchored
+in the current jie; generic or unanchored plural roles remain excluded. Juan
+headings are metadata, not narrative person mentions, and contain no spans.
 
 ## 5. Geometry and evaluation
 

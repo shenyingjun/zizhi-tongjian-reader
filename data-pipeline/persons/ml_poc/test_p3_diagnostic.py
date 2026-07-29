@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from p3_diagnostic import prepare_diagnostic
+from p3_diagnostic_freeze import freeze_diagnostic
 
 
 def write(path: Path, payload: dict) -> None:
@@ -90,6 +91,70 @@ class P3DiagnosticTest(unittest.TestCase):
             prepare_diagnostic(
                 self.tasks, self.packs, self.root / "output"
             )
+
+    def test_freezes_locked_diagnostic_labels(self):
+        packaged = self.root / "packaged"
+        manifest = prepare_diagnostic(
+            self.tasks, self.packs, packaged
+        )
+        state = packaged / "state"
+        for selection in manifest["selected"]:
+            juan = int(selection["juan"])
+            write(state / f"juan_{juan:03d}.json", {
+                "assisted": {
+                    "complete": True,
+                    "pack_sha256": selection["pack_sha256"],
+                    "annotations": [{
+                        "para_id": juan,
+                        "start": 1,
+                        "end": 3,
+                        "surface": "曹操",
+                    }],
+                    "decisions": {
+                        f"copilot:{juan}:1:3": "accept",
+                    },
+                },
+            })
+        base_train = packaged / "tasks" / "base.jsonl"
+        base_train.write_text(json.dumps({
+            "id": "juan-099-jie-0000",
+            "juan": 99,
+            "jie_index": 0,
+            "jie_number": 1,
+            "text": "曹操",
+            "labels": ["B-PER", "I-PER"],
+            "span_count": 1,
+            "label_provenance": "human_assisted_copilot",
+            "segments": [{
+                "para_id": 1,
+                "assembled_start": 0,
+                "assembled_end": 2,
+            }],
+        }, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        report = freeze_diagnostic(
+            packaged / "tasks",
+            packaged / "assisted",
+            state,
+            self.root / "frozen",
+            base_train=base_train,
+        )
+
+        self.assertFalse(report["formal_p3"])
+        self.assertEqual(5, report["spans"])
+        self.assertEqual(6, report["combined_train"]["spans"])
+        self.assertEqual([1, 2, 3, 4, 5, 99],
+                         report["combined_train"]["juans"])
+        rows = [
+            json.loads(line)
+            for line in (
+                self.root / "frozen" / "train_diagnostic.jsonl"
+            ).read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(
+            {"human_assisted_copilot_diagnostic"},
+            {row["label_provenance"] for row in rows},
+        )
 
 
 if __name__ == "__main__":
