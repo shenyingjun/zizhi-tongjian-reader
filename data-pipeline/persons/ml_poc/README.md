@@ -186,3 +186,17 @@ python export_translation_scope.py `
 ```
 
 `teacher_evidence.py` reads only this sidecar, never the identity-bearing mapping.
+
+Freeze the P3 candidate-blind tasks only after selecting the Round 1 checkpoint:
+
+```powershell
+python p3_sealed.py `
+  --output <new-p3-task-directory> `
+  --model <selected-model-directory> `
+  --selected-model <round1-selected.json>
+```
+
+The command verifies the model hash, excludes every consumed juan, writes three
+uniform-random and two challenge tasks, and records selection metadata only in the
+private manifest. Do not run model or rule inference until all five blind tasks are
+complete and locked.

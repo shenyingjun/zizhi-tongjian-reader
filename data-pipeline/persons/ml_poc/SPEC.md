@@ -199,6 +199,25 @@ support adoption. Hybrid adoption requires model exact F1 at least equal to rule
 with non-overlapping 90% intervals, no challenge stratum down more than 5 points,
 and a one-sided 95% precision lower bound of at least 0.98 for auto-publishing.
 
+### 5.2 P3 sealed set
+
+Before any P3 model inference, freeze five previously unused whole juans:
+
+- three juans sampled uniformly without replacement from the eligible 1-294 frame;
+- one role/appellation challenge juan selected only by predeclared raw-text term
+  counts; and
+- one foreign-title challenge juan selected only by predeclared raw-text term
+  counts.
+
+Exclude every juan used in training, development, pilot holdout, blind-anchor
+evaluation, or assisted annotation. Freeze the selected model hash, checkpoint
+selection record, seed, selection policy, task/source hashes, and current code
+commit in a private manifest. Annotation task files contain only candidate-free
+main text and paragraph/jie geometry. The UI must not expose selection roles before
+each juan is completed and permanently locked. Do not generate model or rule
+predictions until all five references are locked; P3 failures cannot select or
+retrain the evaluated model.
+
 ## 6. Model, if P0 justifies it
 
 The plain P1 challenger uses

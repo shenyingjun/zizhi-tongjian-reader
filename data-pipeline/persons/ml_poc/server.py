@@ -46,9 +46,21 @@ class AnnotationStore:
 
     def _blind_task(self, juan: int) -> dict:
         self._require_juan(juan)
-        task = self._read(
-            self.blind_dir / f"blind_juan_{juan:03d}.json"
-        )
+        path = self.blind_dir / f"blind_juan_{juan:03d}.json"
+        selection = self.selected[juan]
+        expected_sha256 = selection.get("task_sha256")
+        if (
+            self._mode(juan) == "sealed_blind"
+            and (
+                not isinstance(expected_sha256, str)
+                or hashlib.sha256(path.read_bytes()).hexdigest()
+                != expected_sha256
+            )
+        ):
+            raise PermissionError(
+                f"sealed task hash differs for juan {juan}"
+            )
+        task = self._read(path)
         task.pop("selection_role", None)
         return task
 
@@ -154,7 +166,9 @@ class AnnotationStore:
                 mode = self._mode(juan)
                 row["mode"] = mode
                 row["initial_phase"] = (
-                    "blind" if mode == "blind_anchor" else "assisted"
+                    "blind"
+                    if mode in {"blind_anchor", "sealed_blind"}
+                    else "assisted"
                 )
                 row["assisted_complete"] = state["assisted"]["complete"]
             if state["blind"]["complete"]:
@@ -168,6 +182,10 @@ class AnnotationStore:
 
     def _payload(self, juan: int, phase: str) -> dict:
         state = self.state(juan)
+        if self._mode(juan) == "sealed_blind" and phase != "blind":
+            raise PermissionError(
+                "sealed tasks expose only candidate-blind annotation"
+            )
         if phase == "blind":
             if self._mode(juan) == "assisted":
                 raise PermissionError(
@@ -177,6 +195,7 @@ class AnnotationStore:
                 "task": self._blind_task(juan),
                 "state": state["blind"],
                 "locked": state["blind"]["complete"],
+                "sealed": self._mode(juan) == "sealed_blind",
             }
         if phase == "assisted":
             if self._mode(juan) != "assisted":
@@ -285,6 +304,10 @@ class AnnotationStore:
 
     def _save(self, juan: int, phase: str, payload: dict) -> dict:
         state = self.state(juan)
+        if self._mode(juan) == "sealed_blind" and phase != "blind":
+            raise PermissionError(
+                "sealed tasks expose only candidate-blind annotation"
+            )
         if phase not in {"blind", "recall", "role_audit", "assisted"}:
             raise ValueError(f"unknown phase: {phase}")
         if state[phase]["complete"]:
@@ -342,13 +365,18 @@ class AnnotationStore:
 
     def _complete(self, juan: int, phase: str) -> dict:
         state = self.state(juan)
+        if self._mode(juan) == "sealed_blind" and phase != "blind":
+            raise PermissionError(
+                "sealed tasks expose only candidate-blind annotation"
+            )
         if phase == "blind":
             if state["blind"]["complete"]:
                 return state["blind"]
             state["blind"]["complete"] = True
-            state["recall"]["annotations"] = list(
-                state["blind"]["annotations"]
-            )
+            if self._mode(juan) != "sealed_blind":
+                state["recall"]["annotations"] = list(
+                    state["blind"]["annotations"]
+                )
         elif phase == "recall":
             if not state["blind"]["complete"]:
                 raise PermissionError("blind phase must complete first")

@@ -251,6 +251,69 @@ class AnnotationStoreTest(unittest.TestCase):
         with self.assertRaisesRegex(PermissionError, "changed"):
             store.payload(2, "assisted")
 
+    def test_sealed_blind_task_never_initializes_recall(self):
+        root = Path(self.temp.name) / "sealed"
+        tasks = root / "tasks"
+        state = root / "state"
+        write(tasks / "manifest.json", {
+            "selected": [{
+                "juan": 1,
+                "role": "probability_random",
+                "mode": "sealed_blind",
+                "task_sha256": "",
+            }],
+        })
+        task_path = tasks / "blind_juan_001.json"
+        write(task_path, {
+            "juan": 1,
+            "jies": [{
+                "jie_index": 0,
+                "text": "①曹操至。",
+                "segments": [{
+                    "para_id": 2,
+                    "assembled_start": 0,
+                    "assembled_end": 5,
+                }],
+            }],
+        })
+        manifest = json.loads(
+            (tasks / "manifest.json").read_text(encoding="utf-8")
+        )
+        manifest["selected"][0]["task_sha256"] = hashlib.sha256(
+            task_path.read_bytes()
+        ).hexdigest()
+        write(tasks / "manifest.json", manifest)
+        store = AnnotationStore(
+            tasks, root / "recall", root / "roles", state
+        )
+
+        index = store.index()["juans"][0]
+        self.assertEqual("blind", index["initial_phase"])
+        self.assertNotIn("role", index)
+        self.assertTrue(store.payload(1, "blind")["sealed"])
+        with self.assertRaisesRegex(PermissionError, "candidate-blind"):
+            store.payload(1, "recall")
+        store.save(1, "blind", {
+            "annotations": [{
+                "para_id": 2, "start": 1, "end": 3, "surface": "曹操",
+            }],
+        })
+        store.complete(1, "blind")
+
+        final = store.state(1)
+        self.assertTrue(final["blind"]["complete"])
+        self.assertEqual([], final["recall"]["annotations"])
+        with self.assertRaisesRegex(PermissionError, "candidate-blind"):
+            store.save(1, "recall", {
+                "annotations": [], "decisions": {},
+            })
+
+        task = json.loads(task_path.read_text(encoding="utf-8"))
+        task["jies"][0]["text"] = "①刘备至。"
+        write(task_path, task)
+        with self.assertRaisesRegex(PermissionError, "hash differs"):
+            store.payload(1, "blind")
+
 
 if __name__ == "__main__":
     unittest.main()

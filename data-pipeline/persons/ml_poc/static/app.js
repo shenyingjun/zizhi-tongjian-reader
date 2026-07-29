@@ -59,6 +59,7 @@ async function loadTask(juan, phase) {
     state.pending = null; state.focusedCandidate = null;
     restoreDraft(juan, phase, payload.locked);
     $("phase").value = phase;
+    $("phase").disabled = Boolean(payload.sealed);
     for (const button of $("juans").children)
       button.classList.toggle("active", Number(button.dataset.juan) === juan);
     populateJies(); render();
@@ -500,6 +501,12 @@ async function save() {
     decisions: structuredClone(state.decisions),
     noteDecisions: structuredClone(state.noteDecisions),
   };
+  snapshot.draft = JSON.stringify({
+    geometry_version: 4,
+    annotations: snapshot.annotations,
+    decisions: snapshot.decisions,
+    note_decisions: snapshot.noteDecisions,
+  });
   const request = saveQueue.then(async () => {
     await api("/api/save", {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -512,7 +519,9 @@ async function save() {
         geometry_version: 4,
       }),
     });
-    localStorage.removeItem(draftKey(snapshot.juan, snapshot.phase));
+    const key = draftKey(snapshot.juan, snapshot.phase);
+    if (localStorage.getItem(key) === snapshot.draft)
+      localStorage.removeItem(key);
     if (state.juan === snapshot.juan && state.phase === snapshot.phase) {
       setStatus(
         `卷 ${snapshot.juan} · 已保存 ${snapshot.annotations.length} 个跨度`);
@@ -559,6 +568,11 @@ async function complete() {
       await loadTask(
         next?.juan || completedJuan,
         next?.initial_phase || "assisted");
+      return;
+    }
+    if (completedPhase === "blind" &&
+        completedRow?.mode === "sealed_blind") {
+      await loadTask(completedJuan, "blind");
       return;
     }
     if (completedPhase === "blind" &&
