@@ -201,3 +201,17 @@ juan, writes three uniform-random tasks and two private-seed draws from the
 predeclared top-five challenge cohorts, and records selection metadata only in the
 private manifest. Do not run model or rule inference until all five blind tasks are
 complete and locked.
+
+If the user explicitly abandons formal P3 in favor of lower-effort Copilot review,
+package validated teacher outputs as a **diagnostic-only** workflow:
+
+```powershell
+python p3_diagnostic.py `
+  --sealed-tasks <sealed-p3>\tasks `
+  --copilot-packs <copilot-output-directory> `
+  --output <new-diagnostic-directory>
+```
+
+The diagnostic UI pre-accepts high/medium-confidence auto-tags and leaves only
+low-confidence candidates unresolved. These labels and any resulting model
+comparison are assisted diagnostics, not an independent sealed-test metric.

@@ -324,7 +324,17 @@ function renderRecall() {
     div.append(document.createTextNode(
       `段 ${candidate.para_id} [${candidate.start},${candidate.end}) ${candidate.surface} `));
     const channels = document.createElement("span"); channels.className = "channels";
-    channels.textContent = candidate.channels.join(" + "); div.append(channels);
+    const confidence = candidate.confidence
+      ? ` · ${candidate.confidence} confidence`
+      : "";
+    channels.textContent = candidate.channels.join(" + ") + confidence;
+    div.append(channels);
+    if (candidate.review_reason) {
+      const reason = document.createElement("div");
+      reason.className = "candidate-reason";
+      reason.textContent = candidate.review_reason;
+      div.append(reason);
+    }
     div.append(candidateContext(candidate));
     for (const decision of ["accept", "reject", "unsure"]) {
       const button = document.createElement("button"); button.textContent = decision;
@@ -564,7 +574,8 @@ async function complete() {
       row => row.juan === completedJuan);
     if (completedPhase === "assisted") {
       const next = state.index.juans.find(
-        row => row.mode === "assisted" && !row.assisted_complete);
+        row => ["assisted", "diagnostic_assisted"].includes(row.mode) &&
+          !row.assisted_complete);
       await loadTask(
         next?.juan || completedJuan,
         next?.initial_phase || "assisted");

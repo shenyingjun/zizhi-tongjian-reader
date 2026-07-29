@@ -49,16 +49,13 @@ class AnnotationStore:
         path = self.blind_dir / f"blind_juan_{juan:03d}.json"
         selection = self.selected[juan]
         expected_sha256 = selection.get("task_sha256")
-        if (
-            self._mode(juan) == "sealed_blind"
-            and (
-                not isinstance(expected_sha256, str)
-                or hashlib.sha256(path.read_bytes()).hexdigest()
-                != expected_sha256
-            )
+        if expected_sha256 is not None and (
+            not isinstance(expected_sha256, str)
+            or hashlib.sha256(path.read_bytes()).hexdigest()
+            != expected_sha256
         ):
             raise PermissionError(
-                f"sealed task hash differs for juan {juan}"
+                f"task hash differs for juan {juan}"
             )
         task = self._read(path)
         task.pop("selection_role", None)
@@ -90,7 +87,13 @@ class AnnotationStore:
         path = self.assisted_dir / f"assisted_juan_{juan:03d}.json"
         if not path.is_file():
             raise FileNotFoundError(f"assisted pack is missing: {path}")
-        return hashlib.sha256(path.read_bytes()).hexdigest()
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        expected = self.selected[juan].get("pack_sha256")
+        if expected is not None and expected != digest:
+            raise PermissionError(
+                f"assisted pack hash differs for juan {juan}"
+            )
+        return digest
 
     def _bind_assisted_pack(self, juan: int, state: dict) -> None:
         digest = self._assisted_pack_sha256(juan)
@@ -135,13 +138,18 @@ class AnnotationStore:
         })
         state.setdefault("assisted", {
             "complete": False,
+            "initialized": False,
             "annotations": [],
             "decisions": {},
         })
+        state["assisted"].setdefault("initialized", False)
         return state
 
     def _mode(self, juan: int) -> str:
         return str(self.selected[juan].get("mode", "legacy"))
+
+    def _is_assisted_mode(self, juan: int) -> bool:
+        return self._mode(juan) in {"assisted", "diagnostic_assisted"}
 
     def _blind_anchors_complete(self) -> bool:
         anchors = [
@@ -187,7 +195,7 @@ class AnnotationStore:
                 "sealed tasks expose only candidate-blind annotation"
             )
         if phase == "blind":
-            if self._mode(juan) == "assisted":
+            if self._is_assisted_mode(juan):
                 raise PermissionError(
                     "assisted juans do not expose a blind phase"
                 )
@@ -198,16 +206,43 @@ class AnnotationStore:
                 "sealed": self._mode(juan) == "sealed_blind",
             }
         if phase == "assisted":
-            if self._mode(juan) != "assisted":
+            if not self._is_assisted_mode(juan):
                 raise PermissionError("this juan is not an assisted task")
-            if not self._blind_anchors_complete():
+            if (
+                self._mode(juan) == "assisted"
+                and not self._blind_anchors_complete()
+            ):
                 raise PermissionError(
                     "assisted annotation is locked until blind anchors complete"
                 )
             self._bind_assisted_pack(juan, state)
+            pack = self._assisted_pack(juan)
+            if (
+                self._mode(juan) == "diagnostic_assisted"
+                and not state["assisted"]["initialized"]
+            ):
+                annotations = [
+                    {
+                        "para_id": row["para_id"],
+                        "start": row["start"],
+                        "end": row["end"],
+                        "surface": row["surface"],
+                    }
+                    for row in pack["candidates"]
+                ]
+                state["assisted"]["annotations"] = (
+                    self._validate_annotations(juan, annotations)
+                )
+                state["assisted"]["decisions"] = {
+                    row["id"]: "accept"
+                    for row in pack["candidates"]
+                    if row.get("confidence") != "low"
+                }
+                state["assisted"]["initialized"] = True
+                self._write_state(juan, state)
             return {
                 "task": self._blind_task(juan),
-                "review": self._assisted_pack(juan),
+                "review": pack,
                 "state": state["assisted"],
                 "locked": state["assisted"]["complete"],
             }
@@ -319,9 +354,12 @@ class AnnotationStore:
                 "role audit is locked until recall annotation completes"
             )
         if phase == "assisted":
-            if self._mode(juan) != "assisted":
+            if not self._is_assisted_mode(juan):
                 raise PermissionError("this juan is not an assisted task")
-            if not self._blind_anchors_complete():
+            if (
+                self._mode(juan) == "assisted"
+                and not self._blind_anchors_complete()
+            ):
                 raise PermissionError(
                     "assisted annotation is locked until blind anchors complete"
                 )
@@ -402,7 +440,10 @@ class AnnotationStore:
                 )
             state["role_audit"]["complete"] = True
         elif phase == "assisted":
-            if not self._blind_anchors_complete():
+            if (
+                self._mode(juan) == "assisted"
+                and not self._blind_anchors_complete()
+            ):
                 raise PermissionError("blind anchors must complete first")
             self._bind_assisted_pack(juan, state)
             candidate_ids = {

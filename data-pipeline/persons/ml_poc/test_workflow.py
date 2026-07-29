@@ -314,6 +314,67 @@ class AnnotationStoreTest(unittest.TestCase):
         with self.assertRaisesRegex(PermissionError, "hash differs"):
             store.payload(1, "blind")
 
+    def test_diagnostic_assisted_initializes_only_low_confidence_unresolved(self):
+        root = Path(self.temp.name) / "diagnostic"
+        tasks = root / "tasks"
+        assisted = root / "assisted"
+        state = root / "state"
+        task_path = tasks / "blind_juan_001.json"
+        write(task_path, {
+            "juan": 1,
+            "jies": [{
+                "jie_index": 0,
+                "text": "①曹操与帝至。",
+                "segments": [{
+                    "para_id": 2,
+                    "assembled_start": 0,
+                    "assembled_end": 8,
+                }],
+            }],
+        })
+        write(tasks / "manifest.json", {
+            "selected": [{
+                "juan": 1,
+                "mode": "diagnostic_assisted",
+                "task_sha256": hashlib.sha256(
+                    task_path.read_bytes()
+                ).hexdigest(),
+            }],
+        })
+        write(assisted / "assisted_juan_001.json", {
+            "phase": "assisted",
+            "juan": 1,
+            "candidates": [
+                {
+                    "id": "copilot:2:1:3",
+                    "para_id": 2, "start": 1, "end": 3,
+                    "surface": "曹操", "confidence": "high",
+                    "channels": ["copilot_diagnostic"],
+                },
+                {
+                    "id": "copilot:2:4:5",
+                    "para_id": 2, "start": 4, "end": 5,
+                    "surface": "帝", "confidence": "low",
+                    "review_reason": "role ambiguity",
+                    "channels": ["copilot_diagnostic"],
+                },
+            ],
+        })
+        store = AnnotationStore(
+            tasks, root / "recall", root / "roles", state, assisted
+        )
+
+        payload = store.payload(1, "assisted")
+
+        self.assertEqual(2, len(payload["state"]["annotations"]))
+        self.assertEqual(
+            {"copilot:2:1:3": "accept"},
+            payload["state"]["decisions"],
+        )
+        self.assertTrue(payload["state"]["initialized"])
+        with self.assertRaisesRegex(PermissionError, "do not expose"):
+            store.payload(1, "blind")
+
 
 if __name__ == "__main__":
     unittest.main()
