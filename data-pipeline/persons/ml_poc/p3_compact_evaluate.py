@@ -411,6 +411,53 @@ def _role_metrics(rows: list[dict]) -> dict:
     return result
 
 
+def _aggregate_audits(rows: list[dict]) -> dict:
+    gate_fields = (
+        "rule_omissions",
+        "recovered_rule_omissions",
+        "rule_true_positives",
+        "rule_true_positive_regressions",
+    )
+    delta_fields = (
+        "model_prediction_spans",
+        "rule_prediction_spans",
+        "raw_model_additions_vs_rules",
+        "model_removals_vs_rules",
+        "net_growth_vs_rules",
+        "model_non_reference_geometries",
+        "geometry_replacements",
+        "pure_false_positives",
+        "model_reference_misses",
+        "pure_misses",
+    )
+    gate = {
+        field: sum(int(row["audit"]["gate"][field]) for row in rows)
+        for field in gate_fields
+    }
+    gate["rule_omission_recovery_rate"] = (
+        gate["recovered_rule_omissions"] / gate["rule_omissions"]
+        if gate["rule_omissions"] else 1.0
+    )
+    groups = {}
+    for field in ("pure_false_positive_surfaces", "pure_miss_surfaces"):
+        counts = Counter()
+        for row in rows:
+            counts.update(row["audit"]["groups"][field])
+        groups[field] = dict(sorted(
+            counts.items(), key=lambda item: (-item[1], item[0])
+        ))
+    return {
+        "gate": gate,
+        "delta": {
+            field: sum(
+                int(row["audit"]["delta"][field]) for row in rows
+            )
+            for field in delta_fields
+        },
+        "groups": groups,
+    }
+
+
 def evaluate_compact(
     tasks_dir: Path,
     frozen_dir: Path,
@@ -459,7 +506,7 @@ def evaluate_compact(
     tokenizer = AutoTokenizer.from_pretrained(model_dir, use_fast=True)
     model = AutoModelForTokenClassification.from_pretrained(model_dir)
     model.to(device)
-    model_metrics, predictions = evaluate(
+    _, predictions = evaluate(
         model,
         tokenizer,
         examples,
@@ -474,9 +521,8 @@ def evaluate_compact(
 
     rule_documents = {}
     rule_hashes = {}
-    all_rule_rows = []
     per_jie = []
-    paragraphs = {}
+    per_jie_audits = []
     for example in examples:
         example_id = str(example["id"])
         juan = int(example["juan"])
@@ -495,7 +541,6 @@ def evaluate_compact(
             para_id = int(segment["para_id"])
             paragraph = text[start:end]
             example_paragraphs[para_id] = paragraph
-            paragraphs[para_id] = paragraph
         reference = {
             _span(row)
             for row in prediction_by_id[example_id]["reference_spans"]
@@ -514,19 +559,29 @@ def evaluate_compact(
             _rule_span(row, example_paragraphs)
             for row in relevant_rule_rows
         }
-        all_rule_rows.extend({
+        normalized_rule_rows = [{
             "para_id": span.para_id,
             "start": span.start,
             "end": span.end,
             "surface": span.surface,
             "field": "main",
-        } for span in sorted(rules))
+        } for span in sorted(rules)]
         per_jie.append({
             "id": example_id,
             "role": str(example["evaluation_role"]),
             "characters": len(text),
             "model": _counts(reference, model_spans),
             "rules": _counts(reference, rules),
+        })
+        per_jie_audits.append({
+            "id": example_id,
+            "role": str(example["evaluation_role"]),
+            "audit": audit_split(
+                [example],
+                [prediction_by_id[example_id]],
+                normalized_rule_rows,
+                example_paragraphs,
+            ),
         })
 
     probability = [
@@ -562,14 +617,7 @@ def evaluate_compact(
         ),
     }
     adoption_gate["all_pass"] = all(adoption_gate.values())
-    audit = audit_split(
-        examples,
-        predictions,
-        all_rule_rows,
-        paragraphs,
-    )
-    if audit["metrics"]["model"] != model_metrics:
-        raise ValueError("independent model metric aggregation differs")
+    audit_summary = _aggregate_audits(per_jie_audits)
 
     report = {
         "schema_version": 1,
@@ -588,6 +636,10 @@ def evaluate_compact(
         "transformers_version": transformers.__version__,
         "model_sha256": EXPECTED_MODEL_SHA256,
         "model_predictions_generated_after_reference_freeze": True,
+        "exact_geometry_identity": (
+            "(juan, jie_index, para_id, start, end); matches are performed "
+            "within jie before count aggregation"
+        ),
         "evaluation_git_commit": git_commit,
         "inputs": {
             "manifest_sha256": _sha256(manifest_path),
@@ -605,11 +657,7 @@ def evaluate_compact(
         },
         "bootstrap": bootstrap,
         "adoption_gate": adoption_gate,
-        "audit_summary": {
-            "gate": audit["gate"],
-            "delta": audit["delta"],
-            "groups": audit["groups"],
-        },
+        "audit_summary": audit_summary,
     }
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
@@ -619,7 +667,11 @@ def evaluate_compact(
         _write_json(staging / "report.json", report)
         _write_json(staging / "predictions.json", predictions)
         _write_json(staging / "per_jie_metrics.json", per_jie)
-        _write_json(staging / "geometry_audit.json", audit)
+        _write_json(staging / "geometry_audit.json", {
+            "schema_version": 1,
+            "identity": report["exact_geometry_identity"],
+            "per_jie": per_jie_audits,
+        })
         _publish_read_only(staging, output_dir)
     return report
 

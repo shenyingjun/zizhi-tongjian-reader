@@ -9,6 +9,7 @@ from unittest.mock import patch
 from p3_compact_evaluate import (
     BOOTSTRAP_REPLICATES,
     BOOTSTRAP_SEED,
+    _aggregate_audits,
     _rule_span,
     bootstrap_probability,
     freeze_reference,
@@ -16,6 +17,42 @@ from p3_compact_evaluate import (
 
 
 class P3CompactEvaluateTest(unittest.TestCase):
+    def test_audit_aggregation_sums_jie_local_counts(self):
+        audit = {
+            "gate": {
+                "rule_omissions": 2,
+                "recovered_rule_omissions": 1,
+                "rule_true_positives": 3,
+                "rule_true_positive_regressions": 1,
+            },
+            "delta": {
+                "model_prediction_spans": 4,
+                "rule_prediction_spans": 3,
+                "raw_model_additions_vs_rules": 2,
+                "model_removals_vs_rules": 1,
+                "net_growth_vs_rules": 1,
+                "model_non_reference_geometries": 1,
+                "geometry_replacements": 1,
+                "pure_false_positives": 0,
+                "model_reference_misses": 2,
+                "pure_misses": 1,
+            },
+            "groups": {
+                "pure_false_positive_surfaces": {},
+                "pure_miss_surfaces": {"帝": 1},
+            },
+        }
+
+        result = _aggregate_audits([
+            {"audit": audit},
+            {"audit": audit},
+        ])
+
+        self.assertEqual(4, result["gate"]["rule_omissions"])
+        self.assertEqual(0.5, result["gate"]["rule_omission_recovery_rate"])
+        self.assertEqual(2, result["delta"]["geometry_replacements"])
+        self.assertEqual({"帝": 2}, result["groups"]["pure_miss_surfaces"])
+
     def test_rule_surface_is_derived_from_frozen_geometry(self):
         span = _rule_span(
             {
