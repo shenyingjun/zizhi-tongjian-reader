@@ -234,6 +234,14 @@ selection roles before each juan is completed and permanently locked. Do not
 generate model or rule predictions until all five references are locked; P3
 failures cannot select or retrain the evaluated model.
 
+When whole-juan annotation is not feasible, a predeclared compact P3 may instead
+sample numbered jies. Its probability frame is limited to previously unused jies
+of 20-600 Unicode codepoints: draw 12 uniformly without replacement, plus four
+private-seed draws from the top-40 role/appellation cohort and four from the
+top-40 foreign-title cohort. Report probability metrics and bootstrap intervals
+only on the 12 random jies; report the eight challenge jies separately. This lower-
+power design cannot support claims about excluded very short or very long jies.
+
 ## 6. Model, if P0 justifies it
 
 The plain P1 challenger uses
