@@ -291,6 +291,16 @@ def _span(row: dict) -> Span:
     )
 
 
+def _rule_span(row: dict, paragraphs: dict[int, str]) -> Span:
+    para_id = int(row["para_id"])
+    start = int(row["start"])
+    end = int(row["end"])
+    paragraph = paragraphs.get(para_id)
+    if paragraph is None or not 0 <= start < end <= len(paragraph):
+        raise ValueError("rule geometry is outside the sampled paragraph")
+    return Span(para_id, start, end, paragraph[start:end])
+
+
 def _counts(reference: set[Span], prediction: set[Span]) -> dict:
     exact = score_spans(reference, prediction)
     return {
@@ -474,12 +484,18 @@ def evaluate_compact(
             rule_path = rules_dir / f"juan_{juan:03d}.json"
             rule_documents[juan] = _read(rule_path)
             rule_hashes[str(juan)] = _sha256(rule_path)
-            all_rule_rows.extend(
-                rule_documents[juan].get("occurrences", [])
-            )
         para_ids = {
             int(segment["para_id"]) for segment in example["segments"]
         }
+        text = str(example["text"])
+        example_paragraphs = {}
+        for segment in example["segments"]:
+            start = int(segment["assembled_start"])
+            end = int(segment["assembled_end"])
+            para_id = int(segment["para_id"])
+            paragraph = text[start:end]
+            example_paragraphs[para_id] = paragraph
+            paragraphs[para_id] = paragraph
         reference = {
             _span(row)
             for row in prediction_by_id[example_id]["reference_spans"]
@@ -488,17 +504,23 @@ def evaluate_compact(
             _span(row)
             for row in prediction_by_id[example_id]["prediction_spans"]
         }
-        rules = {
-            _span(row)
+        relevant_rule_rows = [
+            row
             for row in rule_documents[juan].get("occurrences", [])
             if row.get("field", "main") == "main"
             and int(row["para_id"]) in para_ids
+        ]
+        rules = {
+            _rule_span(row, example_paragraphs)
+            for row in relevant_rule_rows
         }
-        text = str(example["text"])
-        for segment in example["segments"]:
-            start = int(segment["assembled_start"])
-            end = int(segment["assembled_end"])
-            paragraphs[int(segment["para_id"])] = text[start:end]
+        all_rule_rows.extend({
+            "para_id": span.para_id,
+            "start": span.start,
+            "end": span.end,
+            "surface": span.surface,
+            "field": "main",
+        } for span in sorted(rules))
         per_jie.append({
             "id": example_id,
             "role": str(example["evaluation_role"]),

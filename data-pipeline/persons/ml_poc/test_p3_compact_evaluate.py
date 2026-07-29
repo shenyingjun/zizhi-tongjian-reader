@@ -9,12 +9,26 @@ from unittest.mock import patch
 from p3_compact_evaluate import (
     BOOTSTRAP_REPLICATES,
     BOOTSTRAP_SEED,
+    _rule_span,
     bootstrap_probability,
     freeze_reference,
 )
 
 
 class P3CompactEvaluateTest(unittest.TestCase):
+    def test_rule_surface_is_derived_from_frozen_geometry(self):
+        span = _rule_span(
+            {
+                "para_id": 3,
+                "start": 1,
+                "end": 3,
+                "surface": "corrupt",
+            },
+            {3: "①曹操至。"},
+        )
+
+        self.assertEqual("曹操", span.surface)
+
     def test_paired_bootstrap_is_deterministic_and_preserves_identity(self):
         rows = [
             {
