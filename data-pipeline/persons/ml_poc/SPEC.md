@@ -144,6 +144,10 @@ core when embedded in a building, office, artifact, or relational compound:
 `[汉高]庙` and `[启]母神`. Only that core is tagged; carrier words such as
 `庙/府/宫/印` remain outside. A generic role inside an institution name is not
 thereby authorized.
+For a single naming predicate, tag only its result (`字[季]`, `更名曰[询]`).
+When a continuous construction such as `姓 X 字 Y` jointly supplies the complete
+available naming description and its pieces do not independently form that
+description, tag the full expression: `即常安[姓武字仲]`.
 
 ## 5. Geometry and evaluation
 
