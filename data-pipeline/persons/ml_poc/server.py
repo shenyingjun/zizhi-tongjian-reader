@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import threading
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -21,16 +23,22 @@ class AnnotationStore:
         recall_dir: Path,
         role_audit_dir: Path,
         state_dir: Path,
+        assisted_dir: Path | None = None,
     ):
         self.blind_dir = blind_dir
         self.recall_dir = recall_dir
         self.role_audit_dir = role_audit_dir
         self.state_dir = state_dir
+        self.assisted_dir = assisted_dir
+        self._lock = threading.RLock()
         self.state_dir.mkdir(parents=True, exist_ok=True)
         manifest = self._read(blind_dir / "manifest.json")
         self.selected = {
-            int(row["juan"]): row["role"] for row in manifest["selected"]
+            int(row["juan"]): row for row in manifest["selected"]
         }
+        self.expansion = any(
+            "mode" in row for row in manifest["selected"]
+        )
 
     @staticmethod
     def _read(path: Path) -> dict:
@@ -55,6 +63,33 @@ class AnnotationStore:
         if not path.is_file():
             raise FileNotFoundError(f"role-audit pack is missing: {path}")
         return self._read(path)
+
+    def _assisted_pack(self, juan: int) -> dict:
+        if self.assisted_dir is None:
+            raise FileNotFoundError("assisted pack directory is not configured")
+        path = self.assisted_dir / f"assisted_juan_{juan:03d}.json"
+        if not path.is_file():
+            raise FileNotFoundError(f"assisted pack is missing: {path}")
+        return self._read(path)
+
+    def _assisted_pack_sha256(self, juan: int) -> str:
+        if self.assisted_dir is None:
+            raise FileNotFoundError("assisted pack directory is not configured")
+        path = self.assisted_dir / f"assisted_juan_{juan:03d}.json"
+        if not path.is_file():
+            raise FileNotFoundError(f"assisted pack is missing: {path}")
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    def _bind_assisted_pack(self, juan: int, state: dict) -> None:
+        digest = self._assisted_pack_sha256(juan)
+        bound = state["assisted"].get("pack_sha256")
+        if bound is not None and bound != digest:
+            raise PermissionError(
+                "assisted pack changed after annotation began"
+            )
+        if bound is None:
+            state["assisted"]["pack_sha256"] = digest
+            self._write_state(juan, state)
 
     def _state_path(self, juan: int) -> Path:
         return self.state_dir / f"juan_{juan:03d}.json"
@@ -86,11 +121,28 @@ class AnnotationStore:
             "annotations": [],
             "decisions": {},
         })
+        state.setdefault("assisted", {
+            "complete": False,
+            "annotations": [],
+            "decisions": {},
+        })
         return state
+
+    def _mode(self, juan: int) -> str:
+        return str(self.selected[juan].get("mode", "legacy"))
+
+    def _blind_anchors_complete(self) -> bool:
+        anchors = [
+            juan for juan in self.selected
+            if self._mode(juan) == "blind_anchor"
+        ]
+        return bool(anchors) and all(
+            self.state(juan)["blind"]["complete"] for juan in anchors
+        )
 
     def index(self) -> dict:
         rows = []
-        for juan, role in self.selected.items():
+        for juan, selection in self.selected.items():
             state = self.state(juan)
             row = {
                 "juan": juan,
@@ -98,18 +150,47 @@ class AnnotationStore:
                 "recall_complete": state["recall"]["complete"],
                 "role_audit_complete": state["role_audit"]["complete"],
             }
+            if self.expansion:
+                mode = self._mode(juan)
+                row["mode"] = mode
+                row["initial_phase"] = (
+                    "blind" if mode == "blind_anchor" else "assisted"
+                )
+                row["assisted_complete"] = state["assisted"]["complete"]
             if state["blind"]["complete"]:
-                row["role"] = role
+                row["role"] = selection["role"]
             rows.append(row)
         return {"juans": rows, "boundary_guide": "BOUNDARY_GUIDE.md"}
 
     def payload(self, juan: int, phase: str) -> dict:
+        with self._lock:
+            return self._payload(juan, phase)
+
+    def _payload(self, juan: int, phase: str) -> dict:
         state = self.state(juan)
         if phase == "blind":
+            if self._mode(juan) == "assisted":
+                raise PermissionError(
+                    "assisted juans do not expose a blind phase"
+                )
             return {
                 "task": self._blind_task(juan),
                 "state": state["blind"],
                 "locked": state["blind"]["complete"],
+            }
+        if phase == "assisted":
+            if self._mode(juan) != "assisted":
+                raise PermissionError("this juan is not an assisted task")
+            if not self._blind_anchors_complete():
+                raise PermissionError(
+                    "assisted annotation is locked until blind anchors complete"
+                )
+            self._bind_assisted_pack(juan, state)
+            return {
+                "task": self._blind_task(juan),
+                "review": self._assisted_pack(juan),
+                "state": state["assisted"],
+                "locked": state["assisted"]["complete"],
             }
         if phase == "role_audit":
             if not state["recall"]["complete"]:
@@ -199,8 +280,12 @@ class AnnotationStore:
         ))
 
     def save(self, juan: int, phase: str, payload: dict) -> dict:
+        with self._lock:
+            return self._save(juan, phase, payload)
+
+    def _save(self, juan: int, phase: str, payload: dict) -> dict:
         state = self.state(juan)
-        if phase not in {"blind", "recall", "role_audit"}:
+        if phase not in {"blind", "recall", "role_audit", "assisted"}:
             raise ValueError(f"unknown phase: {phase}")
         if state[phase]["complete"]:
             raise PermissionError(f"{phase} phase is locked")
@@ -210,14 +295,26 @@ class AnnotationStore:
             raise PermissionError(
                 "role audit is locked until recall annotation completes"
             )
+        if phase == "assisted":
+            if self._mode(juan) != "assisted":
+                raise PermissionError("this juan is not an assisted task")
+            if not self._blind_anchors_complete():
+                raise PermissionError(
+                    "assisted annotation is locked until blind anchors complete"
+                )
+            self._bind_assisted_pack(juan, state)
         state[phase]["annotations"] = self._validate_annotations(
             juan, payload.get("annotations")
         )
-        if phase in {"recall", "role_audit"}:
+        if phase in {"recall", "role_audit", "assisted"}:
             pack = (
                 self._recall_pack(juan)
                 if phase == "recall"
-                else self._role_audit_pack(juan)
+                else (
+                    self._role_audit_pack(juan)
+                    if phase == "role_audit"
+                    else self._assisted_pack(juan)
+                )
             )
             valid_ids = {
                 row["id"] for row in pack["candidates"]
@@ -240,6 +337,10 @@ class AnnotationStore:
         return state[phase]
 
     def complete(self, juan: int, phase: str) -> dict:
+        with self._lock:
+            return self._complete(juan, phase)
+
+    def _complete(self, juan: int, phase: str) -> dict:
         state = self.state(juan)
         if phase == "blind":
             if state["blind"]["complete"]:
@@ -272,6 +373,19 @@ class AnnotationStore:
                     f"role audit has {len(unresolved)} unresolved candidates"
                 )
             state["role_audit"]["complete"] = True
+        elif phase == "assisted":
+            if not self._blind_anchors_complete():
+                raise PermissionError("blind anchors must complete first")
+            self._bind_assisted_pack(juan, state)
+            candidate_ids = {
+                row["id"] for row in self._assisted_pack(juan)["candidates"]
+            }
+            unresolved = candidate_ids - set(state["assisted"]["decisions"])
+            if unresolved:
+                raise ValueError(
+                    f"assisted review has {len(unresolved)} unresolved candidates"
+                )
+            state["assisted"]["complete"] = True
         else:
             raise ValueError(f"unknown phase: {phase}")
         self._write_state(juan, state)
@@ -360,10 +474,15 @@ def main() -> int:
     parser.add_argument("--recall-dir", type=Path, required=True)
     parser.add_argument("--role-audit-dir", type=Path, required=True)
     parser.add_argument("--state-dir", type=Path, required=True)
+    parser.add_argument("--assisted-dir", type=Path)
     parser.add_argument("--port", type=int, default=18765)
     args = parser.parse_args()
     Handler.store = AnnotationStore(
-        args.blind_dir, args.recall_dir, args.role_audit_dir, args.state_dir
+        args.blind_dir,
+        args.recall_dir,
+        args.role_audit_dir,
+        args.state_dir,
+        args.assisted_dir,
     )
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"annotation UI: http://127.0.0.1:{args.port}")

@@ -1,6 +1,11 @@
 import unittest
 
-from p1_windows import build_windows, labels_to_spans, merge_predictions
+from p1_windows import (
+    build_windows,
+    constrain_predictions,
+    labels_to_spans,
+    merge_predictions,
+)
 
 
 class FakeTokenizer:
@@ -78,6 +83,65 @@ class P1WindowTest(unittest.TestCase):
             [(2, 0, 2, "曹操"), (3, 0, 2, "刘备")],
             [(row.para_id, row.start, row.end, row.surface) for row in spans],
         )
+
+    def test_context_characters_do_not_own_loss_or_output(self):
+        example = {
+            "text": "甲\n曹操\n乙",
+            "labels": [
+                "O", "O", "B-PER", "I-PER", "O", "O",
+            ],
+            "target_mask": [False, False, True, True, False, False],
+            "segments": [{
+                "para_id": 2, "assembled_start": 2, "assembled_end": 4,
+            }],
+        }
+
+        windows = build_windows(
+            FakeTokenizer(), example, max_length=8, stride=2
+        )
+        predictions = [
+            [0 if label == -100 else label for label in window.labels]
+            for window in windows
+        ]
+        labels, owned = merge_predictions(
+            example["text"], windows, predictions
+        )
+
+        self.assertEqual(
+            [False, False, True, True, False, False], owned
+        )
+        self.assertEqual(
+            [(2, 0, 2, "曹操")],
+            [
+                (row.para_id, row.start, row.end, row.surface)
+                for row in labels_to_spans(example, labels, owned)
+            ],
+        )
+
+    def test_constraints_remove_punctuation_and_merge_adjacent_b(self):
+        text = "严延年，「"
+        labels = [
+            "B-PER", "B-PER", "I-PER", "O", "B-PER",
+        ]
+
+        constrained = constrain_predictions(
+            text, labels, [True] * len(text)
+        )
+
+        self.assertEqual(
+            ["B-PER", "I-PER", "I-PER", "O", "O"],
+            constrained,
+        )
+
+    def test_constraints_do_not_join_across_punctuation(self):
+        text = "尧、舜"
+        labels = ["B-PER", "B-PER", "B-PER"]
+
+        constrained = constrain_predictions(
+            text, labels, [True] * len(text)
+        )
+
+        self.assertEqual(["B-PER", "O", "B-PER"], constrained)
 
 
 if __name__ == "__main__":

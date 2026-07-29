@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -43,8 +44,11 @@ def build_windows(
 ) -> list[TokenWindow]:
     text = str(example["text"])
     char_labels = list(example["labels"])
+    target_mask = list(example.get("target_mask", [True] * len(text)))
     if len(char_labels) != len(text):
         raise ValueError("text and labels must have equal character length")
+    if len(target_mask) != len(text):
+        raise ValueError("text and target mask must have equal character length")
     encoded = tokenizer(
         text,
         truncation=True,
@@ -92,7 +96,7 @@ def build_windows(
             owned = end > start and all(
                 owner[char_index] == (window_index, token_index)
                 for char_index in range(start, end)
-            )
+            ) and all(target_mask[char_index] for char_index in range(start, end))
             owned_tokens.append(owned)
             token_labels.append(
                 LABEL_TO_ID[_token_label(char_labels[start:end])]
@@ -143,6 +147,39 @@ def merge_predictions(
                 labels[char_index] = char_label
                 owned[char_index] = True
     return labels, owned
+
+
+def constrain_predictions(
+    text: str,
+    labels: Sequence[str],
+    owned: Sequence[bool],
+) -> list[str]:
+    if len(text) != len(labels) or len(text) != len(owned):
+        raise ValueError("text, labels, and ownership must have equal length")
+    constrained = list(labels)
+    active = False
+    for index, (char, is_owned) in enumerate(zip(text, owned)):
+        category = unicodedata.category(char)
+        if (
+            not is_owned
+            or char == HARD_SEPARATOR
+            or category[0] in {"N", "P", "S"}
+        ):
+            constrained[index] = "O"
+            active = False
+            continue
+        label = constrained[index]
+        if label == "B-PER":
+            if active:
+                constrained[index] = "I-PER"
+            active = True
+        elif label == "I-PER":
+            active = True
+        elif label == "O":
+            active = False
+        else:
+            raise ValueError(f"unsupported BIO label: {label!r}")
+    return constrained
 
 
 def labels_to_spans(

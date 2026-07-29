@@ -13,6 +13,7 @@ const ROLE_LABELS = {
 };
 const PHASE_LABELS = {
   blind: "盲标",
+  assisted: "Copilot 辅助审核",
   recall: "候选补漏",
   role_audit: "角色复核",
 };
@@ -37,11 +38,13 @@ async function loadIndex() {
     const button = document.createElement("button");
     const role = row.role ? (ROLE_LABELS[row.role] || row.role) : "";
     button.textContent = `卷 ${row.juan}${role ? ` · ${role}` : ""}`;
-    button.onclick = () => loadTask(row.juan, state.phase);
+    button.onclick = () => loadTask(
+      row.juan, row.initial_phase || state.phase);
     button.dataset.juan = row.juan;
     nav.append(button);
   }
-  await loadTask(state.index.juans[0].juan, "blind");
+  const first = state.index.juans[0];
+  await loadTask(first.juan, first.initial_phase || "blind");
 }
 
 async function loadTask(juan, phase) {
@@ -223,6 +226,8 @@ function render() {
   renderRecall();
   $("save").disabled = state.payload.locked;
   $("complete").disabled = state.payload.locked;
+  $("accept-rest").hidden = state.phase === "blind";
+  $("accept-rest").disabled = state.payload.locked;
   $("previous-jie").disabled = state.jie === 0;
   $("next-jie").disabled =
     state.jie === state.payload.task.jies.length - 1;
@@ -295,7 +300,9 @@ function renderRecall() {
   panel.hidden = state.phase === "blind";
   if (panel.hidden) return;
   $("review-title").textContent =
-    state.phase === "role_audit" ? "特定角色复核" : "候选补漏";
+    state.phase === "role_audit"
+      ? "特定角色复核"
+      : state.phase === "assisted" ? "Copilot 候选审核" : "候选补漏";
   const visibleParagraphs = new Set(
     state.payload.task.jies[state.jie].segments.map(row => row.para_id));
   const visibleCandidates = currentCandidates();
@@ -376,6 +383,53 @@ function decide(candidate, decision) {
   render(); scheduleSave();
 }
 
+function acceptRestInCurrentJie() {
+  if (state.phase === "blind" || state.payload.locked) return;
+  const unresolved = currentCandidates().filter(
+    candidate => !state.decisions[candidate.id]);
+  if (!unresolved.length) {
+    setStatus("当前节没有未处理候选");
+    return;
+  }
+  if (!confirm(`接受当前节其余 ${unresolved.length} 个未处理候选吗？`))
+    return;
+  let accepted = 0;
+  let rejectedForCorrection = 0;
+  for (const candidate of unresolved) {
+    const exact = state.annotations.some(row =>
+      row.para_id === candidate.para_id &&
+      row.start === candidate.start && row.end === candidate.end);
+    const overlaps = state.annotations.some(row =>
+      row.para_id === candidate.para_id &&
+      candidate.start < row.end && row.start < candidate.end);
+    if (overlaps && !exact) {
+      state.decisions[candidate.id] = "reject";
+      rejectedForCorrection += 1;
+      continue;
+    }
+    if (!exact) {
+      state.annotations.push({
+        para_id: candidate.para_id,
+        start: candidate.start,
+        end: candidate.end,
+        surface: candidate.surface,
+        status: "person",
+        note: "",
+      });
+    }
+    state.decisions[candidate.id] = "accept";
+    accepted += 1;
+  }
+  state.annotations.sort(
+    (a, b) => a.para_id - b.para_id || a.start - b.start);
+  render();
+  scheduleSave();
+  const correctionMessage = rejectedForCorrection
+    ? `；${rejectedForCorrection} 个与人工修正重叠，已保留修正并拒绝原候选`
+    : "";
+  setStatus(`已接受 ${accepted} 个候选${correctionMessage}`);
+}
+
 function paragraphFor(paraId) {
   const jie = state.payload.task.jies[state.jie];
   const segment = jie.segments.find(row => row.para_id === paraId);
@@ -427,39 +481,65 @@ function nextUnresolvedJie() {
 }
 
 let saveTimer = null;
+let saveQueue = Promise.resolve();
+let latestSave = Promise.resolve();
 function scheduleSave() {
   persistDraft();
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(save, 350);
+  saveTimer = setTimeout(() => save().catch(() => {}), 350);
 }
 
 async function save() {
   if (!state.payload || state.payload.locked) return;
   clearTimeout(saveTimer);
   saveTimer = null;
-  try {
+  const snapshot = {
+    juan: state.juan,
+    phase: state.phase,
+    annotations: structuredClone(state.annotations),
+    decisions: structuredClone(state.decisions),
+    noteDecisions: structuredClone(state.noteDecisions),
+  };
+  const request = saveQueue.then(async () => {
     await api("/api/save", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
-        juan: state.juan, phase: state.phase, annotations: state.annotations,
-        decisions: state.decisions, note_decisions: state.noteDecisions,
+        juan: snapshot.juan,
+        phase: snapshot.phase,
+        annotations: snapshot.annotations,
+        decisions: snapshot.decisions,
+        note_decisions: snapshot.noteDecisions,
         geometry_version: 4,
       }),
     });
-    localStorage.removeItem(draftKey());
-    setStatus(
-      `卷 ${state.juan} · 已保存 ${state.annotations.length} 个跨度`);
-  } catch (error) { setStatus(error.message, true); }
+    localStorage.removeItem(draftKey(snapshot.juan, snapshot.phase));
+    if (state.juan === snapshot.juan && state.phase === snapshot.phase) {
+      setStatus(
+        `卷 ${snapshot.juan} · 已保存 ${snapshot.annotations.length} 个跨度`);
+    }
+  });
+  saveQueue = request.catch(() => {});
+  latestSave = request;
+  try {
+    await request;
+  } catch (error) {
+    setStatus(error.message, true);
+    throw error;
+  }
 }
 
 async function flushSave() {
-  if (saveTimer !== null) await save();
+  if (saveTimer !== null) {
+    await save();
+  } else {
+    await latestSave;
+  }
 }
 
 async function complete() {
   if (!confirm("完成后本阶段将永久锁定。确定吗？")) return;
-  await save();
   try {
+    await flushSave();
     const completedJuan = state.juan;
     const completedPhase = state.phase;
     await api("/api/complete", {
@@ -471,6 +551,22 @@ async function complete() {
       }),
     });
     state.index = await api("/api/index");
+    const completedRow = state.index.juans.find(
+      row => row.juan === completedJuan);
+    if (completedPhase === "assisted") {
+      const next = state.index.juans.find(
+        row => row.mode === "assisted" && !row.assisted_complete);
+      await loadTask(
+        next?.juan || completedJuan,
+        next?.initial_phase || "assisted");
+      return;
+    }
+    if (completedPhase === "blind" &&
+        completedRow?.mode === "blind_anchor") {
+      const next = state.index.juans.find(row => row.mode === "assisted");
+      await loadTask(next.juan, next.initial_phase);
+      return;
+    }
     const nextPhase = completedPhase === "blind"
       ? "recall"
       : completedPhase === "recall" ? "role_audit" : "role_audit";
@@ -483,6 +579,7 @@ $("jie").onchange = event => selectJie(Number(event.target.value));
 $("previous-jie").onclick = () => selectJie(state.jie - 1);
 $("next-jie").onclick = () => selectJie(state.jie + 1);
 $("last-tagged-jie").onclick = lastTaggedJie;
+$("accept-rest").onclick = acceptRestInCurrentJie;
 $("show-resolved").onchange = renderRecall;
 $("next-unresolved").onclick = nextUnresolvedJie;
 $("save").onclick = save;

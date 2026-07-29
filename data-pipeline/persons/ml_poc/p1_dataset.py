@@ -20,7 +20,13 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def build_examples(juan: int, task: dict, state: dict) -> list[dict]:
+def build_examples(
+    juan: int,
+    task: dict,
+    state: dict,
+    *,
+    label_provenance: str = "human_audited",
+) -> list[dict]:
     audit = state.get("role_audit", {})
     if not audit.get("complete"):
         raise ValueError(f"juan {juan} role audit is incomplete")
@@ -66,7 +72,7 @@ def build_examples(juan: int, task: dict, state: dict) -> list[dict]:
             "text": text,
             "labels": labels,
             "span_count": span_count,
-            "label_provenance": "human_audited",
+            "label_provenance": label_provenance,
             "segments": [
                 {
                     "para_id": int(segment["para_id"]),

@@ -16,6 +16,7 @@
     <section class="toolbar">
       <label>阶段 <select id="phase">
         <option value="blind">盲标</option>
+        <option value="assisted">Copilot 辅助审核</option>
         <option value="recall">候选补漏</option>
         <option value="role_audit">角色复核</option>
       </select></label>
@@ -23,10 +24,13 @@
       <label>节 <select id="jie"></select></label>
       <button id="next-jie" title="下一节">下一节 →</button>
       <button id="last-tagged-jie" title="跳到最后一个已有标注的节">最后已标节</button>
+      <button id="accept-rest" title="接受当前节中所有未处理且不与人工修正重叠的候选">
+        接受本节其余候选
+      </button>
       <button id="save">保存</button>
       <button id="complete" class="danger">完成并锁定本阶段</button>
     </section>
-    <p class="hint">添加：依次点击跨度首字和末字。纠正人工标注：点击已有蓝色下划线删除，再选择正确跨度。</p>
+    <p class="hint">添加：依次点击跨度首字和末字。纠正人工标注：点击已有蓝色下划线删除，再选择正确跨度。检查完当前节后，可批量接受其余未改动候选。</p>
     <div id="review-workspace">
       <section id="text"></section>
       <section id="recall-panel" hidden>
@@ -46,6 +50,6 @@
       <div id="annotations"></div>
     </section>
   </main>
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

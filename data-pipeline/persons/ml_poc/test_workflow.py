@@ -1,4 +1,5 @@
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -180,6 +181,75 @@ class AnnotationStoreTest(unittest.TestCase):
                 "annotations": annotations,
                 "decisions": {"role:2:5:7": "accept"},
             })
+
+    def test_assisted_pack_is_globally_locked_by_blind_anchor(self):
+        root = Path(self.temp.name) / "expansion"
+        tasks = root / "tasks"
+        assisted = root / "assisted"
+        state = root / "state"
+        write(tasks / "manifest.json", {
+            "selected": [
+                {"juan": 1, "role": "anchor", "mode": "blind_anchor"},
+                {"juan": 2, "role": "assisted", "mode": "assisted"},
+            ],
+        })
+        for juan in (1, 2):
+            write(tasks / f"blind_juan_{juan:03d}.json", {
+                "juan": juan,
+                "jies": [{
+                    "jie_index": 0,
+                    "text": "①曹操至。",
+                    "segments": [{
+                        "para_id": 2,
+                        "assembled_start": 0,
+                        "assembled_end": 5,
+                    }],
+                }],
+            })
+        write(assisted / "assisted_juan_002.json", {
+            "phase": "assisted",
+            "juan": 2,
+            "candidates": [{
+                "id": "2:1:3",
+                "para_id": 2,
+                "start": 1,
+                "end": 3,
+                "surface": "曹操",
+                "channels": ["ml_constrained"],
+            }],
+        })
+        store = AnnotationStore(
+            tasks, root / "recall", root / "roles", state, assisted
+        )
+
+        with self.assertRaisesRegex(PermissionError, "blind anchors"):
+            store.payload(2, "assisted")
+        with self.assertRaisesRegex(PermissionError, "do not expose"):
+            store.payload(2, "blind")
+        store.complete(1, "blind")
+        payload = store.payload(2, "assisted")
+        self.assertEqual("曹操", payload["review"]["candidates"][0]["surface"])
+        pack_path = assisted / "assisted_juan_002.json"
+        expected_hash = hashlib.sha256(pack_path.read_bytes()).hexdigest()
+        self.assertEqual(
+            expected_hash, store.state(2)["assisted"]["pack_sha256"]
+        )
+        store.save(2, "assisted", {
+            "annotations": [{
+                "para_id": 2,
+                "start": 1,
+                "end": 3,
+                "surface": "曹操",
+            }],
+            "decisions": {"2:1:3": "accept"},
+        })
+        self.assertTrue(store.complete(2, "assisted")["complete"])
+
+        pack = json.loads(pack_path.read_text(encoding="utf-8"))
+        pack["candidates"][0]["surface"] = "刘备"
+        write(pack_path, pack)
+        with self.assertRaisesRegex(PermissionError, "changed"):
+            store.payload(2, "assisted")
 
 
 if __name__ == "__main__":

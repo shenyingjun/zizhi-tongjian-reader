@@ -9,7 +9,17 @@ from pathlib import Path
 
 from core import score_spans
 from p1_dataset import LABELS
-from p1_windows import build_windows, labels_to_spans, merge_predictions
+from p1_windows import (
+    build_windows,
+    constrain_predictions,
+    labels_to_spans,
+    merge_predictions,
+)
+from p2_context import (
+    CONTEXT_MODES,
+    add_soft_context,
+    validate_whole_juan_splits,
+)
 
 
 MODEL_NAME = "KoichiYasuoka/roberta-classical-chinese-base-char"
@@ -94,10 +104,20 @@ def evaluate(
             labels, owned = merge_predictions(
                 example["text"], windows, predicted_ids
             )
+            labels = constrain_predictions(example["text"], labels, owned)
             reference = labels_to_spans(
                 example,
                 example["labels"],
-                [char != "\n" for char in example["text"]],
+                [
+                    is_target and char != "\n"
+                    for char, is_target in zip(
+                        example["text"],
+                        example.get(
+                            "target_mask",
+                            [True] * len(example["text"]),
+                        ),
+                    )
+                ],
             )
             prediction = labels_to_spans(example, labels, owned)
             references.extend(reference)
@@ -130,9 +150,52 @@ def train(args: argparse.Namespace) -> dict:
         raise RuntimeError("CUDA is required for the P1 timing run")
     device = torch.device("cuda")
     tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=True)
-    train_examples = _read_jsonl(args.dataset / "train.jsonl")
-    dev_examples = _read_jsonl(args.dataset / "dev.jsonl")
-    holdout_examples = _read_jsonl(args.dataset / "pilot_holdout.jsonl")
+    def input_path(explicit: Path | None, default_name: str) -> Path:
+        if explicit is not None:
+            return explicit
+        if args.dataset is None:
+            raise ValueError(
+                f"--{default_name.replace('_', '-')} or --dataset is required"
+            )
+        return args.dataset / f"{default_name}.jsonl"
+
+    train_path = input_path(args.train_file, "train")
+    dev_path = input_path(args.dev_file, "dev")
+    evaluation_path = input_path(
+        args.evaluation_file, "pilot_holdout"
+    )
+    raw_train = _read_jsonl(train_path)
+    raw_dev = _read_jsonl(dev_path)
+    raw_evaluation = _read_jsonl(evaluation_path)
+    if args.context_mode == "target_only":
+        split_guard = {
+            "guard_band_exclusions": 0,
+            "guard_reason": "target-only windows contain no neighboring jies",
+        }
+    else:
+        split_guard = validate_whole_juan_splits(
+            train=raw_train,
+            dev=raw_dev,
+            evaluation=raw_evaluation,
+        )
+    train_examples, train_context = add_soft_context(
+        raw_train,
+        tokenizer,
+        mode=args.context_mode,
+        max_length=args.max_length,
+    )
+    dev_examples, dev_context = add_soft_context(
+        raw_dev,
+        tokenizer,
+        mode=args.context_mode,
+        max_length=args.max_length,
+    )
+    evaluation_examples, evaluation_context = add_soft_context(
+        raw_evaluation,
+        tokenizer,
+        mode=args.context_mode,
+        max_length=args.max_length,
+    )
     flattened = []
     for example in train_examples:
         flattened.extend(build_windows(
@@ -197,6 +260,8 @@ def train(args: argparse.Namespace) -> dict:
     started = time.perf_counter()
     torch.cuda.reset_peak_memory_stats()
     history = []
+    best_dev_f1 = -1.0
+    selected_epoch = None
     optimizer.zero_grad(set_to_none=True)
     update = 0
     for epoch in range(1, args.epochs + 1):
@@ -233,7 +298,27 @@ def train(args: argparse.Namespace) -> dict:
             "updates": update,
             "dev": dev_metrics,
         })
+        (args.output / "history.json").write_text(
+            json.dumps(history, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
         print(json.dumps(history[-1], ensure_ascii=False))
+        dev_f1 = dev_metrics["exact"]["f1"]
+        if dev_f1 > best_dev_f1:
+            best_dev_f1 = dev_f1
+            selected_epoch = epoch
+            model.save_pretrained(args.output / "model")
+            tokenizer.save_pretrained(args.output / "model")
+
+    del optimizer
+    del scheduler
+    del loader
+    del model
+    torch.cuda.empty_cache()
+    model = AutoModelForTokenClassification.from_pretrained(
+        args.output / "model"
+    )
+    model.to(device)
 
     dev_metrics, dev_predictions = evaluate(
         model,
@@ -244,10 +329,10 @@ def train(args: argparse.Namespace) -> dict:
         stride=args.stride,
         batch_size=args.eval_batch_size,
     )
-    holdout_metrics, holdout_predictions = evaluate(
+    evaluation_metrics, evaluation_predictions = evaluate(
         model,
         tokenizer,
-        holdout_examples,
+        evaluation_examples,
         device,
         max_length=args.max_length,
         stride=args.stride,
@@ -276,6 +361,21 @@ def train(args: argparse.Namespace) -> dict:
             "warmup_ratio": args.warmup_ratio,
             "seed": args.seed,
             "precision": "fp32",
+            "checkpoint_selection": "highest challenge-dev exact F1",
+            "selected_epoch": selected_epoch,
+            "context_mode": args.context_mode,
+        },
+        "inputs": {
+            "train": str(train_path),
+            "dev": str(dev_path),
+            "evaluation": str(evaluation_path),
+            "evaluation_name": args.evaluation_name,
+        },
+        "context": {
+            "split_guard": split_guard,
+            "train": train_context,
+            "dev": dev_context,
+            "evaluation": evaluation_context,
         },
         "timing": {
             "train_and_evaluate_seconds": elapsed,
@@ -285,21 +385,34 @@ def train(args: argparse.Namespace) -> dict:
         },
         "history": history,
         "dev_challenge": dev_metrics,
-        "random_pilot_holdout": holdout_metrics,
-        "claim_limit": "pilot evidence only; holdout is not a sealed test",
+        "evaluation": {
+            "name": args.evaluation_name,
+            **evaluation_metrics,
+        },
+        "claim_limit": (
+            "pilot evidence only; evaluation is a locked blind anchor, "
+            "not a sealed test"
+        ),
     }
-    model.save_pretrained(args.output / "model")
-    tokenizer.save_pretrained(args.output / "model")
+    if args.evaluation_name == "random_pilot_holdout":
+        report["random_pilot_holdout"] = evaluation_metrics
     (args.output / "report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     for name, rows in (
         ("dev_predictions.json", dev_predictions),
-        ("holdout_predictions.json", holdout_predictions),
+        ("evaluation_predictions.json", evaluation_predictions),
     ):
         (args.output / name).write_text(
             json.dumps(rows, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    if args.evaluation_name == "random_pilot_holdout":
+        (args.output / "holdout_predictions.json").write_text(
+            json.dumps(
+                evaluation_predictions, ensure_ascii=False, indent=2
+            ) + "\n",
             encoding="utf-8",
         )
     return report
@@ -309,7 +422,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Train the plain P1 char-BIO challenger."
     )
-    parser.add_argument("--dataset", type=Path, required=True)
+    parser.add_argument("--dataset", type=Path)
+    parser.add_argument("--train-file", type=Path)
+    parser.add_argument("--dev-file", type=Path)
+    parser.add_argument("--evaluation-file", type=Path)
+    parser.add_argument("--evaluation-name", default="random_pilot_holdout")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", default=MODEL_NAME)
     parser.add_argument("--epochs", type=int, default=1)
@@ -323,12 +440,20 @@ def main() -> int:
     parser.add_argument("--warmup-ratio", type=float, default=0.1)
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=20260727)
+    parser.add_argument(
+        "--context-mode",
+        choices=CONTEXT_MODES,
+        default="target_only",
+    )
     args = parser.parse_args()
     report = train(args)
     print(json.dumps({
         "timing": report["timing"],
         "dev_challenge": report["dev_challenge"]["exact"],
-        "random_pilot_holdout": report["random_pilot_holdout"]["exact"],
+        "evaluation": {
+            "name": report["evaluation"]["name"],
+            **report["evaluation"]["exact"],
+        },
     }, ensure_ascii=False, indent=2))
     return 0
 

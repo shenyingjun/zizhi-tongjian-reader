@@ -86,3 +86,103 @@ python p1_train.py `
 
 The initial run is FP32 and reports the contiguous Juan 27 challenge dev block
 separately from the random Juan 52 pilot holdout. The holdout is not a sealed test.
+Training selects the saved checkpoint only by challenge-dev exact F1. Decoding
+forces punctuation, symbols, and numeric characters to `O`, and merges an adjacent
+`B-PER` into the active person span when there is no hard boundary. These structural
+constraints are derived from the frozen training/dev labels and do not use person
+surfaces or the random pilot holdout.
+
+Audit a trained challenger against the frozen references and current rule output:
+
+```powershell
+python p1_audit.py `
+  --dataset <p1-dataset-directory> `
+  --predictions <p1-run-directory> `
+  --rules ..\..\..\web\public\text\persons-v2\agent1 `
+  --blind-dir <blind-directory> `
+  --output <audit-report.json>
+```
+
+The audit uses one-to-one exact geometry accounting and reports rule-omission
+recoveries, rule true-positive regressions, boundary replacements, pure additions,
+and pure misses separately for challenge dev and random pilot holdout.
+
+Build a v1-free P2 expansion with one blind anchor and four assisted juans. This
+command creates ML seed packs for the versioned Copilot teacher; the seed packs are
+not shown directly to the annotator:
+
+```powershell
+python p2_assisted.py `
+  --model <selected-model-directory> `
+  --output <round-directory>
+
+python server.py `
+  --blind-dir <round-directory>\tasks `
+  --assisted-dir <round-directory>\copilot-v1 `
+  --recall-dir <round-directory>\unused-recall `
+  --role-audit-dir <round-directory>\unused-role-audit `
+  --state-dir <round-directory>\state
+```
+
+The Copilot teacher reviews the ML seeds using the bounded evidence stream below and
+writes immutable packs under `copilot-v1`. Assisted tasks remain inaccessible until
+the blind anchor is completed and locked. Neither stage reads v1, rules, identity
+data, or blind-anchor labels; note and translation prose used by the teacher remains
+transient.
+
+After every task is locked, freeze the human corrections and measure candidate
+accuracy:
+
+```powershell
+python p2_round.py `
+  --tasks <round-directory>\tasks `
+  --assisted <round-directory>\copilot-v1 `
+  --state <round-directory>\state `
+  --output <frozen-round-directory>
+```
+
+Only assisted labels enter the next training round. The blind anchor remains
+evaluation-only. Promote a new candidate model only when exact F1 improves on the
+blind anchor and no declared challenge stratum regresses; never regenerate or
+rescore a completed assisted batch in place.
+
+When generating Copilot-teacher candidates, stream bounded evidence for one target
+jie without persisting translation prose:
+
+```powershell
+python teacher_evidence.py --juan 12 --jie-index 5
+```
+
+The teacher sees full-juan main-text context, but other jies are explicitly
+non-authorizing. Hu Sansheng notes are limited to the target jie. Translation prose
+must match the audited source hash and an approved unique pair-to-jie mapping.
+
+Train a corrected assisted round while keeping the blind anchor evaluation-only:
+
+```powershell
+python p1_train.py `
+  --train-file <frozen-round>\train_assisted.jsonl `
+  --dev-file <p1-dataset>\dev.jsonl `
+  --evaluation-file <frozen-round>\dev_blind_anchor.jsonl `
+  --evaluation-name locked_blind_anchor `
+  --context-mode target_only `
+  --epochs 5 `
+  --output <run-directory>
+```
+
+Run the same command with `bounded_neighbor` and `max_budget` for the soft-context
+A/B. Select the mode and checkpoint only by challenge-dev exact F1; blind-anchor
+results are reported afterward and must not change that selection. Context characters
+receive `-100`, own no output, and whole-juan-disjoint splits require no additional
+guard-band exclusions.
+
+Before streaming translation evidence to the teacher, regenerate the identity-free
+scope sidecar outside Agent 1:
+
+```powershell
+python export_translation_scope.py `
+  --mapping ..\twostage\translation\mapping.json `
+  --output ..\twostage\translation\agent1_translation_scope.json
+```
+
+`teacher_evidence.py` reads only this sidecar, never the identity-bearing mapping.

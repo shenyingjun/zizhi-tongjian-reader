@@ -26,6 +26,9 @@ not a trained model.
   candidates, but are not themselves output spans.
 - The POC must run on one GTX 1070 (8 GB) and support one annotator.
 - No big-bang replacement, 100% automation claim, or full-corpus rule rebuild.
+- The ultimate deliverable is a standalone local ML tagger. Copilot may accelerate
+  label creation during development, but is not the production tagger or runtime
+  dependency.
 
 ## 3. Evidence and labels
 
@@ -60,6 +63,60 @@ Training labels use a bounded adjudicated union:
 Translation is offline-only. A note-aware runtime model is permitted only as a
 later, off-by-default A/B because the notes are public-domain source text.
 
+### 3.2 Copilot teacher and assisted-label loop
+
+P2 may use a versioned Copilot labeler as an annotation **teacher**. Its purpose is
+to reduce human labeling effort and improve the labeled corpus used by the target
+ML model. Copilot accuracy and target-model accuracy are separate measurements.
+
+- The three completed pilot juans may be supplied as boundary-policy and
+  span-geometry demonstrations. They are development context, not sealed data.
+- The teacher may read the full current juan for narrative comprehension, but jie
+  scope has higher priority for evidence authorization. Demonstration surfaces and
+  other-jie context are not a person roster: an exact surface, anchor, or identity
+  inferred elsewhere in the juan cannot authorize a current candidate. Each
+  proposal must be justified within its target jie, with no identity KB.
+- New P2 assisted rounds do not load v1, rules, or identity fields. The Copilot
+  teacher may read raw Hu Sansheng note text from the current jie and modern
+  translation prose fetched transiently from an approved source. Translation prose
+  must match the audited source hash and align uniquely to the current paragraph or
+  jie. It is never persisted in the repository or round pack.
+- Notes and translation are evidence, not output. They may suggest person-ness and
+  name geometry only for main-text occurrences in their approved scope. A
+  single-character or given-name anaphor still requires an earlier main-text anchor
+  in the same jie, and no evidence may create a cross-jie roster.
+- Candidate provenance records the Copilot teacher version, prompt/example hashes,
+  note/translation source hashes, target-jie scope, and the fact that full-juan
+  context was visible but non-authorizing. The saved teacher output contains only
+  main-text candidate geometry, not note or translation prose.
+- Each expansion round is separated by whole juan: one of five juans (20%) is a
+  candidate-free blind anchor and four (80%) are Copilot-assisted. The blind anchor
+  must be completed and permanently locked before any assisted pack is accessible.
+- Copilot proposals are never labels by themselves. The annotator must accept,
+  reject, resize, or add spans. Only the resulting human-corrected spans receive
+  `human_assisted_copilot` provenance and may enter target-model training.
+- Assisted labels cannot enter dev, blind-anchor, or sealed evaluation splits.
+  Blind-anchor labels remain `human_blind_anchor` and evaluation-only.
+
+The teacher-improvement loop is:
+
+1. freeze Copilot teacher version `N` and generate one new assisted batch;
+2. human-review every proposal and add every observed omission;
+3. freeze the corrections and measure teacher exact precision/recall/F1, overlap
+   diagnostics, additions, removals, and one-to-one geometry replacements;
+4. group errors by boundary policy, single-character anaphora, role/appellation,
+   foreign-title structure, punctuation, and other declared challenge strata;
+5. revise the teacher instructions and demonstrations only from completed
+   human corrections, producing version `N+1`;
+6. never regenerate or overwrite a completed batch with a later teacher.
+
+The target-model loop consumes the human-corrected assisted labels, trains a new
+standalone model, and evaluates it on the locked blind anchor. Teacher promotion
+requires better accuracy on the next human-reviewed assisted batch. Target-model
+promotion separately requires higher blind-anchor exact F1 with no declared
+challenge-stratum regression. Neither promotion substitutes for later P3 sealed
+evaluation.
+
 ## 4. P0 reference
 
 Select three juans:
@@ -89,8 +146,14 @@ identity. This intentionally differs from some current rule geometries.
   boundaries with hard separators.
 - For sequences beyond the model limit, use overlapping windows with one
   most-central owner per character. Context windows do not own duplicate output.
+- The prediction and scoring unit remains one target jie. A model window may include
+  multiple surrounding jies as soft narrative context, but non-target characters
+  receive label `-100`, own no output, and cannot form a cross-jie span.
 - Decode legal BIO transitions. Stray `I-PER` after `O` is promoted to `B-PER`.
-  Spans cannot cross separators or begin/end on unowned characters.
+  The train/dev-fixed structural decoder merges a `B-PER` directly adjacent to an
+  active person span when there is no punctuation, symbol, number, separator, or
+  unowned boundary. Spans cannot cross separators or begin/end on unowned
+  characters.
 - Primary metric: exact `[start,end)` PER precision/recall/F1.
 - Diagnostic metric: overlap precision/recall/F1.
 - Both use one-to-one maximum matching so one long span cannot match multiple
@@ -98,6 +161,30 @@ identity. This intentionally differs from some current rule geometries.
 - Report random and challenge juans separately and stratify by structure.
 - Report full-expression→name-core differences as **geometry replacements**,
   separately from additions, removals, omissions, and false positives.
+
+### 5.1 Multi-jie model context
+
+Context size is determined by the model token budget, not by a fixed `±1 jie`.
+After reserving space for the complete target jie, fill remaining capacity with
+the nearest preceding and following jies in distance order. Short targets may
+therefore see several surrounding jies; long targets may see little or none.
+
+- Preserve explicit paragraph and jie boundaries. Record each context jie's signed
+  distance from the target.
+- Context may help the neural model interpret narrative continuity, but it does not
+  create deterministic cross-jie anchors, surface propagation, identity resolution,
+  or output spans.
+- Train and evaluate a target-jie-only baseline before testing context. Compare at
+  least target-only, bounded-neighbor, and maximum-budget context using exact
+  target-jie geometry.
+- Fix context construction and checkpoint selection on training/challenge-dev only.
+  Do not choose context size from the random pilot holdout or a sealed set.
+- Apply a symmetric split guard band derived from the actual context graph. No
+  training window may contain dev target text, even as context, and no jie visible
+  in a dev window may be used as a training target. Report guard-band exclusions.
+- Use the existing Transformer first. LSTM, hierarchical Transformer, Longformer,
+  or other long-context architectures are later A/B options only if bounded
+  Transformer context proves useful and the 512-token limit is demonstrably binding.
 
 Tier-1 is descriptive and can only encourage or disprove:
 
@@ -120,6 +207,13 @@ The plain P1 challenger uses
 constrained decoding from the start, but no self-training, agent auto-labeling,
 omission recovery, overrides, calibration, or runtime notes.
 
+The P2 Copilot teacher does not change this P1 model definition: unreviewed agent
+output never trains the target model. Only human-corrected assisted spans may be
+added in later training rounds.
+
+The initial P1 timing baseline remains target-jie-only. Multi-jie soft context is a
+separate P2 target-model A/B and must preserve target-only loss, output, and scoring.
+
 Use a separate CUDA environment and measure one epoch plus full inference on the
 GTX 1070 before making timing claims. Expect FP32 micro-batches and gradient
 accumulation; large models are out of scope.
@@ -129,7 +223,9 @@ accumulation; large models are out of scope.
 - **P0 (3-5 days):** prepare three juans, blind annotation, recall pass,
   self-agreement subset, exact matcher, constrained decoder, rules baseline.
 - **P1 (3-5 days):** bounded adjudicated labels and plain char-BIO challenger.
-- **P2 (1 day):** stop, expand the pilot, or fund a real evaluation set.
+- **P2:** stop, fund a real evaluation set, or expand through versioned Copilot
+  teacher rounds with one blind anchor per four assisted juans. Improve teacher
+  labeling efficiency and the standalone target model separately.
 - **P3 (only if encouraging):** sealed probability sample and challenge set.
 - **P4+ (only if Tier-2 passes):** calibration, omission channels, note-aware A/B,
   held-out-surface study, multi-seed variance, and hybrid deployment.
@@ -139,6 +235,13 @@ accumulation; large models are out of scope.
 - Silver bias: use adjudicated labels, not raw v1.
 - Long-tail blindness: maintain a non-prevalence-weighted challenge set.
 - Test contamination: never feed sealed-test failures into training.
+- Context leakage: construct splits after context closure; training and dev windows
+  must not expose each other's target text through surrounding-jie context.
+- Teacher contamination: never expose candidates before a blind anchor locks;
+  never place assisted labels in dev; never use cross-jie demonstration surfaces
+  as current-jie person evidence.
+- Automation bias: record all Copilot accepts, rejects, boundary corrections, and
+  human-added omissions; teacher output is not ground truth.
 - Single annotator: report delayed blind self-agreement, not consensus.
 - Scope/identity leakage: sanitize notes, preserve paragraph translation scope,
   enforce same-jie anchors, and require confirmation for note/translation-only
