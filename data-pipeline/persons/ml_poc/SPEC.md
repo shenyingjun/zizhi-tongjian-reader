@@ -139,6 +139,11 @@ inside. A role-only expression such as `帝` or `太后` is tagged only when its
 current grammatical use refers to a specific person (`[帝]曰`, `[太后]怒`);
 generic/class and title-conferral uses are not tagged. Agent 2 resolves the
 identity. This intentionally differs from some current rule geometries.
+An independently recognizable name or individualized appellation remains a person
+core when embedded in a building, office, artifact, or relational compound:
+`[汉高]庙` and `[启]母神`. Only that core is tagged; carrier words such as
+`庙/府/宫/印` remain outside. A generic role inside an institution name is not
+thereby authorized.
 
 ## 5. Geometry and evaluation
 
