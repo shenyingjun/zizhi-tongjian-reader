@@ -65,6 +65,15 @@ class AnnotationStore:
         path = self.recall_dir / f"recall_juan_{juan:03d}.json"
         if not path.is_file():
             raise FileNotFoundError(f"recall pack is missing: {path}")
+        expected_sha256 = self.selected[juan].get("pack_sha256")
+        if expected_sha256 is not None and (
+            not isinstance(expected_sha256, str)
+            or hashlib.sha256(path.read_bytes()).hexdigest()
+            != expected_sha256
+        ):
+            raise PermissionError(
+                f"recall pack hash differs for juan {juan}"
+            )
         return self._read(path)
 
     def _role_audit_pack(self, juan: int) -> dict:
@@ -151,6 +160,9 @@ class AnnotationStore:
     def _is_assisted_mode(self, juan: int) -> bool:
         return self._mode(juan) in {"assisted", "diagnostic_assisted"}
 
+    def _is_adjudication_mode(self, juan: int) -> bool:
+        return self._mode(juan) == "adjudication"
+
     def _blind_anchors_complete(self) -> bool:
         anchors = [
             juan for juan in self.selected
@@ -173,11 +185,12 @@ class AnnotationStore:
             if self.expansion:
                 mode = self._mode(juan)
                 row["mode"] = mode
-                row["initial_phase"] = (
-                    "blind"
-                    if mode in {"blind_anchor", "sealed_blind"}
-                    else "assisted"
-                )
+                if mode in {"blind_anchor", "sealed_blind"}:
+                    row["initial_phase"] = "blind"
+                elif mode == "adjudication":
+                    row["initial_phase"] = "recall"
+                else:
+                    row["initial_phase"] = "assisted"
                 row["assisted_complete"] = state["assisted"]["complete"]
             if state["blind"]["complete"]:
                 row["role"] = selection["role"]
@@ -190,6 +203,10 @@ class AnnotationStore:
 
     def _payload(self, juan: int, phase: str) -> dict:
         state = self.state(juan)
+        if self._is_adjudication_mode(juan) and phase != "recall":
+            raise PermissionError(
+                "adjudication tasks expose only source-hidden recall"
+            )
         if self._mode(juan) == "sealed_blind" and phase != "blind":
             raise PermissionError(
                 "sealed tasks expose only candidate-blind annotation"
@@ -276,7 +293,11 @@ class AnnotationStore:
             geometry = (
                 candidate["para_id"], candidate["start"], candidate["end"]
             )
-            if geometry in blind_geometry and candidate["id"] not in state["recall"]["decisions"]:
+            if (
+                not self._is_adjudication_mode(juan)
+                and geometry in blind_geometry
+                and candidate["id"] not in state["recall"]["decisions"]
+            ):
                 state["recall"]["decisions"][candidate["id"]] = "accept"
                 changed = True
         if changed:
@@ -286,6 +307,7 @@ class AnnotationStore:
             "review": self._recall_pack(juan),
             "state": state["recall"],
             "locked": state["recall"]["complete"],
+            "adjudication": self._is_adjudication_mode(juan),
         }
 
     def _validate_annotations(self, juan: int, rows: object) -> list[dict]:
@@ -339,6 +361,10 @@ class AnnotationStore:
 
     def _save(self, juan: int, phase: str, payload: dict) -> dict:
         state = self.state(juan)
+        if self._is_adjudication_mode(juan) and phase != "recall":
+            raise PermissionError(
+                "adjudication tasks expose only source-hidden recall"
+            )
         if self._mode(juan) == "sealed_blind" and phase != "blind":
             raise PermissionError(
                 "sealed tasks expose only candidate-blind annotation"
@@ -388,6 +414,39 @@ class AnnotationStore:
             if any(value not in {"accept", "reject", "unsure"}
                    for value in decisions.values()):
                 raise ValueError("invalid recall decision")
+            if self._is_adjudication_mode(juan):
+                if any(
+                    value not in {"accept", "reject"}
+                    for value in decisions.values()
+                ):
+                    raise ValueError(
+                        "adjudication decisions require accept or reject"
+                    )
+                annotation_geometry = {
+                    (row["para_id"], row["start"], row["end"])
+                    for row in state[phase]["annotations"]
+                }
+                for candidate in pack["candidates"]:
+                    decision = decisions.get(candidate["id"])
+                    geometry = (
+                        int(candidate["para_id"]),
+                        int(candidate["start"]),
+                        int(candidate["end"]),
+                    )
+                    if (
+                        decision == "accept"
+                        and geometry not in annotation_geometry
+                    ):
+                        raise ValueError(
+                            "accepted adjudication candidate is not annotated"
+                        )
+                    if (
+                        decision == "reject"
+                        and geometry in annotation_geometry
+                    ):
+                        raise ValueError(
+                            "rejected adjudication candidate remains annotated"
+                        )
             state[phase]["decisions"] = decisions
             if phase == "recall":
                 note_decisions = payload.get("note_decisions", {})
@@ -403,6 +462,10 @@ class AnnotationStore:
 
     def _complete(self, juan: int, phase: str) -> dict:
         state = self.state(juan)
+        if self._is_adjudication_mode(juan) and phase != "recall":
+            raise PermissionError(
+                "adjudication tasks expose only source-hidden recall"
+            )
         if self._mode(juan) == "sealed_blind" and phase != "blind":
             raise PermissionError(
                 "sealed tasks expose only candidate-blind annotation"
@@ -426,6 +489,35 @@ class AnnotationStore:
                 raise ValueError(
                     f"recall has {len(unresolved)} unresolved candidates"
                 )
+            if (
+                self._is_adjudication_mode(juan)
+                and any(
+                    value not in {"accept", "reject"}
+                    for value in state["recall"]["decisions"].values()
+                )
+            ):
+                raise ValueError(
+                    "adjudication candidates require accept or reject"
+                )
+            if self._is_adjudication_mode(juan):
+                annotation_geometry = {
+                    (row["para_id"], row["start"], row["end"])
+                    for row in state["recall"]["annotations"]
+                }
+                for candidate in self._recall_pack(juan)["candidates"]:
+                    geometry = (
+                        int(candidate["para_id"]),
+                        int(candidate["start"]),
+                        int(candidate["end"]),
+                    )
+                    accepted = (
+                        state["recall"]["decisions"][candidate["id"]]
+                        == "accept"
+                    )
+                    if accepted != (geometry in annotation_geometry):
+                        raise ValueError(
+                            "adjudication decisions differ from annotations"
+                        )
             state["recall"]["complete"] = True
         elif phase == "role_audit":
             if not state["recall"]["complete"]:

@@ -314,6 +314,104 @@ class AnnotationStoreTest(unittest.TestCase):
         with self.assertRaisesRegex(PermissionError, "hash differs"):
             store.payload(1, "blind")
 
+    def test_adjudication_exposes_only_hash_bound_binary_recall(self):
+        root = Path(self.temp.name) / "adjudication"
+        tasks = root / "tasks"
+        recall = root / "recall"
+        state = root / "state"
+        task_path = tasks / "blind_juan_001.json"
+        write(task_path, {
+            "juan": 1,
+            "jies": [{
+                "jie_index": 1,
+                "text": "①曹操至。",
+                "segments": [{
+                    "para_id": 2,
+                    "assembled_start": 0,
+                    "assembled_end": 5,
+                }],
+            }],
+        })
+        pack_path = recall / "recall_juan_001.json"
+        write(pack_path, {
+            "juan": 1,
+            "candidates": [{
+                "id": "hidden",
+                "para_id": 2,
+                "start": 1,
+                "end": 3,
+                "surface": "曹操",
+                "channels": ["source_hidden"],
+            }],
+            "note_evidence": [],
+        })
+        write(tasks / "manifest.json", {
+            "selected": [{
+                "juan": 1,
+                "role": "post_sealed_adjudication",
+                "mode": "adjudication",
+                "task_sha256": hashlib.sha256(
+                    task_path.read_bytes()
+                ).hexdigest(),
+                "pack_sha256": hashlib.sha256(
+                    pack_path.read_bytes()
+                ).hexdigest(),
+            }],
+        })
+        write(state / "juan_001.json", {
+            "juan": 1,
+            "blind": {
+                "complete": True,
+                "annotations": [{
+                    "para_id": 2, "start": 1, "end": 3,
+                    "surface": "曹操",
+                }],
+            },
+            "recall": {
+                "complete": False,
+                "annotations": [{
+                    "para_id": 2, "start": 1, "end": 3,
+                    "surface": "曹操",
+                }],
+                "decisions": {},
+                "note_decisions": {},
+            },
+        })
+        store = AnnotationStore(
+            tasks, recall, root / "roles", state
+        )
+
+        index = store.index()["juans"][0]
+        self.assertEqual("recall", index["initial_phase"])
+        payload = store.payload(1, "recall")
+        self.assertTrue(payload["adjudication"])
+        self.assertEqual({}, payload["state"]["decisions"])
+        with self.assertRaisesRegex(PermissionError, "source-hidden"):
+            store.payload(1, "blind")
+        with self.assertRaisesRegex(ValueError, "accept or reject"):
+            store.save(1, "recall", {
+                "annotations": [],
+                "decisions": {"hidden": "unsure"},
+                "note_decisions": {},
+            })
+        with self.assertRaisesRegex(ValueError, "not annotated"):
+            store.save(1, "recall", {
+                "annotations": [],
+                "decisions": {"hidden": "accept"},
+                "note_decisions": {},
+            })
+        store.save(1, "recall", {
+            "annotations": [],
+            "decisions": {"hidden": "reject"},
+            "note_decisions": {},
+        })
+        self.assertTrue(store.complete(1, "recall")["complete"])
+        pack = json.loads(pack_path.read_text(encoding="utf-8"))
+        pack["candidates"][0]["surface"] = "刘备"
+        write(pack_path, pack)
+        with self.assertRaisesRegex(PermissionError, "hash differs"):
+            store.payload(1, "recall")
+
     def test_diagnostic_assisted_initializes_only_low_confidence_unresolved(self):
         root = Path(self.temp.name) / "diagnostic"
         tasks = root / "tasks"

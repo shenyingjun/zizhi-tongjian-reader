@@ -664,14 +664,22 @@ def evaluate_compact(
         prefix=f".{output_dir.name}-", dir=output_dir.parent
     ) as temporary:
         staging = Path(temporary)
-        _write_json(staging / "report.json", report)
-        _write_json(staging / "predictions.json", predictions)
-        _write_json(staging / "per_jie_metrics.json", per_jie)
-        _write_json(staging / "geometry_audit.json", {
+        predictions_path = staging / "predictions.json"
+        per_jie_path = staging / "per_jie_metrics.json"
+        audit_path = staging / "geometry_audit.json"
+        _write_json(predictions_path, predictions)
+        _write_json(per_jie_path, per_jie)
+        _write_json(audit_path, {
             "schema_version": 1,
             "identity": report["exact_geometry_identity"],
             "per_jie": per_jie_audits,
         })
+        report["outputs"] = {
+            "predictions_sha256": _sha256(predictions_path),
+            "per_jie_metrics_sha256": _sha256(per_jie_path),
+            "geometry_audit_sha256": _sha256(audit_path),
+        }
+        _write_json(staging / "report.json", report)
         _publish_read_only(staging, output_dir)
     return report
 

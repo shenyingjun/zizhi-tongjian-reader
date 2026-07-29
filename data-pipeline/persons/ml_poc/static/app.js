@@ -10,6 +10,7 @@ const ROLE_LABELS = {
   random: "随机基准",
   rules_v1_disagreement: "规则-v1分歧",
   rare_pattern_challenge: "罕见结构挑战",
+  post_sealed_adjudication: "盲化分歧复核",
 };
 const PHASE_LABELS = {
   blind: "盲标",
@@ -59,7 +60,7 @@ async function loadTask(juan, phase) {
     state.pending = null; state.focusedCandidate = null;
     restoreDraft(juan, phase, payload.locked);
     $("phase").value = phase;
-    $("phase").disabled = Boolean(payload.sealed);
+    $("phase").disabled = Boolean(payload.sealed || payload.adjudication);
     for (const button of $("juans").children)
       button.classList.toggle("active", Number(button.dataset.juan) === juan);
     populateJies(); render();
@@ -227,7 +228,8 @@ function render() {
   renderRecall();
   $("save").disabled = state.payload.locked;
   $("complete").disabled = state.payload.locked;
-  $("accept-rest").hidden = state.phase === "blind";
+  $("accept-rest").hidden =
+    state.phase === "blind" || Boolean(state.payload.adjudication);
   $("accept-rest").disabled = state.payload.locked;
   $("previous-jie").disabled = state.jie === 0;
   $("next-jie").disabled =
@@ -301,7 +303,9 @@ function renderRecall() {
   panel.hidden = state.phase === "blind";
   if (panel.hidden) return;
   $("review-title").textContent =
-    state.phase === "role_audit"
+  state.payload.adjudication
+    ? "盲化分歧复核"
+    : state.phase === "role_audit"
       ? "特定角色复核"
       : state.phase === "assisted" ? "Copilot 候选审核" : "候选补漏";
   const visibleParagraphs = new Set(
@@ -336,7 +340,10 @@ function renderRecall() {
       div.append(reason);
     }
     div.append(candidateContext(candidate));
-    for (const decision of ["accept", "reject", "unsure"]) {
+    const choices = state.payload.adjudication
+      ? ["accept", "reject"]
+      : ["accept", "reject", "unsure"];
+    for (const decision of choices) {
       const button = document.createElement("button"); button.textContent = decision;
       button.disabled = state.payload.locked;
       button.onclick = () => decide(candidate, decision);
@@ -367,7 +374,10 @@ function decide(candidate, decision) {
           `候选「${candidate.surface}」与已有标注 ${oldSurfaces} 重叠。` +
           "是否用候选边界替换已有标注？")) {
         delete state.decisions[candidate.id];
-        setStatus("未修改；请选择 reject / unsure，或先手工纠正边界");
+        setStatus(
+          state.payload.adjudication
+            ? "未修改；请选择 reject，或先手工纠正边界"
+            : "未修改；请选择 reject / unsure，或先手工纠正边界");
         render();
         return;
       }
@@ -375,6 +385,11 @@ function decide(candidate, decision) {
         overlaps.map(row => `${row.para_id}:${row.start}:${row.end}`));
       state.annotations = state.annotations.filter(row =>
         !overlapGeometry.has(`${row.para_id}:${row.start}:${row.end}`));
+      for (const other of state.payload.review.candidates) {
+        if (overlapGeometry.has(
+            `${other.para_id}:${other.start}:${other.end}`))
+          state.decisions[other.id] = "reject";
+      }
     }
     state.annotations.push({
       para_id: candidate.para_id,
@@ -579,6 +594,13 @@ async function complete() {
       await loadTask(
         next?.juan || completedJuan,
         next?.initial_phase || "assisted");
+      return;
+    }
+    if (completedPhase === "recall" &&
+        completedRow?.mode === "adjudication") {
+      const next = state.index.juans.find(
+        row => row.mode === "adjudication" && !row.recall_complete);
+      await loadTask(next?.juan || completedJuan, "recall");
       return;
     }
     if (completedPhase === "blind" &&
