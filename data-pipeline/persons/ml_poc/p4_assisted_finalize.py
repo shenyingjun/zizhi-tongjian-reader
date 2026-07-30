@@ -32,14 +32,22 @@ def finalize_assisted_review(review_dir: Path, output_dir: Path) -> dict:
     _, manifest, manifest_sha256 = _snapshot(manifest_path)
     selections = manifest.get("selected", [])
     juans = [int(row["juan"]) for row in selections]
-    if (
+    round5 = (
         manifest.get("status")
-        != "round3_copilot_assisted_diagnostic_review"
+        == "round5_copilot_assisted_diagnostic_review"
+    )
+    expected_examples = 60 if round5 else 20
+    if (
+        (
+            not round5
+            and manifest.get("status")
+            != "round3_copilot_assisted_diagnostic_review"
+        )
         or manifest.get("formal_evaluation") is not False
         or manifest.get("candidate_blind") is not False
         or manifest.get("eligible_for_training_after_human_review") is not True
-        or len(selections) != 20
-        or len(set(juans)) != 20
+        or len(selections) != expected_examples
+        or len(set(juans)) != expected_examples
         or any(row.get("mode") != "active_assisted" for row in selections)
     ):
         raise ValueError("invalid assisted review manifest")
@@ -117,10 +125,19 @@ def finalize_assisted_review(review_dir: Path, output_dir: Path) -> dict:
         identities = {
             (int(row["juan"]), int(row["jie_index"])) for row in examples
         }
-        if len(examples) != 20 or len(identities) != 20:
-            raise ValueError("frozen assisted set must contain 20 unique jies")
+        if (
+            len(examples) != expected_examples
+            or len(identities) != expected_examples
+        ):
+            raise ValueError(
+                "frozen assisted set has the wrong unique jie count"
+            )
         examples.sort(key=lambda row: (row["juan"], row["jie_index"]))
-        labels_path = staging / "train_assisted_round4.jsonl"
+        labels_name = (
+            "train_assisted_round5.jsonl"
+            if round5 else "train_assisted_round4.jsonl"
+        )
+        labels_path = staging / labels_name
         _write_jsonl(labels_path, examples)
         report = {
             "schema_version": 1,
@@ -143,9 +160,9 @@ def finalize_assisted_review(review_dir: Path, output_dir: Path) -> dict:
             "frozen_inputs": inputs,
             "source_manifest_sha256": manifest_sha256,
             "outputs": {
-                "train_assisted_round4_sha256": hashlib.sha256(
+                labels_name.replace(".jsonl", "_sha256"): hashlib.sha256(
                     labels_path.read_bytes()
-                ).hexdigest(),
+                ).hexdigest()
             },
         }
         (staging / "report.json").write_text(
