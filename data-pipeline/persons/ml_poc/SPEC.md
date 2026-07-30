@@ -167,10 +167,12 @@ available naming description and its pieces do not independently form that
 description, tag the full expression: `即常安[姓武字仲]`.
 When coordinated persons share a right-hand appellation, tag each concrete
 conjunct's actual surface, including an elliptical first conjunct:
-`乌孙[大]、[小昆弥]` and `[广平]、[巨鹿]、[乐成王]`. A plural expression is
-taggable only when it clearly refers to a specific group whose members are anchored
-in the current jie; generic or unanchored plural roles remain excluded. Juan
-headings are metadata, not narrative person mentions, and contain no spans.
+`乌孙[大]、[小昆弥]` and `[广平]、[巨鹿]、[乐成王]`. A numeral or an explicit
+plural marker such as `诸/群/众` is a hard veto whenever the current surface denotes
+multiple people, even if every member is anchored in the same jie. Thus
+`万安、咸宜二公主` tags only `[万安]` and `[咸宜]`; `二公主`, its `公主`
+subspan, and `咸宜二公主` remain untagged. Juan headings are metadata, not
+narrative person mentions, and contain no spans.
 A concrete unnamed role may establish one continuing narrative participant within
 the current jie, for example `[神策军将]诉事…擒[军将]…[军将]已死`. Pure
 pronominal honorifics such as `陛下/足下` and temporary insults such as `妪`
