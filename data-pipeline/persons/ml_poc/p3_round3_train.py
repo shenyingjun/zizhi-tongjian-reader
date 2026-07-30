@@ -26,7 +26,9 @@ CONTROL = {
     "seed": 20260727,
     "context_mode": "target_only",
 }
-EXPECTED_DATASET_MANIFEST_SHA256 = "PIN_AFTER_DATASET_BUILD"
+EXPECTED_DATASET_MANIFEST_SHA256 = (
+    "d60b8f73f5fc16e091f0aa7747ebb692620126e5f6c2c7dd1cbd4579d08084da"
+)
 
 
 def _sha256(path: Path) -> str:
