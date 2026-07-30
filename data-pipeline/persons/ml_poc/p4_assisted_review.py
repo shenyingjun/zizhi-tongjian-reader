@@ -169,17 +169,39 @@ def prepare_assisted_review(
     manifest_path = tasks_dir / "manifest.json"
     source_manifest = _read(manifest_path)
     selections = source_manifest["selected"]
+    next_round = (
+        source_manifest.get("status")
+        == "copilot_double_pass_tasks_before_labeling"
+    )
+    selected_jie_key = "selected_jies" if next_round else "private_selected_jies"
+    expected_jies = 60 if next_round else 20
     private_jies = {
         (int(row["juan"]), int(row["jie_index"]))
-        for row in source_manifest.get("private_selected_jies", [])
+        for row in source_manifest.get(selected_jie_key, [])
     }
     if (
-        source_manifest.get("status") != "fresh_sealed_before_annotation"
-        or source_manifest.get("model_predictions_generated") is not False
-        or len(private_jies) != 20
+        (
+            not next_round
+            and source_manifest.get("status") != "fresh_sealed_before_annotation"
+        )
+        or (
+            next_round
+            and source_manifest.get("model_predictions_used_for_selection")
+            is not False
+        )
+        or (
+            not next_round
+            and source_manifest.get("model_predictions_generated") is not False
+        )
+        or len(private_jies) != expected_jies
+        or len(selections) != expected_jies
         or len({int(row["juan"]) for row in selections}) != len(selections)
+        or (
+            next_round
+            and any(int(row.get("sampled_jies", 0)) != 1 for row in selections)
+        )
     ):
-        raise ValueError("source is not the untouched 20-jie task set")
+        raise ValueError("source is not an untouched supported task set")
     report_path = model_root / "report.json"
     if (
         _sha256(report_path) != EXPECTED_MODEL_REPORT_SHA256
@@ -289,7 +311,11 @@ def prepare_assisted_review(
             raise ValueError("selected tasks do not cover every private jie")
         manifest = {
             "schema_version": 1,
-            "status": "round3_copilot_assisted_diagnostic_review",
+            "status": (
+                "round5_copilot_assisted_diagnostic_review"
+                if next_round
+                else "round3_copilot_assisted_diagnostic_review"
+            ),
             "formal_evaluation": False,
             "candidate_blind": False,
             "eligible_for_training_after_human_review": True,
