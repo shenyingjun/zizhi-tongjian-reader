@@ -316,6 +316,107 @@ def _validate_provenance(snapshots: dict[str, bytes], hashes: dict[str, str]) ->
         raise ValueError("Round 4/6 training controls differ")
 
 
+def _rate(numerator: int, denominator: int) -> float:
+    return numerator / denominator if denominator else 0.0
+
+
+def _synthesize_findings(profiles: dict, comparisons: dict) -> dict:
+    existing = profiles["round4_existing"]
+    added = profiles["round5_added"]
+    evaluation = comparisons["evaluation"]
+    old_metrics = evaluation["metrics"]["round4"]
+    new_metrics = evaluation["metrics"]["round6"]
+    attribution = evaluation["attribution"]
+    changed_recall_terms = ("管", "蔡", "燕", "盖", "师", "秉")
+    added_occurrences = {
+        term: added["probe_occurrences"][term]["counts"]
+        for term in changed_recall_terms
+    }
+    direct_exact_support = {
+        term: added["probe_occurrences"][term]["counts"].get("exact_gold", 0)
+        for term in changed_recall_terms
+    }
+    existing_single = existing["single_character_spans"]
+    added_single = added["single_character_spans"]
+    existing_before_zhi = existing["single_character_gold_followed_by"].get(
+        "之", 0
+    )
+    added_before_zhi = added["single_character_gold_followed_by"].get("之", 0)
+    old_exact = old_metrics["exact"]
+    new_exact = new_metrics["exact"]
+    return {
+        "component_scale": {
+            "character_ratio_added_to_existing": (
+                added["characters"] / existing["characters"]
+            ),
+            "span_ratio_added_to_existing": added["spans"] / existing["spans"],
+        },
+        "single_character_supervision": {
+            "round4_rate": existing["single_character_span_rate"],
+            "round5_rate": added["single_character_span_rate"],
+            "rate_delta": (
+                added["single_character_span_rate"]
+                - existing["single_character_span_rate"]
+            ),
+            "conclusion": (
+                "Round 5 does not dilute person spans by length; its "
+                "single-character span rate is slightly higher."
+            ),
+        },
+        "zhi_boundary_supervision": {
+            "round4_single_gold_before_zhi": existing_before_zhi,
+            "round5_single_gold_before_zhi": added_before_zhi,
+            "round4_rate_among_single_gold": _rate(
+                existing_before_zhi, existing_single
+            ),
+            "round5_rate_among_single_gold": _rate(
+                added_before_zhi, added_single
+            ),
+            "conclusion": (
+                "Round 5 supplies rather than removes examples where a "
+                "single-character person ends before 之; the 秉→秉之 error is "
+                "not a direct consequence of missing this boundary pattern."
+            ),
+        },
+        "changed_recall_term_evidence": {
+            "round5_occurrence_status": added_occurrences,
+            "round5_exact_gold_support": direct_exact_support,
+            "conclusion": (
+                "Round 5 adds untagged occurrences for 管, 燕, and 师, but no "
+                "exact positive occurrence for the changed recall terms. 蔡 and "
+                "盖 regress without any Round 5 occurrence, so surface-level "
+                "label conflict cannot explain the complete regression set."
+            ),
+        },
+        "incremental_model_shift": {
+            "prediction_count_delta": (
+                new_metrics["prediction_spans"]
+                - old_metrics["prediction_spans"]
+            ),
+            "true_positive_delta": (
+                new_exact["true_positive"] - old_exact["true_positive"]
+            ),
+            "precision_delta": (
+                new_exact["precision"] - old_exact["precision"]
+            ),
+            "recall_delta": new_exact["recall"] - old_exact["recall"],
+            "f1_delta": new_exact["f1"] - old_exact["f1"],
+            **attribution,
+            "conclusion": (
+                "Round 5 produces a more conservative model: false positives "
+                "fall, but true-positive losses exceed recoveries and exact F1 "
+                "still declines on the reused Juan 76 diagnostic."
+            ),
+        },
+        "root_cause_assessment": (
+            "No single policy or mislabeled surface explains the changes. The "
+            "evidence supports an optimization/generalization shift amplified "
+            "by weak exact support for rare one-character historical names; "
+            "this remains a hypothesis until replicated across seeds."
+        ),
+    }
+
+
 def diagnose_data_impact(
     round4_dataset: Path,
     round5_assisted: Path,
@@ -385,6 +486,10 @@ def diagnose_data_impact(
             evaluation_rows,
         ),
     }
+    profiles = {
+        "round4_existing": _profile(round4_rows),
+        "round5_added": _profile(round5_rows),
+    }
     report = {
         "schema_version": 1,
         "status": "round6_training_data_impact_diagnostic",
@@ -396,11 +501,9 @@ def diagnose_data_impact(
             "round6_is_exact_round4_plus_round5_union": True,
             "component_identity_overlap": 0,
         },
-        "supervision_profiles": {
-            "round4_existing": _profile(round4_rows),
-            "round5_added": _profile(round5_rows),
-        },
+        "supervision_profiles": profiles,
         "incremental_round4_to_round6": comparisons,
+        "findings": _synthesize_findings(profiles, comparisons),
         "interpretation_limits": [
             "The fixed-seed Round 4 to Round 6 comparison isolates the added "
             "Round 5 dataset at the experiment level, not individual examples.",
@@ -416,9 +519,9 @@ def diagnose_data_impact(
                 "cumulative retrain and reused diagnostics."
             ),
             "required_next_experiment": (
-                "Run controlled component ablations or targeted counterfactual "
-                "training variants only after choosing a hypothesis from this "
-                "profile; compare exact geometry and use multiple fixed seeds."
+                "Replicate Round 4 and Round 6 training with three matched seeds "
+                "before changing labels or weighting. Compare exact geometry per "
+                "seed to separate stable data effects from optimization variance."
             ),
         },
     }
