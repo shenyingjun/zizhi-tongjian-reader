@@ -71,21 +71,32 @@ P2 可使用版本化的 Copilot 标注器作为 annotation **teacher**。它的
   只能包含正文候选几何，不能包含注文或译文原文。
 - 每轮按完整 juan 隔离：五卷中一卷（20%）为无候选 blind anchor，四卷（80%）为
   Copilot-assisted。blind anchor 完成并永久锁定前，任何 assisted pack 都不得访问。
-- Copilot 建议本身不是标签。标注者必须接受、拒绝、修改边界或补充遗漏；只有最终
-  人工纠正的跨度可标为 `human_assisted_copilot` 并进入目标模型训练。
+- 低负担 diagnostic 轮次使用两个互不可见、互不读取输出的 Copilot pass：A 偏召回，
+  B 偏精确边界。两遍精确几何一致且均非显式低置信时可自动接受；单边几何、显式低
+  置信和冻结 ML 模型独有项必须进入人工 focused review。主流程必须重新验证两遍
+  schema、channel、provenance、task inventory 和几何，不能信任 teacher 自报验证。
+  冻结后的整批标签仍属于 Copilot-assisted diagnostic，只能进入训练，不能进入
+  dev、blind anchor、密封评估或正式指标。
 - assisted 标签不得进入 dev、blind anchor 或密封评估。blind anchor 保持
   `human_blind_anchor` 来源且只用于评估。
 
 Copilot teacher 的改进闭环为：
 
 1. 冻结 teacher 版本 `N`，只生成一批新的 assisted 数据；
-2. 人工审核每个候选，并补出所有发现的遗漏；
-3. 冻结纠错结果，计算 teacher 的精确 P/R/F1、重叠诊断、新增、删除及一对一
+2. 独立执行 A/B 两遍，自动接受合格精确共识，只人工审核分歧、显式低置信和
+   model-only 补漏项；
+3. 冻结 focused review 纠错结果，计算双遍共识的精确 P/R/F1、重叠诊断、新增、删除及一对一
    几何替换；
 4. 按边界政策、单字照应、角色/专称、外族称号、标点及其他预先声明的挑战分层
    归类错误；
 5. 只根据已完成的人工纠错修改 teacher 指令与示例，形成版本 `N+1`；
 6. 后续 teacher 不得重新生成或覆盖已经完成的批次。
+
+Round 4 前的首个双遍批次共 20 jie、302 个 union candidates：277 个合格精确共识
+自动接受，人工只审 25 个（8.3%），最终冻结 284 个跨度。相对最终标签，双遍共识
+精确率为 99.64%、召回率为 97.18%；该数值来自同一 assisted 批次的 focused review，
+只能用于 teacher 诊断。已确认示例包括：`其母/母曰` 不标；同 jie 唯一化的
+`[使者]/[楚使者]` 标注且 `御` 留在线外。
 
 目标模型闭环只摄入人工纠正后的 assisted 标签，训练新的独立模型，并在已锁定的
 blind anchor 上评估。teacher 晋升要求它在下一批人工审核数据上的准确率提高；目标

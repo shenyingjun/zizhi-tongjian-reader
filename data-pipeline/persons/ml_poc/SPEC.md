@@ -92,23 +92,37 @@ ML model. Copilot accuracy and target-model accuracy are separate measurements.
 - Each expansion round is separated by whole juan: one of five juans (20%) is a
   candidate-free blind anchor and four (80%) are Copilot-assisted. The blind anchor
   must be completed and permanently locked before any assisted pack is accessible.
-- Copilot proposals are never labels by themselves. The annotator must accept,
-  reject, resize, or add spans. Only the resulting human-corrected spans receive
-  `human_assisted_copilot` provenance and may enter target-model training.
+- Low-effort diagnostic rounds use two mutually hidden Copilot passes: A is
+  recall-first and B is exact-boundary-first. Exact geometry agreed by both passes
+  may be auto-accepted only when neither pass marks it explicitly low confidence.
+  One-sided geometry, explicit-low output, and frozen-model-only candidates require
+  focused human review. The main pipeline must independently validate both schemas,
+  channels, provenance, task inventory, and geometry rather than trust teacher
+  self-reports. The frozen batch remains Copilot-assisted diagnostic data: it may
+  enter training, but never dev, blind-anchor, sealed evaluation, or formal metrics.
 - Assisted labels cannot enter dev, blind-anchor, or sealed evaluation splits.
   Blind-anchor labels remain `human_blind_anchor` and evaluation-only.
 
 The teacher-improvement loop is:
 
 1. freeze Copilot teacher version `N` and generate one new assisted batch;
-2. human-review every proposal and add every observed omission;
-3. freeze the corrections and measure teacher exact precision/recall/F1, overlap
+2. run independent A/B passes, auto-accept eligible exact consensus, and human-review
+   only disagreements, explicit-low output, and model-only omissions;
+3. freeze the focused corrections and measure consensus exact precision/recall/F1, overlap
    diagnostics, additions, removals, and one-to-one geometry replacements;
 4. group errors by boundary policy, single-character anaphora, role/appellation,
    foreign-title structure, punctuation, and other declared challenge strata;
 5. revise the teacher instructions and demonstrations only from completed
    human corrections, producing version `N+1`;
 6. never regenerate or overwrite a completed batch with a later teacher.
+
+The first double-pass batch before Round 4 covered 20 jies and 302 union candidates:
+277 eligible exact-consensus spans were auto-accepted, leaving 25 (8.3%) for human
+review and 284 final spans. Against those same focused-reviewed labels, consensus
+precision was 99.64% and recall 97.18%; these are assisted-batch teacher diagnostics,
+not independent evidence. Binding examples from that review exclude bare kinship
+anaphors (`其母/母曰`) while including same-jie individualized role references
+(`[使者]/[楚使者]`), with the following action `御` outside the span.
 
 The target-model loop consumes the human-corrected assisted labels, trains a new
 standalone model, and evaluates it on the locked blind anchor. Teacher promotion
