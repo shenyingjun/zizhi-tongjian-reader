@@ -1,0 +1,42 @@
+import unittest
+
+from p6_data_impact import (
+    _bio_spans,
+    _occurrence_status,
+    _profile,
+)
+
+
+class DataImpactTest(unittest.TestCase):
+    def test_extracts_bio_spans_and_boundary_profiles(self):
+        row = {
+            "id": "juan-001-jie-0001",
+            "text": "甲之乙氏丙公",
+            "labels": [
+                "B-PER", "O", "B-PER", "I-PER", "B-PER", "O",
+            ],
+        }
+        self.assertEqual(
+            [(0, 1, "甲"), (2, 4, "乙氏"), (4, 5, "丙")],
+            _bio_spans(row),
+        )
+        profile = _profile([row])
+        self.assertEqual(2, profile["single_character_spans"])
+        self.assertEqual(
+            {"之": 1, "公": 1},
+            profile["single_character_gold_followed_by"],
+        )
+        self.assertEqual({"氏": 1}, profile["gold_ending_in"])
+
+    def test_classifies_term_against_gold_geometry(self):
+        spans = [(1, 3, "甲乙")]
+        self.assertEqual("exact_gold", _occurrence_status(1, 3, spans))
+        self.assertEqual(
+            "inside_larger_gold", _occurrence_status(1, 2, spans)
+        )
+        self.assertEqual("overlaps_gold", _occurrence_status(2, 4, spans))
+        self.assertEqual("untagged", _occurrence_status(4, 5, spans))
+
+
+if __name__ == "__main__":
+    unittest.main()
