@@ -131,9 +131,12 @@ jie is re-annotated blind after 7-10 days to measure self-agreement. The three
 pilot juans are reference data, not the sealed test, and are excluded from the
 future sealed-test sampling frame.
 
-The binding boundary guide uses **name-core geometry whenever an explicit name is
-present**: `赵王[虎]`, `大将军[光]`, and `弟[亮]`. Titles, offices, and kinship
-words remain outside; an unaccompanied individualized appellation such as `始皇`
+The binding boundary guide uses **name-core geometry after a prefixed title**:
+`赵王[虎]`, `大将军[光]`, and `弟[亮]`. Prefixed titles, offices, and kinship
+words remain outside. A conventional postposed foreign or consort title stays in
+the complete established person surface: `[阿波可汗]`, `[沙钵罗叶护]`, and
+`[王皇后]`; with a prefixed title, tag only the following core, as in
+`柔然可汗[阿那瓌]`. An unaccompanied individualized appellation such as `始皇`
 may itself be the person core. Compound surnames and the complete given name stay
 inside. A role-only expression such as `帝` or `太后` is tagged only when its
 current grammatical use refers to a specific person (`[帝]曰`, `[太后]怒`);
@@ -154,6 +157,15 @@ conjunct's actual surface, including an elliptical first conjunct:
 taggable only when it clearly refers to a specific group whose members are anchored
 in the current jie; generic or unanchored plural roles remain excluded. Juan
 headings are metadata, not narrative person mentions, and contain no spans.
+A concrete unnamed role may establish one continuing narrative participant within
+the current jie, for example `[神策军将]诉事…擒[军将]…[军将]已死`. Pure
+pronominal honorifics such as `陛下/足下` and temporary insults such as `妪`
+remain excluded. A `氏` surface is taggable when it denotes one concrete person
+(`向氏`, `金氏`) but not when it denotes a clan (`桓氏之甥`). Ethnonyms alone
+are excluded; `[黠戛斯可汗]` is taggable only when it denotes a concrete
+incumbent. A newly conferred office, reign title, or posthumous title remains
+excluded at the conferral predicate and becomes taggable only in a later concrete
+person reference. Person spans remain separate from a future entitlement timeline.
 
 ## 5. Geometry and evaluation
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import random
@@ -23,14 +24,20 @@ from p2_context import (
 
 
 MODEL_NAME = "KoichiYasuoka/roberta-classical-chinese-base-char"
+MODEL_REVISION = "51e91a5270ce5e68eb31b1c828598c09c3a5e4c6"
 
 
-def _read_jsonl(path: Path) -> list[dict]:
+def _read_jsonl_bytes(raw: bytes) -> list[dict]:
     return [
         json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
+        for line in raw.decode("utf-8").splitlines()
         if line
     ]
+
+
+def _snapshot_jsonl(path: Path) -> tuple[list[dict], str]:
+    raw = path.read_bytes()
+    return _read_jsonl_bytes(raw), hashlib.sha256(raw).hexdigest()
 
 
 def _metric_payload(reference, prediction) -> dict:
@@ -149,7 +156,11 @@ def train(args: argparse.Namespace) -> dict:
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required for the P1 timing run")
     device = torch.device("cuda")
-    tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model,
+        revision=args.model_revision,
+        use_fast=True,
+    )
     def input_path(explicit: Path | None, default_name: str) -> Path:
         if explicit is not None:
             return explicit
@@ -164,9 +175,9 @@ def train(args: argparse.Namespace) -> dict:
     evaluation_path = input_path(
         args.evaluation_file, "pilot_holdout"
     )
-    raw_train = _read_jsonl(train_path)
-    raw_dev = _read_jsonl(dev_path)
-    raw_evaluation = _read_jsonl(evaluation_path)
+    raw_train, train_sha256 = _snapshot_jsonl(train_path)
+    raw_dev, dev_sha256 = _snapshot_jsonl(dev_path)
+    raw_evaluation, evaluation_sha256 = _snapshot_jsonl(evaluation_path)
     if args.context_mode == "target_only":
         split_guard = {
             "guard_band_exclusions": 0,
@@ -237,6 +248,7 @@ def train(args: argparse.Namespace) -> dict:
     label2id = {label: index for index, label in id2label.items()}
     model = AutoModelForTokenClassification.from_pretrained(
         args.model,
+        revision=args.model_revision,
         num_labels=len(LABELS),
         id2label=id2label,
         label2id=label2id,
@@ -342,6 +354,7 @@ def train(args: argparse.Namespace) -> dict:
     report = {
         "schema_version": 1,
         "model": args.model,
+        "model_revision": args.model_revision,
         "plain_challenger": True,
         "self_agreement": "waived; references provisionally trusted",
         "device": torch.cuda.get_device_name(0),
@@ -367,8 +380,11 @@ def train(args: argparse.Namespace) -> dict:
         },
         "inputs": {
             "train": str(train_path),
+            "train_sha256": train_sha256,
             "dev": str(dev_path),
+            "dev_sha256": dev_sha256,
             "evaluation": str(evaluation_path),
+            "evaluation_sha256": evaluation_sha256,
             "evaluation_name": args.evaluation_name,
         },
         "context": {
@@ -429,6 +445,7 @@ def main() -> int:
     parser.add_argument("--evaluation-name", default="random_pilot_holdout")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", default=MODEL_NAME)
+    parser.add_argument("--model-revision", default=MODEL_REVISION)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--max-length", type=int, default=512)
     parser.add_argument("--stride", type=int, default=128)
