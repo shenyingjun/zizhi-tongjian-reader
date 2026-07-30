@@ -473,6 +473,74 @@ class AnnotationStoreTest(unittest.TestCase):
         with self.assertRaisesRegex(PermissionError, "do not expose"):
             store.payload(1, "blind")
 
+    def test_active_assisted_initializes_teacher_not_ml_only(self):
+        root = Path(self.temp.name) / "active-assisted"
+        tasks = root / "tasks"
+        assisted = root / "assisted"
+        state = root / "state"
+        task_path = tasks / "blind_juan_001.json"
+        write(task_path, {
+            "juan": 1,
+            "jies": [{
+                "jie_index": 1,
+                "text": "①曹操与刘备。",
+                "segments": [{
+                    "para_id": 2,
+                    "assembled_start": 0,
+                    "assembled_end": 7,
+                }],
+            }],
+        })
+        pack_path = assisted / "assisted_juan_001.json"
+        write(pack_path, {
+            "juan": 1,
+            "candidates": [{
+                "id": "copilot:2:1:3",
+                "para_id": 2, "start": 1, "end": 3,
+                "surface": "曹操", "confidence": "high",
+            }, {
+                "id": "copilot:2:4:6",
+                "para_id": 2, "start": 4, "end": 6,
+                "surface": "刘备", "confidence": "low",
+            }],
+            "initial_annotations": [{
+                "para_id": 2, "start": 1, "end": 3, "surface": "曹操",
+            }],
+            "initial_decisions": {"copilot:2:1:3": "accept"},
+        })
+        write(tasks / "manifest.json", {
+            "selected": [{
+                "juan": 1,
+                "mode": "active_assisted",
+                "task_sha256": hashlib.sha256(
+                    task_path.read_bytes()
+                ).hexdigest(),
+                "pack_sha256": hashlib.sha256(
+                    pack_path.read_bytes()
+                ).hexdigest(),
+            }],
+        })
+        store = AnnotationStore(
+            tasks, root / "recall", root / "roles", state, assisted
+        )
+
+        payload = store.payload(1, "assisted")
+
+        with self.assertRaisesRegex(PermissionError, "only assisted"):
+            store.save(1, "blind", {"annotations": []})
+        with self.assertRaisesRegex(PermissionError, "only assisted"):
+            store.complete(1, "blind")
+        with self.assertRaisesRegex(PermissionError, "only assisted"):
+            store.payload(1, "recall")
+        self.assertEqual(
+            ["曹操"],
+            [row["surface"] for row in payload["state"]["annotations"]],
+        )
+        self.assertEqual(
+            {"copilot:2:1:3": "accept"},
+            payload["state"]["decisions"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

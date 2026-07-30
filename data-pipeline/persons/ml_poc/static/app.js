@@ -589,7 +589,7 @@ async function complete() {
       row => row.juan === completedJuan);
     if (completedPhase === "assisted") {
       const next = state.index.juans.find(
-        row => ["assisted", "diagnostic_assisted"].includes(row.mode) &&
+        row => ["assisted", "diagnostic_assisted", "active_assisted"].includes(row.mode) &&
           !row.assisted_complete);
       await loadTask(
         next?.juan || completedJuan,

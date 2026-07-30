@@ -158,7 +158,9 @@ class AnnotationStore:
         return str(self.selected[juan].get("mode", "legacy"))
 
     def _is_assisted_mode(self, juan: int) -> bool:
-        return self._mode(juan) in {"assisted", "diagnostic_assisted"}
+        return self._mode(juan) in {
+            "assisted", "diagnostic_assisted", "active_assisted",
+        }
 
     def _is_adjudication_mode(self, juan: int) -> bool:
         return self._mode(juan) == "adjudication"
@@ -203,6 +205,10 @@ class AnnotationStore:
 
     def _payload(self, juan: int, phase: str) -> dict:
         state = self.state(juan)
+        if self._is_assisted_mode(juan) and phase != "assisted":
+            raise PermissionError(
+                "assisted juans do not expose this phase; only assisted annotation"
+            )
         if self._is_adjudication_mode(juan) and phase != "recall":
             raise PermissionError(
                 "adjudication tasks expose only source-hidden recall"
@@ -235,26 +241,33 @@ class AnnotationStore:
             self._bind_assisted_pack(juan, state)
             pack = self._assisted_pack(juan)
             if (
-                self._mode(juan) == "diagnostic_assisted"
+                self._mode(juan) in {
+                    "diagnostic_assisted", "active_assisted",
+                }
                 and not state["assisted"]["initialized"]
             ):
-                annotations = [
-                    {
-                        "para_id": row["para_id"],
-                        "start": row["start"],
-                        "end": row["end"],
-                        "surface": row["surface"],
-                    }
-                    for row in pack["candidates"]
-                ]
+                annotations = pack.get("initial_annotations")
+                if annotations is None:
+                    annotations = [
+                        {
+                            "para_id": row["para_id"],
+                            "start": row["start"],
+                            "end": row["end"],
+                            "surface": row["surface"],
+                        }
+                        for row in pack["candidates"]
+                    ]
                 state["assisted"]["annotations"] = (
                     self._validate_annotations(juan, annotations)
                 )
-                state["assisted"]["decisions"] = {
+                default_decisions = {
                     row["id"]: "accept"
                     for row in pack["candidates"]
                     if row.get("confidence") != "low"
                 }
+                state["assisted"]["decisions"] = pack.get(
+                    "initial_decisions", default_decisions
+                )
                 state["assisted"]["initialized"] = True
                 self._write_state(juan, state)
             return {
@@ -361,6 +374,10 @@ class AnnotationStore:
 
     def _save(self, juan: int, phase: str, payload: dict) -> dict:
         state = self.state(juan)
+        if self._is_assisted_mode(juan) and phase != "assisted":
+            raise PermissionError(
+                "assisted juans do not expose this phase; only assisted annotation"
+            )
         if self._is_adjudication_mode(juan) and phase != "recall":
             raise PermissionError(
                 "adjudication tasks expose only source-hidden recall"
@@ -462,6 +479,10 @@ class AnnotationStore:
 
     def _complete(self, juan: int, phase: str) -> dict:
         state = self.state(juan)
+        if self._is_assisted_mode(juan) and phase != "assisted":
+            raise PermissionError(
+                "assisted juans do not expose this phase; only assisted annotation"
+            )
         if self._is_adjudication_mode(juan) and phase != "recall":
             raise PermissionError(
                 "adjudication tasks expose only source-hidden recall"
