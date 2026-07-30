@@ -10,6 +10,7 @@ from p4_fresh_sealed import (
     EXCLUDED_JUANS,
     prepare_fresh_sealed,
 )
+from server import AnnotationStore
 
 
 class P4FreshSealedTest(unittest.TestCase):
@@ -91,6 +92,8 @@ class P4FreshSealedTest(unittest.TestCase):
             }
             actual = set()
             for selected in manifest["selected"]:
+                self.assertEqual("fresh_sealed", selected["role"])
+                self.assertEqual("sealed_blind", selected["mode"])
                 task_path = output_dir / selected["task"]
                 task = json.loads(task_path.read_text(encoding="utf-8"))
                 keys = set(task)
@@ -107,6 +110,16 @@ class P4FreshSealedTest(unittest.TestCase):
                     stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH
                 ))
             self.assertEqual(expected, actual)
+            state_dir = root / "state"
+            store = AnnotationStore(
+                output_dir, root, root, state_dir
+            )
+            index = store.index()
+            self.assertTrue(all(
+                row["initial_phase"] == "blind" for row in index["juans"]
+            ))
+            first_juan = manifest["selected"][0]["juan"]
+            self.assertTrue(store.payload(first_juan, "blind")["sealed"])
             for path in output_dir.iterdir():
                 path.chmod(stat.S_IWRITE)
 

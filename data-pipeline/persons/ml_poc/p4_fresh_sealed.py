@@ -194,7 +194,8 @@ def prepare_fresh_sealed(
             )
             manifest["selected"].append({
                 "juan": juan,
-                "mode": "fresh_sealed_blind",
+                "role": "fresh_sealed",
+                "mode": "sealed_blind",
                 "source_sha256": _sha256(source_paths[juan]),
                 "task_sha256": _sha256(task_path),
                 "task": task_path.name,
