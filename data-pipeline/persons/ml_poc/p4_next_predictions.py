@@ -150,6 +150,7 @@ def predict_tasks(
             )
     finally:
         if temporary_path.exists():
+            temporary_path.chmod(stat.S_IWRITE)
             temporary_path.unlink()
     return bundle
 
