@@ -21,6 +21,7 @@ CONTROL = {
     "gradient_accumulation": 8,
     "learning_rate": 3e-5,
     "weight_decay": 0.01,
+    "optimizer_foreach": False,
     "warmup_ratio": 0.1,
     "max_grad_norm": 1.0,
     "seed": 20260727,

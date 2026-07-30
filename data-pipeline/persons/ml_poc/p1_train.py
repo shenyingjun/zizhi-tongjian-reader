@@ -259,6 +259,7 @@ def train(args: argparse.Namespace) -> dict:
         model.parameters(),
         lr=args.learning_rate,
         weight_decay=args.weight_decay,
+        foreach=args.optimizer_foreach,
     )
     updates_per_epoch = math.ceil(len(loader) / args.gradient_accumulation)
     total_updates = updates_per_epoch * args.epochs
@@ -371,6 +372,7 @@ def train(args: argparse.Namespace) -> dict:
             ),
             "learning_rate": args.learning_rate,
             "weight_decay": args.weight_decay,
+            "optimizer_foreach": args.optimizer_foreach,
             "warmup_ratio": args.warmup_ratio,
             "seed": args.seed,
             "precision": "fp32",
@@ -454,6 +456,11 @@ def main() -> int:
     parser.add_argument("--gradient-accumulation", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=3e-5)
     parser.add_argument("--weight-decay", type=float, default=0.01)
+    parser.add_argument(
+        "--optimizer-foreach",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
     parser.add_argument("--warmup-ratio", type=float, default=0.1)
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=20260727)
