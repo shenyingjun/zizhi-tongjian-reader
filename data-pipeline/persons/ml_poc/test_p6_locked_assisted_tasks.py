@@ -1,9 +1,22 @@
 import unittest
 
-from p6_locked_assisted_tasks import _eligible_jies, _manifest_juans
+from p6_locked_assisted_tasks import (
+    _eligible_jies,
+    _manifest_juans,
+    evaluation_claim_metadata,
+)
 
 
 class LockedAssistedTasksTest(unittest.TestCase):
+    def test_copilot_assistance_does_not_determine_eligibility(self):
+        metadata = evaluation_claim_metadata()
+        self.assertFalse(metadata["copilot_assistance_is_disqualifying"])
+        self.assertFalse(metadata["eligible_for_promotion"])
+        self.assertEqual(
+            metadata["promotion_eligibility_reason"],
+            "predeclared_low_power_diagnostic_without_promotion_gate",
+        )
+
     def test_manifest_juans_collects_all_bound_surfaces(self):
         manifest = {
             "splits": {"train": {"juans": [1, 2]}},

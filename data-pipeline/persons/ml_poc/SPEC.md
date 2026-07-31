@@ -17,8 +17,8 @@ The primary bottleneck is trustworthy labels, not model architecture. A model
 trained naively on v1 would learn that rule-only recoveries are negative (`O`).
 The first deliverable is therefore an audited reference and reliable scoring,
 not merely a trained model. Under the standing no-solo-blind-annotation policy
-below, new references are Copilot-assisted diagnostics unless independently
-annotated by an external human.
+below, new references use Copilot A/B plus focused review. Their claim status is
+determined by the frozen protocol rather than annotator identity.
 
 ## 2. Scope
 
@@ -46,7 +46,7 @@ Training labels use a bounded adjudicated union:
 - `note-only` and `translation-only` candidates require span-level focused user
   confirmation and may never be propagated by class policy alone.
 - Copilot-assisted labels may enter training or a separately declared locked
-  diagnostic evaluation, but never a formal human-sealed metric.
+  evaluation. Record their actual provenance; do not mislabel them human-only.
 
 ### 3.1 Note and translation guardrails
 
@@ -101,11 +101,13 @@ ML model. Copilot accuracy and target-model accuracy are separate measurements.
   One-sided geometry, explicit-low output, and frozen-model-only candidates require
   focused human review. The main pipeline must independently validate both schemas,
   channels, provenance, task inventory, and geometry rather than trust teacher
-  self-reports. The frozen batch remains Copilot-assisted diagnostic data: it may
-  enter training, but never dev, blind-anchor, sealed evaluation, or formal metrics.
+  self-reports. A batch sampled for training remains training-only because using it
+  for evaluation would contaminate the split, not because Copilot assisted it.
 - Training-assisted labels cannot enter dev or a locked evaluation split. A
   separately sampled, candidate-model-blind Copilot A/B evaluation set is
-  evaluation-only and must carry assisted-diagnostic provenance.
+  evaluation-only and must carry explicit Copilot-assisted provenance. Its
+  diagnostic/formal status and promotion eligibility are determined independently
+  by the frozen sampling design, audit, power, and predeclared decision gate.
 
 The teacher-improvement loop is:
 
@@ -130,9 +132,11 @@ anaphors (`其母/母曰`) while including same-jie individualized role referenc
 
 The target-model loop consumes the focused-review-corrected assisted labels and
 trains a new standalone model. Teacher improvement is measured on the next
-focused-reviewed assisted batch. Target models may be compared on a locked
-candidate-model-blind Copilot-assisted diagnostic, but that comparison cannot
-authorize formal promotion or substitute for external human evaluation.
+focused-reviewed assisted batch. Target models may be compared on a locked candidate-model-blind Copilot-assisted
+evaluation. Copilot assistance neither disqualifies nor qualifies the comparison
+for promotion. A comparison may authorize promotion only when its independently
+frozen protocol, sample size, audit, and predeclared decision gate support that
+claim.
 
 ### 3.3 Standing no-solo-blind-annotation policy
 
@@ -154,14 +158,16 @@ and P3 evaluation.
 4. **Lock before inference.** Sampling, tasks, pass versions, prompt/policy hashes,
    consensus, focused decisions, and final geometry are frozen before any
    candidate-model or rule prediction is generated.
-5. **Claims remain diagnostic.** Provenance is
-   `copilot_double_pass_blind_diagnostic`; `formal_evaluation` and
-   `eligible_for_promotion` are always false. The set may compare frozen models
-   and guide research, but it is not a human-sealed ground truth.
-6. **No silent escalation.** If a future release requires a formal adoption or
-   auto-publication claim, it needs independent external-human annotation. This
-   project will not transfer that blind-annotation burden back to the user without
-   an explicit policy change.
+5. **Claims follow protocol, not annotator identity.** Copilot assistance is not an
+   automatic reason to set `formal_evaluation` or `eligible_for_promotion` false.
+   Each set must predeclare whether it is diagnostic or formal and must bind its
+   sampling frame, independence controls, audit policy, power requirements, and
+   promotion gate before inference. A low-power diagnostic without a promotion gate
+   remains ineligible for that reason alone.
+6. **No silent escalation.** Stronger claims require a stronger independently
+   frozen candidate-model-blind protocol and audit. The project will meet that need
+   with additional Copilot A/B sampling and focused review rather than transfer an
+   exhaustive blank-text annotation burden back to the user.
 
 ## 4. P0 reference
 
@@ -272,10 +278,10 @@ Tier-1 is descriptive and can only encourage or disprove:
   of confirmed rule omissions are recovered, and no systematic new false-positive
   class appears.
 
-No current Copilot-assisted evaluation can support a formal adoption or
-auto-publication claim. Those claims would require an independently
-external-human-annotated probability sample with bootstrap confidence intervals.
-The historical thresholds remain model exact F1 at least equal to rules with
+Formal adoption or auto-publication requires an independently sampled,
+candidate-model-blind evaluation with a frozen audit and bootstrap confidence
+intervals; Copilot assistance is not a disqualifier. The historical thresholds
+remain model exact F1 at least equal to rules with
 non-overlapping 90% intervals, no challenge stratum down more than 5 points, and a
 one-sided 95% precision lower bound of at least 0.98.
 
@@ -299,8 +305,9 @@ selection roles before each juan is completed and permanently locked. Apply the
 section 3.3 double-pass and focused-review protocol; do not assign exhaustive blind
 annotation to the user. Do not generate model or rule predictions until all five
 references are locked; failures cannot select or retrain the evaluated model. The
-result is sealed from candidate models but remains Copilot-assisted diagnostic,
-with no formal-promotion claim.
+result is sealed from candidate models. It remains diagnostic only when the
+protocol predeclares diagnostic scope or lacks the power or decision gate required
+for promotion; Copilot participation is not the reason.
 
 When whole-juan annotation is not feasible, a predeclared compact P3 may instead
 sample numbered jies. Its probability frame is limited to previously unused jies
@@ -339,7 +346,8 @@ accumulation; large models are out of scope.
   labeling efficiency and the standalone target model separately; do not assign
   the historical solo-human blind anchor.
 - **P3 (only if encouraging):** locked candidate-model-blind Copilot-assisted
-  probability diagnostic and challenge set.
+  probability evaluation and challenge set, with diagnostic/formal claim scope
+  predeclared from its design.
 - **P4+ (only if Tier-2 passes):** calibration, omission channels, note-aware A/B,
   held-out-surface study, multi-seed variance, and hybrid deployment.
 
@@ -356,7 +364,7 @@ accumulation; large models are out of scope.
 - Automation bias: record all Copilot accepts, rejects, boundary corrections, and
   focused-review additions; teacher output is not ground truth.
 - No solo blind annotation: use section 3.3 Copilot A/B plus focused user review;
-  never report it as human consensus or formal sealed ground truth.
+  report its true provenance rather than human-only consensus.
 - Scope/identity leakage: sanitize notes, preserve paragraph translation scope,
   enforce same-jie anchors, and require confirmation for note/translation-only
   candidates.

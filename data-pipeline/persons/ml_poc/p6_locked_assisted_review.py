@@ -14,6 +14,7 @@ from pathlib import Path
 
 from p3_compact import _git_commit_clean
 from p3_diagnostic import _validate_pack
+from p6_locked_assisted_tasks import evaluation_claim_metadata
 
 
 EXPECTED_SOURCE_MANIFEST_SHA256 = (
@@ -275,8 +276,7 @@ def prepare_locked_assisted_review(
         manifest = {
             "schema_version": 1,
             "status": "candidate_blind_copilot_double_pass_focused_review",
-            "formal_evaluation": False,
-            "eligible_for_promotion": False,
+            **evaluation_claim_metadata(),
             "candidate_model_blind": True,
             "reference_locked": False,
             "provenance": "copilot_double_pass_blind_diagnostic",

@@ -15,6 +15,7 @@ from p2_round import _spans
 from p3_active_finalize import _aggregate_deltas, _inventory, _validate_decisions
 from p3_compact import _git_commit_clean
 from p3_compact_evaluate import _model_artifact
+from p6_locked_assisted_tasks import evaluation_claim_metadata
 from report import geometry_delta
 
 
@@ -248,8 +249,7 @@ def freeze_reference(
         report = {
             "schema_version": 1,
             "status": "frozen_copilot_double_pass_blind_diagnostic",
-            "formal_evaluation": False,
-            "eligible_for_promotion": False,
+            **evaluation_claim_metadata(),
             "candidate_model_blind": True,
             "reference_locked": True,
             "provenance": PROVENANCE,
@@ -454,12 +454,11 @@ def compare_models(
     report = {
         "schema_version": 1,
         "status": "locked_copilot_assisted_diagnostic_compared",
-        "formal_evaluation": False,
-        "eligible_for_promotion": False,
+        **evaluation_claim_metadata(),
         "provenance": PROVENANCE,
         "claim_limit": (
-            "locked candidate-model-blind Copilot-assisted diagnostic only; "
-            "not formal promotion evidence"
+            "predeclared low-power diagnostic without a promotion gate; "
+            "Copilot assistance is not an eligibility restriction"
         ),
         "device": str(device),
         "git_commit": _git_commit_clean(),

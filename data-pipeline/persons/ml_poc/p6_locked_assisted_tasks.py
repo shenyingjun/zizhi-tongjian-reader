@@ -44,8 +44,8 @@ EXPECTED_INPUTS = {
     "boundary_guide": (
         "f7c1dff1e97c41fc37846374867840ebde81b9b4fa601e3adbde2db9f1de8247"
     ),
-    "spec": "2311fe03248d3e5addd0a1f44a0353a352022b85d295cb67201a28b0a05b5418",
-    "spec_zh": "f5f9778059cebc898b31f456ffa43cae2af46f8545bdb5be752a043187e61672",
+    "spec": "ae0c837353adcdd88d0977acfea2836956ed377accc556ff02e21948923ea8f6",
+    "spec_zh": "33f13ddefbb4fd46e5842abd1f476be291abf39140f286181287d28d2240fc66",
 }
 EXPECTED_MODELS = {
     "round3": "fb611bee98cdc672e19163ca84aef49612815cab285889c7458cff07ba098cbd",
@@ -58,6 +58,18 @@ POLICY_PATHS = {
     "spec": Path(__file__).with_name("SPEC.md"),
     "spec_zh": Path(__file__).with_name("SPEC.zh.md"),
 }
+PROMOTION_ELIGIBILITY_REASON = (
+    "predeclared_low_power_diagnostic_without_promotion_gate"
+)
+
+
+def evaluation_claim_metadata() -> dict:
+    return {
+        "formal_evaluation": False,
+        "eligible_for_promotion": False,
+        "promotion_eligibility_reason": PROMOTION_ELIGIBILITY_REASON,
+        "copilot_assistance_is_disqualifying": False,
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -209,8 +221,7 @@ def prepare_locked_assisted_tasks(
     manifest = {
         "schema_version": 1,
         "status": "candidate_blind_copilot_double_pass_tasks_before_labeling",
-        "formal_evaluation": False,
-        "eligible_for_promotion": False,
+        **evaluation_claim_metadata(),
         "candidate_model_blind": True,
         "provenance": "copilot_double_pass_blind_diagnostic",
         "model_predictions_generated": False,

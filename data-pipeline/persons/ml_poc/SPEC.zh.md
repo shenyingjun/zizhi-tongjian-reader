@@ -11,8 +11,8 @@ NER。现有 97.2% 指标只是与含噪 v1 的兼容率，不是真正的精确
 
 主要瓶颈是可信标签，而不是模型架构。直接用 v1 训练会把 rules-only 补漏标成
 负例 `O`。因此第一交付物是经审计参考集与可靠评分，而不只是模型。根据下述
-「不要求用户独立盲标」永久政策，后续新参考集默认属于 Copilot-assisted
-diagnostic；只有外部独立人工标注才能形成正式人工参考。
+「不要求用户独立盲标」永久政策，后续新参考集采用 Copilot A/B 加 focused review；
+其结论资格由冻结协议决定，而不是由标注者身份决定。
 
 ## 2. 范围
 
@@ -35,8 +35,8 @@ diagnostic；只有外部独立人工标注才能形成正式人工参考。
 - 分歧分层抽样审计，上限为训练 3,000、dev 800 个跨度。
 - `note-only`、`translation-only` 必须逐跨度由用户 focused review 确认，不能只凭
   类别策略传播。
-- Copilot-assisted 标签可进入训练，或进入另行声明的锁定 diagnostic 评估；不得
-  冒充正式 human-sealed 指标。
+- Copilot-assisted 标签可进入训练，或进入另行声明的锁定评估。必须记录真实
+  provenance，不得冒充纯人工标注。
 
 ### 3.1 注文与译文护栏
 
@@ -79,10 +79,12 @@ P2 可使用版本化的 Copilot 标注器作为 annotation **teacher**。它的
   B 偏精确边界。两遍精确几何一致且均非显式低置信时可自动接受；单边几何、显式低
   置信和冻结 ML 模型独有项必须进入人工 focused review。主流程必须重新验证两遍
   schema、channel、provenance、task inventory 和几何，不能信任 teacher 自报验证。
-  冻结后的整批标签仍属于 Copilot-assisted diagnostic，只能进入训练，不能进入
-  dev、blind anchor、密封评估或正式指标。
+  为训练抽取的整批标签仍只能进入训练，因为拿它评估会污染 split，而不是因为
+  Copilot 参与了标注。
 - 训练用 assisted 标签不得进入 dev 或锁定评估。另行抽样、对候选模型盲化的
-  Copilot A/B 评估集只用于评估，并必须记录 assisted-diagnostic 来源。
+  Copilot A/B 评估集只用于评估，并必须记录明确的 Copilot-assisted 来源。其属于
+  diagnostic 还是 formal、能否支持晋升，须由冻结的抽样设计、审核、统计功效和预先
+  声明的决策门槛独立决定。
 
 Copilot teacher 的改进闭环为：
 
@@ -104,8 +106,9 @@ Round 4 前的首个双遍批次共 20 jie、302 个 union candidates：277 个�
 
 目标模型闭环只摄入 focused review 纠正后的 assisted 标签，并训练新的独立模型。
 teacher 改进在下一批 focused-reviewed assisted 数据上测量。目标模型可在已锁定、
-对候选模型盲化的 Copilot-assisted diagnostic 上比较，但该比较不能授权正式晋升，
-也不能替代外部独立人工评估。
+对候选模型盲化的 Copilot-assisted 评估集上比较。Copilot 参与本身既不会取消、也不会
+赋予晋升资格；只有独立冻结的协议、样本量、审核及预先声明的决策门槛足以支持时，
+比较结果才能授权晋升。
 
 ### 3.3 不要求用户独立盲标的永久政策
 
@@ -120,12 +123,14 @@ dev 更新及 P3 评估。
    用户只审分歧、显式低置信及预先声明的抽审样本，永不承担空白正文穷举 pass。
 4. **推理前锁定。** 抽样、任务、pass 版本、prompt/政策哈希、共识、focused 决定及
    最终几何必须在生成任何候选模型或规则预测前冻结。
-5. **结论保持 diagnostic。** provenance 固定为
-   `copilot_double_pass_blind_diagnostic`；`formal_evaluation` 与
-   `eligible_for_promotion` 永远为 false。该集合可比较冻结模型、指导研究，但不是
-   human-sealed 真值。
-6. **不得静默升级要求。** 若未来发布确实需要正式采纳或自动发布结论，必须使用外部
-   独立人工标注；除非用户明确修改政策，本项目不得把盲标负担转回给用户。
+5. **结论资格取决于协议，而非标注者身份。** Copilot 参与不是把
+   `formal_evaluation` 或 `eligible_for_promotion` 设为 false 的自动理由。每个集合
+   必须在推理前声明 diagnostic/formal 状态，并绑定抽样框、独立性控制、审核政策、
+   统计功效要求和晋升门槛。低功效且没有预声明晋升门槛的 diagnostic 只因这些原因
+   不具晋升资格。
+6. **不得静默升级要求。** 更强结论需要更强且独立冻结、对候选模型盲化的协议和审核。
+   本项目通过增加 Copilot A/B 抽样与 focused review 满足该需求，不把空白正文穷举
+   盲标负担转回给用户。
 
 ## 4. P0 参考集
 
@@ -207,8 +212,8 @@ Tier-1 只能鼓励或证伪：随机 juan 的精确 F1 比规则低超过 3 点
 25%，或挑战补漏无补偿回退时停止；精确 F1 在规则约 2 点以内或更高、恢复至少
 50% 已确认遗漏且无系统性新误报类别时，才进入下一阶段。
 
-当前任何 Copilot-assisted 评估都不能支持正式采纳或自动发布。此类声明必须基于
-外部独立人工标注的概率样本及 bootstrap 置信区间。历史阈值仍为：模型精确 F1
+正式采纳或自动发布必须基于独立抽样、对候选模型盲化、冻结审核且具有 bootstrap
+置信区间的评估；Copilot 参与不是取消资格的理由。历史阈值仍为：模型精确 F1
 不低于规则、90% 区间不重叠、挑战分层下降不超过 5 点，且自动发布层精确率单侧
 95% 下界至少为 0.98。
 
@@ -226,8 +231,8 @@ Tier-1 只能鼓励或证伪：随机 juan 的精确 F1 比规则低超过 3 点
 当前代码提交。标注任务文件只能包含无候选正文及段落/jie 几何；每卷完成并永久
 锁定前，UI 不得泄露其选择角色。按 3.3 节执行 Copilot 双 pass 与 focused review，
 不得给用户分配穷举盲标。五卷参考标签全部锁定前，不得生成模型或规则预测；失败案例
-不得用于选择或重训被评估模型。该集合对候选模型密封，但仍是 Copilot-assisted
-diagnostic，不产生正式晋升结论。
+不得用于选择或重训被评估模型。该集合对候选模型密封；只有协议预先声明 diagnostic，
+或统计功效/决策门槛不足时才保持 diagnostic，原因不是 Copilot 参与。
 
 若完整 juan 标注工作量不可接受，可改用预先声明的紧凑 P3：抽样框仅含从未使用、
 长度为 20–600 Unicode codepoint 的编号 jie；固定抽取 12 个无放回均匀概率样本，
@@ -259,8 +264,8 @@ P2 Copilot teacher 不改变上述 P1 模型定义：未经 focused review 的 a
 - **P1（3–5 天）：** 有界裁定标签与朴素 char-BIO 挑战者。
 - **P2：** 停止或通过版本化 Copilot teacher 扩大试点；分别改进 teacher 标注效率
   与独立目标模型，不再分配历史上的用户独立 blind anchor。
-- **P3（仅当结果鼓舞）：** 锁定、对候选模型盲化的 Copilot-assisted 概率
-  diagnostic 与挑战集。
+- **P3（仅当结果鼓舞）：** 锁定、对候选模型盲化的 Copilot-assisted 概率评估与
+  挑战集；diagnostic/formal 结论范围必须由设计预先声明。
 - **P4+（仅当 Tier-2 通过）：** 校准、遗漏通道、注文运行时 A/B、留出表面研究、
   多种子方差和混合部署。
 
@@ -275,8 +280,8 @@ P2 Copilot teacher 不改变上述 P1 模型定义：未经 focused review 的 a
   进入评估；不得把跨 jie 示例表面当作当前 jie 人物证据。
 - 自动化偏差：记录所有 Copilot 接受、拒绝、边界修正和 focused-review 补漏；teacher 输出
   不是真值。
-- 不做用户独立盲标：按 3.3 节执行 Copilot A/B 与用户 focused review；不得冒充
-  人工共识或正式 human-sealed 真值。
+- 不做用户独立盲标：按 3.3 节执行 Copilot A/B 与用户 focused review，并按真实
+  provenance 报告，不冒充纯人工共识。
 - 作用域/身份泄漏：预清洗注文、保持译文段落范围、执行同 jie 更早锚点规则，
   note/translation-only 逐跨度确认。
 - 算力超支：先测量再安排计划。
