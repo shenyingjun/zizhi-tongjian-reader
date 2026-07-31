@@ -29,6 +29,12 @@ DATASETS = {
         ),
         "status": "round6_controlled_training_dataset",
     },
+    "round7": {
+        "manifest_sha256": (
+            "09c2724e346b8df5b0ace423016155167790bc7324bf8876f1bfa5942e958eb5"
+        ),
+        "status": "round7_controlled_training_dataset",
+    },
 }
 REPLICATION_SEEDS = (20260727, 20260728, 20260729)
 CUBLAS_WORKSPACE_CONFIG = ":4096:8"

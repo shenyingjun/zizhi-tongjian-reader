@@ -5,12 +5,19 @@ from unittest.mock import patch
 
 from p6_seed_replication_train import (
     CUBLAS_WORKSPACE_CONFIG,
+    DATASETS,
     _configure_determinism,
     run_seed_replication,
 )
 
 
 class SeedReplicationTrainTest(unittest.TestCase):
+    def test_round7_dataset_is_registered(self):
+        self.assertEqual(
+            DATASETS["round7"]["status"],
+            "round7_controlled_training_dataset",
+        )
+
     def test_refuses_existing_output_before_reading_inputs(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
