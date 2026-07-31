@@ -31,11 +31,18 @@ function setStatus(message, error = false) {
   $("status").className = error ? "error" : "";
 }
 
+function visibleRows(rows) {
+  return rows.filter(row =>
+    !["assisted", "diagnostic_assisted", "active_assisted"].includes(row.mode) ||
+    row.assisted_candidate_count > 0);
+}
+
 async function loadIndex() {
   state.index = await api("/api/index");
+  const rows = visibleRows(state.index.juans);
   const nav = $("juans");
   nav.replaceChildren();
-  for (const row of state.index.juans) {
+  for (const row of rows) {
     const button = document.createElement("button");
     const role = row.role ? (ROLE_LABELS[row.role] || row.role) : "";
     button.textContent = `卷 ${row.juan}${role ? ` · ${role}` : ""}`;
@@ -44,7 +51,11 @@ async function loadIndex() {
     button.dataset.juan = row.juan;
     nav.append(button);
   }
-  const first = state.index.juans[0];
+  const first = rows[0];
+  if (!first) {
+    setStatus("没有需要人工审核的分歧项。");
+    return;
+  }
   await loadTask(first.juan, first.initial_phase || "blind");
 }
 
@@ -588,7 +599,7 @@ async function complete() {
     const completedRow = state.index.juans.find(
       row => row.juan === completedJuan);
     if (completedPhase === "assisted") {
-      const next = state.index.juans.find(
+      const next = visibleRows(state.index.juans).find(
         row => ["assisted", "diagnostic_assisted", "active_assisted"].includes(row.mode) &&
           !row.assisted_complete);
       await loadTask(

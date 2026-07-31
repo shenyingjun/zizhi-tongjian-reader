@@ -194,6 +194,13 @@ class AnnotationStore:
                 else:
                     row["initial_phase"] = "assisted"
                 row["assisted_complete"] = state["assisted"]["complete"]
+                if self._is_assisted_mode(juan):
+                    pack = self._assisted_pack(juan)
+                    initial_decisions = pack.get("initial_decisions", {})
+                    row["assisted_candidate_count"] = sum(
+                        candidate["id"] not in initial_decisions
+                        for candidate in pack["candidates"]
+                    )
             if state["blind"]["complete"]:
                 row["role"] = selection["role"]
             rows.append(row)
