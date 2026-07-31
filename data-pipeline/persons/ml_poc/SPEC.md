@@ -15,8 +15,10 @@ confidence is not tunable.
 
 The primary bottleneck is trustworthy labels, not model architecture. A model
 trained naively on v1 would learn that rule-only recoveries are negative (`O`).
-The first deliverable is therefore a small human reference and reliable scoring,
-not a trained model.
+The first deliverable is therefore an audited reference and reliable scoring,
+not merely a trained model. Under the standing no-solo-blind-annotation policy
+below, new references are Copilot-assisted diagnostics unless independently
+annotated by an external human.
 
 ## 2. Scope
 
@@ -41,9 +43,10 @@ Training labels use a bounded adjudicated union:
 - Exact v1/rules agreements may be auto-trusted with `agreement` provenance.
 - Disagreements are stratified and audited, capped at 3,000 train and 800 dev
   spans.
-- `note-only` and `translation-only` candidates require span-level human
+- `note-only` and `translation-only` candidates require span-level focused user
   confirmation and may never be propagated by class policy alone.
-- Only `human_*` labels may enter dev or sealed evaluation data.
+- Copilot-assisted labels may enter training or a separately declared locked
+  diagnostic evaluation, but never a formal human-sealed metric.
 
 ### 3.1 Note and translation guardrails
 
@@ -89,9 +92,9 @@ ML model. Copilot accuracy and target-model accuracy are separate measurements.
   note/translation source hashes, target-jie scope, and the fact that full-juan
   context was visible but non-authorizing. The saved teacher output contains only
   main-text candidate geometry, not note or translation prose.
-- Each expansion round is separated by whole juan: one of five juans (20%) is a
-  candidate-free blind anchor and four (80%) are Copilot-assisted. The blind anchor
-  must be completed and permanently locked before any assisted pack is accessible.
+- The earlier expansion design reserved one of five juans as a candidate-free
+  human blind anchor. That design is historical and must not be assigned again
+  under the standing no-solo-blind-annotation policy in section 3.3.
 - Low-effort diagnostic rounds use two mutually hidden Copilot passes: A is
   recall-first and B is exact-boundary-first. Exact geometry agreed by both passes
   may be auto-accepted only when neither pass marks it explicitly low confidence.
@@ -100,8 +103,9 @@ ML model. Copilot accuracy and target-model accuracy are separate measurements.
   channels, provenance, task inventory, and geometry rather than trust teacher
   self-reports. The frozen batch remains Copilot-assisted diagnostic data: it may
   enter training, but never dev, blind-anchor, sealed evaluation, or formal metrics.
-- Assisted labels cannot enter dev, blind-anchor, or sealed evaluation splits.
-  Blind-anchor labels remain `human_blind_anchor` and evaluation-only.
+- Training-assisted labels cannot enter dev or a locked evaluation split. A
+  separately sampled, candidate-model-blind Copilot A/B evaluation set is
+  evaluation-only and must carry assisted-diagnostic provenance.
 
 The teacher-improvement loop is:
 
@@ -124,14 +128,45 @@ not independent evidence. Binding examples from that review exclude bare kinship
 anaphors (`其母/母曰`) while including same-jie individualized role references
 (`[使者]/[楚使者]`), with the following action `御` outside the span.
 
-The target-model loop consumes the human-corrected assisted labels, trains a new
-standalone model, and evaluates it on the locked blind anchor. Teacher promotion
-requires better accuracy on the next human-reviewed assisted batch. Target-model
-promotion separately requires higher blind-anchor exact F1 with no declared
-challenge-stratum regression. Neither promotion substitutes for later P3 sealed
-evaluation.
+The target-model loop consumes the focused-review-corrected assisted labels and
+trains a new standalone model. Teacher improvement is measured on the next
+focused-reviewed assisted batch. Target models may be compared on a locked
+candidate-model-blind Copilot-assisted diagnostic, but that comparison cannot
+authorize formal promotion or substitute for external human evaluation.
+
+### 3.3 Standing no-solo-blind-annotation policy
+
+The user will never be asked to annotate candidate-free text alone. This is a
+permanent workflow constraint, including P0 repeats, blind anchors, dev refreshes,
+and P3 evaluation.
+
+1. **Blind means candidate-model-blind, not human-only.** Before reference lock,
+   neither Copilot pass may read v1, rules, target-model predictions, another
+   pass's output, or prior evaluation errors for the sampled text.
+2. **Copilot performs two independent passes.** Pass A is recall-first and pass B
+   is exact-boundary-first. Both receive only the frozen raw main text, geometry,
+   and binding boundary policy. The pipeline independently validates their
+   schemas, inventories, provenance, and exact geometry.
+3. **The user only performs focused review.** Exact non-low A/B consensus may be
+   accepted automatically. The user reviews disagreements, explicit-low output,
+   and any predeclared audit sample; the user is never assigned a blank-text
+   exhaustive pass.
+4. **Lock before inference.** Sampling, tasks, pass versions, prompt/policy hashes,
+   consensus, focused decisions, and final geometry are frozen before any
+   candidate-model or rule prediction is generated.
+5. **Claims remain diagnostic.** Provenance is
+   `copilot_double_pass_blind_diagnostic`; `formal_evaluation` and
+   `eligible_for_promotion` are always false. The set may compare frozen models
+   and guide research, but it is not a human-sealed ground truth.
+6. **No silent escalation.** If a future release requires a formal adoption or
+   auto-publication claim, it needs independent external-human annotation. This
+   project will not transfer that blind-annotation burden back to the user without
+   an explicit policy change.
 
 ## 4. P0 reference
+
+This section records the completed historical P0 protocol. Its solo-human blind
+pass must not be repeated; all future reference creation follows section 3.3.
 
 Select three juans:
 
@@ -237,12 +272,14 @@ Tier-1 is descriptive and can only encourage or disprove:
   of confirmed rule omissions are recovered, and no systematic new false-positive
   class appears.
 
-Only a later sealed probability sample with bootstrap confidence intervals can
-support adoption. Hybrid adoption requires model exact F1 at least equal to rules
-with non-overlapping 90% intervals, no challenge stratum down more than 5 points,
-and a one-sided 95% precision lower bound of at least 0.98 for auto-publishing.
+No current Copilot-assisted evaluation can support a formal adoption or
+auto-publication claim. Those claims would require an independently
+external-human-annotated probability sample with bootstrap confidence intervals.
+The historical thresholds remain model exact F1 at least equal to rules with
+non-overlapping 90% intervals, no challenge stratum down more than 5 points, and a
+one-sided 95% precision lower bound of at least 0.98.
 
-### 5.2 P3 sealed set
+### 5.2 P3 locked candidate-model-blind assisted diagnostic
 
 Before any P3 model inference, freeze five previously unused whole juans:
 
@@ -253,14 +290,17 @@ Before any P3 model inference, freeze five previously unused whole juans:
   raw-text term counts.
 
 Exclude every juan used in training, development, pilot holdout, blind-anchor
-evaluation, assisted annotation, or an aborted/leaked sealed set. Generate the
+evaluation, assisted annotation, or an aborted/leaked evaluation set. Generate the
 probability and challenge draws from a private random seed, then freeze that seed,
 the selected model hash, checkpoint selection record, selection policy, task/source
 hashes, and current code commit in a private manifest. Annotation task files contain
 only candidate-free main text and paragraph/jie geometry. The UI must not expose
-selection roles before each juan is completed and permanently locked. Do not
-generate model or rule predictions until all five references are locked; P3
-failures cannot select or retrain the evaluated model.
+selection roles before each juan is completed and permanently locked. Apply the
+section 3.3 double-pass and focused-review protocol; do not assign exhaustive blind
+annotation to the user. Do not generate model or rule predictions until all five
+references are locked; failures cannot select or retrain the evaluated model. The
+result is sealed from candidate models but remains Copilot-assisted diagnostic,
+with no formal-promotion claim.
 
 When whole-juan annotation is not feasible, a predeclared compact P3 may instead
 sample numbered jies. Its probability frame is limited to previously unused jies
@@ -279,8 +319,8 @@ constrained decoding from the start, but no self-training, agent auto-labeling,
 omission recovery, overrides, calibration, or runtime notes.
 
 The P2 Copilot teacher does not change this P1 model definition: unreviewed agent
-output never trains the target model. Only human-corrected assisted spans may be
-added in later training rounds.
+output never trains the target model. Only focused-review-corrected assisted spans
+may be added in later training rounds.
 
 The initial P1 timing baseline remains target-jie-only. Multi-jie soft context is a
 separate P2 target-model A/B and must preserve target-only loss, output, and scoring.
@@ -291,13 +331,15 @@ accumulation; large models are out of scope.
 
 ## 7. Phases
 
-- **P0 (3-5 days):** prepare three juans, blind annotation, recall pass,
-  self-agreement subset, exact matcher, constrained decoder, rules baseline.
+- **P0 (historical):** prepare three juans, blind annotation, recall pass,
+  self-agreement subset, exact matcher, constrained decoder, rules baseline. Do
+  not repeat its solo-human blind pass under section 3.3.
 - **P1 (3-5 days):** bounded adjudicated labels and plain char-BIO challenger.
-- **P2:** stop, fund a real evaluation set, or expand through versioned Copilot
-  teacher rounds with one blind anchor per four assisted juans. Improve teacher
-  labeling efficiency and the standalone target model separately.
-- **P3 (only if encouraging):** sealed probability sample and challenge set.
+- **P2:** stop or expand through versioned Copilot teacher rounds. Improve teacher
+  labeling efficiency and the standalone target model separately; do not assign
+  the historical solo-human blind anchor.
+- **P3 (only if encouraging):** locked candidate-model-blind Copilot-assisted
+  probability diagnostic and challenge set.
 - **P4+ (only if Tier-2 passes):** calibration, omission channels, note-aware A/B,
   held-out-surface study, multi-seed variance, and hybrid deployment.
 
@@ -308,12 +350,13 @@ accumulation; large models are out of scope.
 - Test contamination: never feed sealed-test failures into training.
 - Context leakage: construct splits after context closure; training and dev windows
   must not expose each other's target text through surrounding-jie context.
-- Teacher contamination: never expose candidates before a blind anchor locks;
-  never place assisted labels in dev; never use cross-jie demonstration surfaces
-  as current-jie person evidence.
+- Teacher contamination: never expose model/rule candidates before a locked
+  reference freezes; never place training-assisted labels in evaluation; never use
+  cross-jie demonstration surfaces as current-jie person evidence.
 - Automation bias: record all Copilot accepts, rejects, boundary corrections, and
-  human-added omissions; teacher output is not ground truth.
-- Single annotator: report delayed blind self-agreement, not consensus.
+  focused-review additions; teacher output is not ground truth.
+- No solo blind annotation: use section 3.3 Copilot A/B plus focused user review;
+  never report it as human consensus or formal sealed ground truth.
 - Scope/identity leakage: sanitize notes, preserve paragraph translation scope,
   enforce same-jie anchors, and require confirmation for note/translation-only
   candidates.

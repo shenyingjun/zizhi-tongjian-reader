@@ -10,7 +10,9 @@ NER。现有 97.2% 指标只是与含噪 v1 的兼容率，不是真正的精确
 28% 的规则输出不与 v1 重叠，其中同时包含真正补漏和误报。
 
 主要瓶颈是可信标签，而不是模型架构。直接用 v1 训练会把 rules-only 补漏标成
-负例 `O`。因此第一交付物是小型人工参考集与可靠评分，而不是模型。
+负例 `O`。因此第一交付物是经审计参考集与可靠评分，而不只是模型。根据下述
+「不要求用户独立盲标」永久政策，后续新参考集默认属于 Copilot-assisted
+diagnostic；只有外部独立人工标注才能形成正式人工参考。
 
 ## 2. 范围
 
@@ -31,8 +33,10 @@ NER。现有 97.2% 指标只是与含噪 v1 的兼容率，不是真正的精确
 
 - v1/规则精确一致项可按 `agreement` 来源自动信任。
 - 分歧分层抽样审计，上限为训练 3,000、dev 800 个跨度。
-- `note-only`、`translation-only` 必须逐跨度人工确认，不能只凭类别策略传播。
-- 只有 `human_*` 标签可进入 dev 或密封评估集。
+- `note-only`、`translation-only` 必须逐跨度由用户 focused review 确认，不能只凭
+  类别策略传播。
+- Copilot-assisted 标签可进入训练，或进入另行声明的锁定 diagnostic 评估；不得
+  冒充正式 human-sealed 指标。
 
 ### 3.1 注文与译文护栏
 
@@ -69,16 +73,16 @@ P2 可使用版本化的 Copilot 标注器作为 annotation **teacher**。它的
 - 候选来源必须记录 Copilot teacher 版本、prompt/示例哈希、注文/译文来源哈希、
   目标 jie 作用域，以及「可见整卷上下文但不得授权」这一事实。保存的 teacher 输出
   只能包含正文候选几何，不能包含注文或译文原文。
-- 每轮按完整 juan 隔离：五卷中一卷（20%）为无候选 blind anchor，四卷（80%）为
-  Copilot-assisted。blind anchor 完成并永久锁定前，任何 assisted pack 都不得访问。
+- 早期设计曾规定每五卷保留一卷无候选人工 blind anchor。该设计只作为历史记录；
+  按 3.3 节永久政策，今后不得再次把这种任务分配给用户。
 - 低负担 diagnostic 轮次使用两个互不可见、互不读取输出的 Copilot pass：A 偏召回，
   B 偏精确边界。两遍精确几何一致且均非显式低置信时可自动接受；单边几何、显式低
   置信和冻结 ML 模型独有项必须进入人工 focused review。主流程必须重新验证两遍
   schema、channel、provenance、task inventory 和几何，不能信任 teacher 自报验证。
   冻结后的整批标签仍属于 Copilot-assisted diagnostic，只能进入训练，不能进入
   dev、blind anchor、密封评估或正式指标。
-- assisted 标签不得进入 dev、blind anchor 或密封评估。blind anchor 保持
-  `human_blind_anchor` 来源且只用于评估。
+- 训练用 assisted 标签不得进入 dev 或锁定评估。另行抽样、对候选模型盲化的
+  Copilot A/B 评估集只用于评估，并必须记录 assisted-diagnostic 来源。
 
 Copilot teacher 的改进闭环为：
 
@@ -98,12 +102,35 @@ Round 4 前的首个双遍批次共 20 jie、302 个 union candidates：277 个�
 只能用于 teacher 诊断。已确认示例包括：`其母/母曰` 不标；同 jie 唯一化的
 `[使者]/[楚使者]` 标注且 `御` 留在线外。
 
-目标模型闭环只摄入人工纠正后的 assisted 标签，训练新的独立模型，并在已锁定的
-blind anchor 上评估。teacher 晋升要求它在下一批人工审核数据上的准确率提高；目标
-模型晋升则另行要求 blind-anchor 精确 F1 提高且预声明挑战分层不回退。两种晋升都
-不能替代后续 P3 密封评估。
+目标模型闭环只摄入 focused review 纠正后的 assisted 标签，并训练新的独立模型。
+teacher 改进在下一批 focused-reviewed assisted 数据上测量。目标模型可在已锁定、
+对候选模型盲化的 Copilot-assisted diagnostic 上比较，但该比较不能授权正式晋升，
+也不能替代外部独立人工评估。
+
+### 3.3 不要求用户独立盲标的永久政策
+
+永远不要求用户独自对无候选正文做穷举盲标。该约束适用于重复 P0、blind anchor、
+dev 更新及 P3 评估。
+
+1. **「盲」指对候选模型盲化，不代表必须纯人工。** 参考标签锁定前，两个 Copilot
+   pass 都不得读取 v1、规则、目标模型预测、另一 pass 输出，或该样本既往评估错误。
+2. **Copilot 执行两个独立 pass。** A 偏召回，B 偏精确边界；两者只接收冻结的正文、
+   几何和绑定边界政策。主流程独立校验 schema、任务清单、provenance 和精确几何。
+3. **用户只做 focused review。** 双遍精确一致且均非显式低置信的项可自动接受；
+   用户只审分歧、显式低置信及预先声明的抽审样本，永不承担空白正文穷举 pass。
+4. **推理前锁定。** 抽样、任务、pass 版本、prompt/政策哈希、共识、focused 决定及
+   最终几何必须在生成任何候选模型或规则预测前冻结。
+5. **结论保持 diagnostic。** provenance 固定为
+   `copilot_double_pass_blind_diagnostic`；`formal_evaluation` 与
+   `eligible_for_promotion` 永远为 false。该集合可比较冻结模型、指导研究，但不是
+   human-sealed 真值。
+6. **不得静默升级要求。** 若未来发布确实需要正式采纳或自动发布结论，必须使用外部
+   独立人工标注；除非用户明确修改政策，本项目不得把盲标负担转回给用户。
 
 ## 4. P0 参考集
+
+本节只记录已经完成的历史 P0 协议，不得重复其中的用户独立盲标；未来所有参考集
+生产均遵循 3.3 节。
 
 选取三个 juan：
 
@@ -180,11 +207,12 @@ Tier-1 只能鼓励或证伪：随机 juan 的精确 F1 比规则低超过 3 点
 25%，或挑战补漏无补偿回退时停止；精确 F1 在规则约 2 点以内或更高、恢复至少
 50% 已确认遗漏且无系统性新误报类别时，才进入下一阶段。
 
-只有后续密封概率样本及 bootstrap 置信区间能支持采纳。混合采纳还要求模型精确
-F1 不低于规则、挑战分层下降不超过 5 点，并且自动发布层的精确率单侧 95% 下界
-至少为 0.98。
+当前任何 Copilot-assisted 评估都不能支持正式采纳或自动发布。此类声明必须基于
+外部独立人工标注的概率样本及 bootstrap 置信区间。历史阈值仍为：模型精确 F1
+不低于规则、90% 区间不重叠、挑战分层下降不超过 5 点，且自动发布层精确率单侧
+95% 下界至少为 0.98。
 
-### 5.2 P3 密封集
+### 5.2 P3 锁定、对候选模型盲化的 assisted diagnostic
 
 在任何 P3 模型推理前，冻结五个从未使用过的完整 juan：
 
@@ -193,11 +221,13 @@ F1 不低于规则、挑战分层下降不超过 5 点，并且自动发布层�
 - 从预先声明的外族称号正文词频最高五卷中密封抽取一卷。
 
 排除所有曾用于训练、开发、试点 holdout、blind anchor 评估、assisted 标注或已
-废弃/泄露密封集的 juan。概率样本与挑战卷都使用私有随机种子抽取；私有 manifest
+废弃/泄露评估集的 juan。概率样本与挑战卷都使用私有随机种子抽取；私有 manifest
 必须冻结该种子、选定模型哈希、checkpoint 选择记录、选择政策、任务/来源哈希和
 当前代码提交。标注任务文件只能包含无候选正文及段落/jie 几何；每卷完成并永久
-锁定前，UI 不得泄露其选择角色。五卷参考标签全部锁定前，不得生成模型或规则预测；
-P3 失败案例不得用于选择或重训被评估模型。
+锁定前，UI 不得泄露其选择角色。按 3.3 节执行 Copilot 双 pass 与 focused review，
+不得给用户分配穷举盲标。五卷参考标签全部锁定前，不得生成模型或规则预测；失败案例
+不得用于选择或重训被评估模型。该集合对候选模型密封，但仍是 Copilot-assisted
+diagnostic，不产生正式晋升结论。
 
 若完整 juan 标注工作量不可接受，可改用预先声明的紧凑 P3：抽样框仅含从未使用、
 长度为 20–600 Unicode codepoint 的编号 jie；固定抽取 12 个无放回均匀概率样本，
@@ -213,8 +243,8 @@ P1 朴素挑战者使用
 jie 组装与约束式解码，但不加入自训练、agent 自动标签、遗漏恢复、覆盖层、
 校准或运行时注文。
 
-P2 Copilot teacher 不改变上述 P1 模型定义：未经人工审核的 agent 输出永远不能
-训练目标模型；后续训练轮只能加入人工纠正后的 assisted 跨度。
+P2 Copilot teacher 不改变上述 P1 模型定义：未经 focused review 的 agent 输出
+永远不能训练目标模型；后续训练轮只能加入 focused-review-corrected assisted 跨度。
 
 初始 P1 计时基线仍为 target-jie-only。多 jie 软上下文属于独立的 P2 目标模型 A/B，
 必须保持只在目标 jie 计算 loss、输出和评分。
@@ -224,12 +254,13 @@ P2 Copilot teacher 不改变上述 P1 模型定义：未经人工审核的 agent
 
 ## 7. 阶段
 
-- **P0（3–5 天）：** 三个 juan、盲标、候选补漏、自一致性子集、精确匹配器、
-  约束解码器、规则真实基线。
+- **P0（历史阶段）：** 三个 juan、盲标、候选补漏、自一致性子集、精确匹配器、
+  约束解码器、规则真实基线；按 3.3 节不得重复其中的用户独立盲标。
 - **P1（3–5 天）：** 有界裁定标签与朴素 char-BIO 挑战者。
-- **P2：** 停止、投资真正评估集，或通过版本化 Copilot teacher 扩大试点；每四个
-  assisted juan 配一个 blind anchor，分别改进 teacher 标注效率与独立目标模型。
-- **P3（仅当结果鼓舞）：** 密封概率样本与挑战集。
+- **P2：** 停止或通过版本化 Copilot teacher 扩大试点；分别改进 teacher 标注效率
+  与独立目标模型，不再分配历史上的用户独立 blind anchor。
+- **P3（仅当结果鼓舞）：** 锁定、对候选模型盲化的 Copilot-assisted 概率
+  diagnostic 与挑战集。
 - **P4+（仅当 Tier-2 通过）：** 校准、遗漏通道、注文运行时 A/B、留出表面研究、
   多种子方差和混合部署。
 
@@ -240,11 +271,12 @@ P2 Copilot teacher 不改变上述 P1 模型定义：未经人工审核的 agent
 - 测试污染：密封测试失败案例不得回灌训练。
 - 上下文泄漏：必须在上下文闭包完成后再划分 split；训练与 dev 窗口不得通过周边
   jie 上下文看到对方的目标文本。
-- teacher 污染：blind anchor 锁定前不得展示候选；assisted 标签不得进入 dev；
-  不得把跨 jie 示例表面当作当前 jie 人物证据。
-- 自动化偏差：记录所有 Copilot 接受、拒绝、边界修正和人工补漏；teacher 输出
+- teacher 污染：锁定参考集冻结前不得展示模型/规则候选；训练用 assisted 标签不得
+  进入评估；不得把跨 jie 示例表面当作当前 jie 人物证据。
+- 自动化偏差：记录所有 Copilot 接受、拒绝、边界修正和 focused-review 补漏；teacher 输出
   不是真值。
-- 单一标注者：报告延迟盲重标自一致性，不冒充共识。
+- 不做用户独立盲标：按 3.3 节执行 Copilot A/B 与用户 focused review；不得冒充
+  人工共识或正式 human-sealed 真值。
 - 作用域/身份泄漏：预清洗注文、保持译文段落范围、执行同 jie 更早锚点规则，
   note/translation-only 逐跨度确认。
 - 算力超支：先测量再安排计划。
