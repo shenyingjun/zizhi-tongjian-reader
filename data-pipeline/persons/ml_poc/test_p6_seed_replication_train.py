@@ -18,6 +18,21 @@ class SeedReplicationTrainTest(unittest.TestCase):
             "round7_controlled_training_dataset",
         )
 
+    def test_stability_experiments_change_only_learning_rate(self):
+        from p6_seed_replication_train import EXPERIMENTS
+
+        self.assertEqual(
+            {
+                "round8-lr2e-5": {"learning_rate": 2e-5},
+                "round9-lr2.5e-5": {"learning_rate": 2.5e-5},
+            },
+            {
+                name: control
+                for name, control in EXPERIMENTS.items()
+                if name != "baseline"
+            },
+        )
+
     def test_rejects_unregistered_experiment_before_git_check(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

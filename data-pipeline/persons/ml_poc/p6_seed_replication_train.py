@@ -41,6 +41,7 @@ CUBLAS_WORKSPACE_CONFIG = ":4096:8"
 EXPERIMENTS = {
     "baseline": {},
     "round8-lr2e-5": {"learning_rate": 2e-5},
+    "round9-lr2.5e-5": {"learning_rate": 2.5e-5},
 }
 
 
