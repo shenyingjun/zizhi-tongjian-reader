@@ -38,6 +38,10 @@ DATASETS = {
 }
 REPLICATION_SEEDS = (20260727, 20260728, 20260729)
 CUBLAS_WORKSPACE_CONFIG = ":4096:8"
+EXPERIMENTS = {
+    "baseline": {},
+    "round8-lr2e-5": {"learning_rate": 2e-5},
+}
 
 
 def _sha256(path: Path) -> str:
@@ -62,6 +66,7 @@ def run_seed_replication(
     dataset_kind: str,
     seed: int,
     output_dir: Path,
+    experiment: str = "baseline",
 ) -> dict:
     if output_dir.exists() or output_dir.is_symlink():
         raise FileExistsError(f"seed replication output exists: {output_dir}")
@@ -69,6 +74,10 @@ def run_seed_replication(
         raise ValueError(f"unsupported dataset kind: {dataset_kind}")
     if seed not in REPLICATION_SEEDS:
         raise ValueError(f"unsupported replication seed: {seed}")
+    if experiment not in EXPERIMENTS:
+        raise ValueError(f"unsupported replication experiment: {experiment}")
+    if experiment != "baseline" and dataset_kind != "round7":
+        raise ValueError(f"{experiment} requires the Round 7 dataset")
     git_commit = _git_commit_clean()
     expected_names = {
         "train.jsonl", "dev.jsonl", "evaluation.jsonl", "manifest.json",
@@ -95,7 +104,7 @@ def run_seed_replication(
     ):
         raise ValueError(f"{dataset_kind} dataset provenance differs")
 
-    control = {**CONTROL, "seed": seed}
+    control = {**CONTROL, **EXPERIMENTS[experiment], "seed": seed}
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
         prefix=f".{output_dir.name}-", dir=output_dir.parent
@@ -147,7 +156,7 @@ def run_seed_replication(
         artifact_names = (
             "history.json", "dev_predictions.json", "evaluation_predictions.json",
         )
-        report["seed_replication_control"] = {
+        replication_control = {
             "git_commit": git_commit,
             "dataset_kind": dataset_kind,
             "dataset_manifest_sha256": manifest_sha256,
@@ -178,6 +187,9 @@ def run_seed_replication(
             "formal_evaluation": False,
             "eligible_for_promotion": False,
         }
+        if experiment != "baseline":
+            replication_control["experiment"] = experiment
+        report["seed_replication_control"] = replication_control
         report["inputs"].update({
             name: str(output_dir / "inputs" / path.name)
             for name, path in paths.items()
@@ -185,6 +197,9 @@ def run_seed_replication(
         report["claim_limit"] = (
             "Matched-seed replication diagnostic only; Juan 27 and Juan 76 "
             "are reused and cannot authorize promotion"
+            if experiment == "baseline"
+            else f"{experiment} matched-seed diagnostic only; Juan 27 and "
+            "Juan 76 are reused and cannot authorize promotion"
         )
         (staging / "report.json").write_text(
             json.dumps(report, ensure_ascii=False, indent=2) + "\n",
@@ -233,19 +248,25 @@ def main() -> int:
     parser.add_argument(
         "--seed", type=int, choices=REPLICATION_SEEDS, required=True
     )
+    parser.add_argument(
+        "--experiment", choices=sorted(EXPERIMENTS), default="baseline"
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     report = run_seed_replication(
-        args.dataset, args.dataset_kind, args.seed, args.output
+        args.dataset, args.dataset_kind, args.seed, args.output, args.experiment
     )
-    print(json.dumps({
+    result = {
         "dataset_kind": args.dataset_kind,
         "seed": args.seed,
         "selected_epoch": report["config"]["selected_epoch"],
         "dev": report["dev_challenge"]["exact"],
         "evaluation": report["evaluation"]["exact"],
         "model_artifact": report["seed_replication_control"]["model_artifact"],
-    }, ensure_ascii=False, indent=2))
+    }
+    if args.experiment != "baseline":
+        result["experiment"] = args.experiment
+    print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 

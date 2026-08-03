@@ -18,6 +18,42 @@ class SeedReplicationTrainTest(unittest.TestCase):
             "round7_controlled_training_dataset",
         )
 
+    def test_rejects_unregistered_experiment_before_git_check(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with (
+                patch(
+                    "p6_seed_replication_train._git_commit_clean",
+                    side_effect=AssertionError("must not run"),
+                ),
+                self.assertRaises(ValueError),
+            ):
+                run_seed_replication(
+                    root / "dataset",
+                    "round7",
+                    20260727,
+                    root / "output",
+                    "unknown",
+                )
+
+    def test_lower_lr_requires_round7_before_git_check(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with (
+                patch(
+                    "p6_seed_replication_train._git_commit_clean",
+                    side_effect=AssertionError("must not run"),
+                ),
+                self.assertRaises(ValueError),
+            ):
+                run_seed_replication(
+                    root / "dataset",
+                    "round6",
+                    20260727,
+                    root / "output",
+                    "round8-lr2e-5",
+                )
+
     def test_refuses_existing_output_before_reading_inputs(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
