@@ -89,6 +89,8 @@ def select_ensemble(
     private_roles_path: Path,
     run_root: Path,
     output_dir: Path,
+    *,
+    source_dataset_dir: Path | None = None,
 ) -> dict:
     if output_dir.exists() or output_dir.is_symlink():
         raise FileExistsError(f"production selection output exists: {output_dir}")
@@ -97,13 +99,32 @@ def select_ensemble(
     manifest = _load_json(manifest_path)
     development = _load_jsonl(development_path)
     roles = _load_json(private_roles_path)
+    dataset_status = manifest.get("status")
+    round_number = {
+        "ml_production_round1_frozen_dataset": 1,
+        "ml_production_round2_cumulative_frozen_dataset": 2,
+    }.get(dataset_status)
+    source_dataset_dir = source_dataset_dir or dataset_dir
+    source_manifest_path = source_dataset_dir / "manifest.json"
+    source_manifest = _load_json(source_manifest_path)
+    source_development_path = source_dataset_dir / "development.jsonl"
     if (
         not isinstance(manifest, dict)
-        or manifest.get("status") != "ml_production_round1_frozen_dataset"
+        or round_number is None
         or manifest.get("outputs", {}).get("development_sha256")
         != _sha256(development_path)
-        or manifest.get("inputs", {}).get("private_roles_sha256")
+        or source_manifest.get("status")
+        != f"ml_production_round{round_number}_frozen_dataset"
+        or source_manifest.get("inputs", {}).get("private_roles_sha256")
         != _sha256(private_roles_path)
+        or source_manifest.get("outputs", {}).get("development_sha256")
+        != _sha256(source_development_path)
+        or _sha256(source_development_path) != _sha256(development_path)
+        or (
+            round_number == 2
+            and manifest.get("inputs", {}).get("round2_manifest_sha256")
+            != _sha256(source_manifest_path)
+        )
         or not isinstance(roles, dict)
         or roles.get("status") != "ml_production_private_task_roles"
         or len(development) != 40
@@ -128,7 +149,9 @@ def select_ensemble(
     seed_inputs = {}
     diagnostics = {}
     for seed in SEEDS:
-        run_dir = run_root / f"ml-production-round1-seed-{seed}-v1"
+        run_dir = run_root / (
+            f"ml-production-round{round_number}-seed-{seed}-v1"
+        )
         report_path = run_dir / "report.json"
         predictions_path = run_dir / "dev_predictions.json"
         report = _load_json(report_path)
@@ -245,7 +268,10 @@ def select_ensemble(
         )
     report = {
         "schema_version": 1,
-        "status": "ml_production_round1_development_selection",
+        "status": (
+            f"ml_production_round{round_number}_development_selection"
+        ),
+        "round": round_number,
         "formal_evaluation": False,
         "eligible_for_promotion": False,
         "development_comparison_consumed": True,
@@ -259,7 +285,11 @@ def select_ensemble(
             ),
         },
         "selected_operating_point": None,
-        "decision": "start_new_training_data_round",
+        "decision": (
+            "start_new_training_data_round"
+            if round_number == 1
+            else "blocked_requires_new_spec_revision"
+        ),
         "fresh_formal_evaluation_created": False,
         "claim_limit": (
             "Fresh development selection only. No operating point met the "
@@ -269,6 +299,7 @@ def select_ensemble(
             "dataset_manifest_sha256": _sha256(manifest_path),
             "development_sha256": _sha256(development_path),
             "private_roles_sha256": _sha256(private_roles_path),
+            "source_dataset_manifest_sha256": _sha256(source_manifest_path),
             "seeds": seed_inputs,
         },
         "git_commit": _git_commit_clean(),
@@ -304,11 +335,16 @@ def main() -> int:
     )
     parser.add_argument("--dataset", type=Path, required=True)
     parser.add_argument("--private-roles", type=Path, required=True)
+    parser.add_argument("--source-dataset", type=Path)
     parser.add_argument("--run-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     report = select_ensemble(
-        args.dataset, args.private_roles, args.run_root, args.output
+        args.dataset,
+        args.private_roles,
+        args.run_root,
+        args.output,
+        source_dataset_dir=args.source_dataset,
     )
     print(json.dumps({
         "operating_points": report["operating_points"],
