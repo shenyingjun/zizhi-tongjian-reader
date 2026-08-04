@@ -64,30 +64,39 @@ class ProductionReviewStore:
             or manifest.get("model_predictions_used") is not False
         ):
             raise ValueError("unsupported production review manifest")
-        if manifest.get("status") == REDUCED_STATUS and (
-            float(manifest.get("source_consensus_audit_rate", -1)) != 0.20
-            or float(manifest.get("consensus_audit_rate", -1))
-            not in {0.0, 0.05}
-            or not isinstance(
-                manifest.get("source_review_manifest_sha256"), str
-            )
-            or _sha256(_artifact_file(
+        if manifest.get("status") == REDUCED_STATUS:
+            source_path = _artifact_file(
                 self.review_dir,
                 manifest.get("source_review_manifest"),
                 "source review manifest",
-            ))
-            != manifest.get("source_review_manifest_sha256")
-            or not isinstance(
-                manifest.get("prior_human_state_inventory"), dict
             )
-            or int(manifest.get("expected_carried_human_decisions", -1))
-            != int(
-                manifest.get("counts", {}).get(
-                    "carried_human_decisions", -2
+            source_manifest = _read(source_path)
+            source_rate = float(
+                source_manifest.get("consensus_audit_rate", -1)
+            )
+            target_rate = float(manifest.get("consensus_audit_rate", -1))
+            if (
+                source_manifest.get("status") != FINAL_STATUS
+                or not 0 <= target_rate < source_rate <= 1
+                or float(manifest.get("source_consensus_audit_rate", -1))
+                != source_rate
+                or target_rate not in {0.0, 0.05}
+                or not isinstance(
+                manifest.get("source_review_manifest_sha256"), str
                 )
-            )
-        ):
-            raise ValueError("reduced consensus-audit binding differs")
+                or _sha256(source_path)
+                != manifest.get("source_review_manifest_sha256")
+                or not isinstance(
+                    manifest.get("prior_human_state_inventory"), dict
+                )
+                or int(manifest.get("expected_carried_human_decisions", -1))
+                != int(
+                    manifest.get("counts", {}).get(
+                        "carried_human_decisions", -2
+                    )
+                )
+            ):
+                raise ValueError("reduced consensus-audit binding differs")
         selected = manifest.get("selected")
         if not isinstance(selected, list) or len(selected) != EXPECTED_TASKS:
             raise ValueError(

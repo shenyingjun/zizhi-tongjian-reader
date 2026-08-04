@@ -19,7 +19,6 @@ from production_third_teacher import (
 
 
 REDUCED_STATUS = "ml_production_focused_review_with_reduced_audit"
-SOURCE_AUDIT_RATE = 0.20
 REDUCED_AUDIT_RATE = 0.05
 
 
@@ -79,17 +78,16 @@ def reduce_audit(
 ) -> dict:
     if output_dir.exists() or output_dir.is_symlink():
         raise FileExistsError(f"reduced-audit output exists: {output_dir}")
-    if not 0 <= audit_rate < SOURCE_AUDIT_RATE:
-        raise ValueError("reduced audit rate must be between 0 and 20%")
     manifest_path = review_root / "manifest.json"
     manifest = _read(manifest_path)
+    source_audit_rate = float(manifest.get("consensus_audit_rate", -1))
+    if not 0 <= audit_rate < source_audit_rate <= 1:
+        raise ValueError("reduced audit rate must be below the source rate")
     private_path = review_root / "private" / "selection.json"
     private = _read(private_path)
     if (
         manifest.get("schema_version") != 1
         or manifest.get("status") != OUTPUT_STATUS
-        or float(manifest.get("consensus_audit_rate", -1))
-        != SOURCE_AUDIT_RATE
         or len(manifest.get("selected", [])) != EXPECTED_TASKS
         or manifest.get("private_selection_sha256") != _sha256(private_path)
         or private.get("schema_version") != 1
@@ -172,7 +170,7 @@ def reduce_audit(
             "provenance/source-review-manifest.json"
         ),
         "source_review_manifest_sha256": _sha256(manifest_path),
-        "source_consensus_audit_rate": SOURCE_AUDIT_RATE,
+        "source_consensus_audit_rate": source_audit_rate,
         "consensus_audit_rate": audit_rate,
         "prior_human_state_inventory": {},
         "expected_carried_human_decisions": expected_carried_decisions,
@@ -230,7 +228,8 @@ def reduce_audit(
                     _set_annotation(annotations, candidate, False)
                     candidate["confidence"] = "low"
                     candidate["review_reason"] = (
-                        "Predeclared 5% audit of exact non-low A/B consensus."
+                        f"Predeclared {audit_rate:.0%} audit of exact "
+                        "non-low A/B consensus."
                     )
                 elif geometry not in audited:
                     initial[candidate_id] = "accept"
@@ -264,7 +263,7 @@ def reduce_audit(
         )
         new_private = {
             **private,
-            "source_consensus_audit_rate": SOURCE_AUDIT_RATE,
+            "source_consensus_audit_rate": source_audit_rate,
             "consensus_audit_rate": audit_rate,
             "prior_audited_consensus": private.get("audited_consensus", []),
             "audited_consensus": [
