@@ -14,6 +14,7 @@ from production_review import _read, _sha256, _validate_teacher
 
 STATUS_PRE_AUDIT = "ml_production_precision_reference_review_pre_audit"
 STATUS_READY = "ml_production_precision_reference_review"
+STATUS_AI_ASSISTED = "ml_production_precision_reference_review_ai_assisted"
 NEGATIVE_AUDIT_SEED = 20260809
 
 
@@ -410,6 +411,110 @@ def finalize(preaudit_root: Path, audit_root: Path, output_dir: Path) -> dict:
     return manifest
 
 
+def assist(
+    review_root: Path,
+    round1_dataset: Path,
+    round2_dataset: Path,
+    output_dir: Path,
+) -> dict:
+    if output_dir.exists() or output_dir.is_symlink():
+        raise FileExistsError(f"AI-assisted review output exists: {output_dir}")
+    source_manifest_path = review_root / "manifest.json"
+    source_manifest = _read(source_manifest_path)
+    private_path = review_root / "private" / "selection.json"
+    private = _read(private_path)
+    if (
+        source_manifest.get("status") != STATUS_READY
+        or source_manifest.get("private_selection_sha256") != _sha256(private_path)
+        or private.get("status") != "ml_production_precision_reference_private"
+    ):
+        raise ValueError("precision review source binding differs")
+    datasets = {
+        1: _dataset_rows(round1_dataset),
+        2: _dataset_rows(round2_dataset),
+    }
+    roles = {str(row["task_id"]): row for row in private["rows"]}
+    selected = [dict(row) for row in source_manifest["selected"]]
+    ai_decisions = 0
+    human_candidates = 0
+
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix=f".{output_dir.name}-", dir=output_dir.parent
+    ) as temporary:
+        staging = Path(temporary)
+        for name in ("tasks", "review", "private"):
+            shutil.copytree(review_root / name, staging / name)
+        for selection in selected:
+            task_id = str(selection["task_id"])
+            role = roles[task_id]
+            key = (int(role["juan"]), int(role["jie_index"]))
+            reference = _label_geometries(datasets[int(role["round"])][key])
+            review_path = staging / str(selection["review"])
+            review_path.chmod(stat.S_IWRITE)
+            review = _read(review_path)
+            initial_decisions = {}
+            annotations = []
+            for candidate in review["candidates"]:
+                geometry = (
+                    int(candidate["para_id"]),
+                    int(candidate["start"]),
+                    int(candidate["end"]),
+                )
+                is_new_recall = (
+                    candidate.get("channels") == ["copilot_independent_c"]
+                    and str(candidate.get("review_reason", "")).startswith(
+                        "Independent held-out recall audit"
+                    )
+                )
+                if is_new_recall:
+                    human_candidates += 1
+                    continue
+                decision = "accept" if geometry in reference else "reject"
+                initial_decisions[str(candidate["id"])] = decision
+                candidate["confidence"] = "high"
+                candidate["review_reason"] = (
+                    "AI-assisted carry-forward of the frozen teacher/reference decision."
+                )
+                ai_decisions += 1
+                if decision == "accept":
+                    annotations.append({
+                        "para_id": geometry[0],
+                        "start": geometry[1],
+                        "end": geometry[2],
+                        "surface": candidate["surface"],
+                    })
+            review["human_review_scope"] = "new_or_genuinely_unresolved_candidates_only"
+            review["initial_annotations"] = sorted(
+                annotations,
+                key=lambda value: (
+                    int(value["para_id"]),
+                    int(value["start"]),
+                    int(value["end"]),
+                ),
+            )
+            review["initial_decisions"] = initial_decisions
+            _write(review_path, review)
+            selection["review_sha256"] = _sha256(review_path)
+
+        manifest = {
+            **source_manifest,
+            "status": STATUS_AI_ASSISTED,
+            "formal_grade": False,
+            "eligible_for_production_precision_claim": False,
+            "source_review_manifest_sha256": _sha256(source_manifest_path),
+            "selected": selected,
+            "counts": {
+                **source_manifest["counts"],
+                "ai_assisted_decisions": ai_decisions,
+                "human_review_candidates": human_candidates,
+            },
+        }
+        _write(staging / "manifest.json", manifest)
+        _freeze(staging, output_dir)
+    return manifest
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -424,6 +529,11 @@ def main() -> int:
     finalize_parser.add_argument("--preaudit", type=Path, required=True)
     finalize_parser.add_argument("--audit", type=Path, required=True)
     finalize_parser.add_argument("--output", type=Path, required=True)
+    assist_parser = subparsers.add_parser("assist")
+    assist_parser.add_argument("--review", type=Path, required=True)
+    assist_parser.add_argument("--round1-dataset", type=Path, required=True)
+    assist_parser.add_argument("--round2-dataset", type=Path, required=True)
+    assist_parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "prepare":
         manifest = prepare(
@@ -434,8 +544,15 @@ def main() -> int:
             args.round2_dataset,
             args.output,
         )
-    else:
+    elif args.command == "finalize":
         manifest = finalize(args.preaudit, args.audit, args.output)
+    else:
+        manifest = assist(
+            args.review,
+            args.round1_dataset,
+            args.round2_dataset,
+            args.output,
+        )
     print(json.dumps(manifest["counts"], indent=2))
     return 0
 

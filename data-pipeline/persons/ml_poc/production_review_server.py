@@ -19,6 +19,8 @@ EXPECTED_TASKS = 180
 FINAL_STATUS = "ml_production_focused_review_with_third_teacher"
 REDUCED_STATUS = "ml_production_focused_review_with_reduced_audit"
 PRECISION_STATUS = "ml_production_precision_reference_review"
+PRECISION_AI_STATUS = "ml_production_precision_reference_review_ai_assisted"
+PRECISION_STATUSES = {PRECISION_STATUS, PRECISION_AI_STATUS}
 
 
 def _read(path: Path) -> dict:
@@ -62,7 +64,7 @@ class ProductionReviewStore:
         if (
             manifest.get("schema_version") != 1
             or manifest.get("status")
-            not in {FINAL_STATUS, REDUCED_STATUS, PRECISION_STATUS}
+            not in {FINAL_STATUS, REDUCED_STATUS, *PRECISION_STATUSES}
             or manifest.get("candidate_model_blind") is not True
             or manifest.get("model_predictions_used") is not False
         ):
@@ -103,7 +105,7 @@ class ProductionReviewStore:
         selected = manifest.get("selected")
         expected_tasks = (
             int(manifest.get("expected_tasks", -1))
-            if manifest.get("status") == PRECISION_STATUS
+            if manifest.get("status") in PRECISION_STATUSES
             else EXPECTED_TASKS
         )
         if (
@@ -181,7 +183,7 @@ class ProductionReviewStore:
             )
         ):
             raise ValueError("negative-jie audit binding differs")
-        if manifest.get("status") != PRECISION_STATUS and (
+        if manifest.get("status") not in PRECISION_STATUSES and (
             not isinstance(third_inventory, dict)
             or not third_inventory
             or not isinstance(
@@ -210,7 +212,7 @@ class ProductionReviewStore:
             )
         ):
             raise ValueError("third-teacher binding differs")
-        if manifest.get("status") == PRECISION_STATUS and (
+        if manifest.get("status") in PRECISION_STATUSES and (
             third_inventory != {} or bound_third_reviews
         ):
             raise ValueError("precision review must not carry third-teacher decisions")
@@ -266,7 +268,7 @@ class ProductionReviewStore:
             or review.get("phase")
             != (
                 "precision-reference-review"
-                if self.manifest_status == PRECISION_STATUS
+                if self.manifest_status in PRECISION_STATUSES
                 else "assisted"
             )
             or review.get("candidate_model_blind") is not True

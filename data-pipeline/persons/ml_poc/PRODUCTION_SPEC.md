@@ -272,6 +272,12 @@ focused review of additions, sampled with seed `20260809`, with the expansion ru
 from section 4.2. The review
 tasks cannot show model predictions, controller scores, split role, identities,
 translation, notes, rules, or v1. Freeze and hash-bind the upgraded references.
+
+An explicitly labeled **AI-assisted diagnostic route** may instead carry forward the
+already frozen high-confidence teacher/reference decisions and send only new recall
+findings or genuinely unresolved candidates to a human. This route reduces duplicate
+label review, but it is not a formal-grade reference and cannot support the production
+precision claim, promotion gate, or formal-evaluation authorization in this spec.
 Training-grade labels are insufficient for a `0.99` selection claim.
 
 Train the three production seeds on `fit` only. Use exactly epoch 5; neither
