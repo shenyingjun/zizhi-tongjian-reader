@@ -37,6 +37,7 @@ FORMAL_RESERVE = 160
 REPLACEMENT_ROUND_RESERVE = sum(TRAIN_COUNTS.values()) + sum(DEV_COUNTS.values())
 FORMAL_FOREIGN_RESERVE = 20
 CHALLENGE_COHORT = 200
+REPLACEMENT_SEED = 20260806
 
 ROLE_TERMS = (
     "太后", "太子", "皇后", "皇帝", "丞相", "大将军", "皇太后",
@@ -161,6 +162,7 @@ def select_program_rows(
     seed: int,
     train_counts: dict[str, int] = TRAIN_COUNTS,
     dev_counts: dict[str, int] = DEV_COUNTS,
+    replacement_round: bool = False,
 ) -> list[dict]:
     available = {
         (int(row["juan"]), int(row["jie_index"])): row for row in frame
@@ -246,7 +248,9 @@ def select_program_rows(
     expected = sum(train_counts.values()) + sum(dev_counts.values())
     if len(selected) != expected:
         raise AssertionError("selected task count differs")
-    reserve = FORMAL_RESERVE + REPLACEMENT_ROUND_RESERVE
+    reserve = FORMAL_RESERVE + (
+        0 if replacement_round else REPLACEMENT_ROUND_RESERVE
+    )
     if len(available) < reserve:
         raise ValueError(
             f"program leaves {len(available)} eligible jies; "
@@ -297,13 +301,27 @@ def prepare_program(
     *,
     source_dir: Path = TEXT,
     seed: int,
+    replacement_round: bool = False,
 ) -> dict:
     if output_dir.exists() or output_dir.is_symlink():
         raise FileExistsError(f"production program output exists: {output_dir}")
     git_commit = _git_commit_clean()
     excluded, exclusions = load_exact_exclusions(exclusion_manifest_path)
+    if replacement_round and (
+        exclusions.get("program_round") != 2
+        or exclusions.get("replacement_round_authorized") is not True
+        or not any(
+            "start_new_training_data_round" in row.get("statuses", [])
+            for row in exclusions.get("inputs", [])
+        )
+    ):
+        raise ValueError("replacement-round exclusion authorization differs")
     frame, source_paths = eligible_jies(source_dir, excluded)
-    selected = select_program_rows(frame, seed=seed)
+    if replacement_round and seed != REPLACEMENT_SEED:
+        raise ValueError("replacement round must use the predeclared seed")
+    selected = select_program_rows(
+        frame, seed=seed, replacement_round=replacement_round
+    )
     manifest = {
         "schema_version": 1,
         "status": "ml_production_round_tasks_before_labeling",
@@ -314,6 +332,7 @@ def prepare_program(
             str(seed).encode("ascii")
         ).hexdigest(),
         "context_mode": "target_only",
+        "replacement_round": replacement_round,
         "candidate_model_blind": True,
         "model_predictions_generated": False,
         "rules_loaded": False,
@@ -329,6 +348,9 @@ def prepare_program(
             "formal_reserve": FORMAL_RESERVE,
             "formal_foreign_reserve": FORMAL_FOREIGN_RESERVE,
             "replacement_round_reserve": REPLACEMENT_ROUND_RESERVE,
+            "remaining_replacement_round_reserve": (
+                0 if replacement_round else REPLACEMENT_ROUND_RESERVE
+            ),
         },
         "labeling_protocol": {
             "pass_a": "independent_recall_first",
@@ -419,12 +441,18 @@ def main() -> int:
     parser.add_argument("--exclusions", type=Path, required=True)
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--source-dir", type=Path, default=TEXT)
+    parser.add_argument(
+        "--replacement-round",
+        action="store_true",
+        help=f"consume the reserved replacement round with seed {REPLACEMENT_SEED}",
+    )
     args = parser.parse_args()
     manifest = prepare_program(
         args.output,
         args.exclusions,
         source_dir=args.source_dir,
         seed=args.seed,
+        replacement_round=args.replacement_round,
     )
     print(json.dumps({
         "selected": manifest["split_counts"],

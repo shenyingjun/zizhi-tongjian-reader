@@ -116,6 +116,10 @@ python production_select.py `
   --output <new-selection-output-directory>
 ```
 
+If that gate authorizes the one reserved replacement round, first freeze an
+expanded exclusion ledger with `production_replacement_exclusions.py`, then run
+`production_program.py --replacement-round --seed 20260806`.
+
 Run focused tests:
 
 ```powershell
