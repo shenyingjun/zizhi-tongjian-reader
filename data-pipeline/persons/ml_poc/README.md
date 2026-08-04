@@ -5,6 +5,26 @@ and its Chinese counterpart `SPEC.zh.md`.
 It is isolated from the production two-stage pipeline until the P0/P1 gates are
 met.
 
+The completed POC did not authorize production adoption. The prospective training,
+evaluation, rollout, and rollback contract is in `PRODUCTION_SPEC.md`.
+
+After assembling a complete exact-jie exclusion inventory from the POC artifacts,
+freeze the first candidate-blind production training/development round:
+
+```powershell
+python production_exclusions.py `
+  --artifact <POC-artifact-directory> `
+  --output <exact-jie-exclusions.json>
+
+python production_program.py `
+  --exclusions <exact-jie-exclusions.json> `
+  --seed <prospectively-recorded-seed> `
+  --output <new-round-directory>
+```
+
+The command requires a clean commit, never overwrites a round, and emits tasks that
+contain no model, rules, v1, identity, translation, note, or challenge-role data.
+
 Run focused tests:
 
 ```powershell
