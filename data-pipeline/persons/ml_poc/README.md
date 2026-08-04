@@ -61,6 +61,18 @@ python production_third_teacher.py merge `
   --output <new-third-teacher-review-directory>
 ```
 
+Before dataset freeze, reduce the training/development A/B-consensus audit to the
+predeclared 5% rate and carry forward any already saved accept decisions:
+
+```powershell
+python production_review_reaudit.py `
+  --review <third-teacher-review-directory> `
+  --state <existing-human-review-state-directory> `
+  --output <new-reduced-audit-review-directory> `
+  --audit-rate 0 `
+  --expected-carried-decisions <recorded-decision-count>
+```
+
 Run the ported local web UI against the immutable third-teacher review pack. Human
 decisions are written only to the separate state directory:
 

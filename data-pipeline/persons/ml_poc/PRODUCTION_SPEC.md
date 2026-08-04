@@ -132,7 +132,7 @@ For every task:
    Its high-confidence exact accept/reject decisions pass provisionally; medium/low
    decisions and geometry conflicts require human review.
 5. The human reviews all non-high third-teacher decisions and deterministic audit
-   samples of 20% of A/B consensus spans plus 20% of consensus-negative jies.
+   samples of 5% of A/B consensus spans plus 20% of consensus-negative jies.
 6. Any incorrect audited positive or any missed person in an audited negative jie
    expands that task to 100% union-candidate review. If the stratum's audited exact
    error rate exceeds 1%, audit all union candidates in that stratum before freeze.

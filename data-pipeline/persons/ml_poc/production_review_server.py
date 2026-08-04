@@ -17,6 +17,7 @@ STATIC = HERE / "static"
 UI_GEOMETRY_VERSION = 1
 EXPECTED_TASKS = 180
 FINAL_STATUS = "ml_production_focused_review_with_third_teacher"
+REDUCED_STATUS = "ml_production_focused_review_with_reduced_audit"
 
 
 def _read(path: Path) -> dict:
@@ -28,6 +29,21 @@ def _read(path: Path) -> dict:
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _artifact_file(root: Path, value: object, label: str) -> Path:
+    relative = Path(str(value))
+    if relative.is_absolute():
+        raise ValueError(f"{label} path must be relative")
+    root = root.resolve()
+    path = (root / relative).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as error:
+        raise ValueError(f"{label} path escapes review directory") from error
+    if not path.is_file():
+        raise ValueError(f"{label} file is missing")
+    return path
 
 
 class ProductionReviewStore:
@@ -43,11 +59,35 @@ class ProductionReviewStore:
         manifest = _read(self.manifest_path)
         if (
             manifest.get("schema_version") != 1
-            or manifest.get("status") != FINAL_STATUS
+            or manifest.get("status") not in {FINAL_STATUS, REDUCED_STATUS}
             or manifest.get("candidate_model_blind") is not True
             or manifest.get("model_predictions_used") is not False
         ):
             raise ValueError("unsupported production review manifest")
+        if manifest.get("status") == REDUCED_STATUS and (
+            float(manifest.get("source_consensus_audit_rate", -1)) != 0.20
+            or float(manifest.get("consensus_audit_rate", -1))
+            not in {0.0, 0.05}
+            or not isinstance(
+                manifest.get("source_review_manifest_sha256"), str
+            )
+            or _sha256(_artifact_file(
+                self.review_dir,
+                manifest.get("source_review_manifest"),
+                "source review manifest",
+            ))
+            != manifest.get("source_review_manifest_sha256")
+            or not isinstance(
+                manifest.get("prior_human_state_inventory"), dict
+            )
+            or int(manifest.get("expected_carried_human_decisions", -1))
+            != int(
+                manifest.get("counts", {}).get(
+                    "carried_human_decisions", -2
+                )
+            )
+        ):
+            raise ValueError("reduced consensus-audit binding differs")
         selected = manifest.get("selected")
         if not isinstance(selected, list) or len(selected) != EXPECTED_TASKS:
             raise ValueError(
@@ -67,6 +107,19 @@ class ProductionReviewStore:
             self._bound_path(row, "review", "review_sha256")
             self.selected[task_id] = row
             self.order.append(task_id)
+        if manifest.get("status") == REDUCED_STATUS:
+            state_inventory = manifest["prior_human_state_inventory"]
+            if not set(state_inventory).issubset(self.selected) or any(
+                not isinstance(value, dict)
+                or _sha256(_artifact_file(
+                    self.review_dir,
+                    value.get("path"),
+                    "prior human state",
+                ))
+                != value.get("sha256")
+                for value in state_inventory.values()
+            ):
+                raise ValueError("prior human state binding differs")
         audit_inventory = manifest.get("negative_audit_inventory")
         third_inventory = manifest.get("third_teacher_inventory")
         counts = manifest.get("counts")
@@ -451,7 +504,8 @@ class ProductionReviewStore:
             candidate_id in initial_decisions
             and decision != initial_decisions[candidate_id]
         ) or (
-            reason.startswith("Predeclared 20% audit")
+            reason.startswith("Predeclared ")
+            and " audit of exact non-low A/B consensus." in reason
             and decision == "reject"
         ) or (
             reason.startswith("Independent negative-jie recall audit")

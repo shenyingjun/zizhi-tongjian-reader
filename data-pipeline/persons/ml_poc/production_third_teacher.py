@@ -79,7 +79,10 @@ def _needs_third_teacher(candidate: dict, initial: dict) -> bool:
     reason = str(candidate.get("review_reason", ""))
     return (
         candidate["id"] not in initial
-        and not reason.startswith("Predeclared 20% audit")
+        and not (
+            reason.startswith("Predeclared ")
+            and " audit of exact non-low A/B consensus." in reason
+        )
         and not reason.startswith("Independent negative-jie recall audit")
     )
 

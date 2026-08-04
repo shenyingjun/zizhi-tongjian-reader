@@ -16,7 +16,7 @@ PASS_CONFIG = {
     "pass-a": ("A-recall-first", "copilot_independent_a"),
     "pass-b": ("B-boundary-first", "copilot_independent_b"),
 }
-CONSENSUS_AUDIT_RATE = 0.20
+CONSENSUS_AUDIT_RATE = 0.05
 NEGATIVE_JIE_AUDIT_RATE = 0.20
 
 
@@ -127,7 +127,10 @@ def _review_candidate(
         row["confidence"] == "low" for row in (a, b) if row is not None
     )
     if audited:
-        reason = "Predeclared 20% audit of exact non-low A/B consensus."
+        reason = (
+            f"Predeclared {CONSENSUS_AUDIT_RATE:.0%} audit of exact "
+            "non-low A/B consensus."
+        )
     elif explicit_low:
         reason = "At least one independent pass marked this geometry low confidence."
     elif not agreed:

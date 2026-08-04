@@ -124,7 +124,7 @@ class ProductionReviewTest(unittest.TestCase):
                 2, manifest["counts"]["teacher_disagreement_review"]
             )
             self.assertEqual(
-                2, manifest["counts"]["consensus_audit_review"]
+                1, manifest["counts"]["consensus_audit_review"]
             )
             self.assertEqual(
                 34, manifest["counts"]["negative_jie_third_pass"]
