@@ -1,7 +1,7 @@
 # Agent-1 ML production program
 
-Status: draft implementation contract. This program authorizes new engineering and
-data collection, but it does not authorize publishing the existing Round 7 model.
+Status: revision-2 implementation contract. This program authorizes new engineering
+and data collection, but no ML candidate is authorized for production.
 
 ## 1. Decision and objective
 
@@ -21,6 +21,14 @@ Production work therefore starts a new, prospectively declared program. It must:
 
 The canonical Translation-assisted rules remain production until every adoption and
 release gate in this document passes.
+
+Round 1 and its one reserved replacement round have completed. Their best exact
+3-of-3 development operating points were respectively `0.939516` precision /
+`0.930140` recall and `0.965596` precision / `0.972286` recall. Neither reached
+the frozen `0.99` precision gate, so no formal evaluation was created. Both
+development references are consumed and may now be used only for diagnostic error
+classification, never for fitting, calibration, threshold selection, checkpoint
+selection, or another go/no-go decision.
 
 ## 2. Non-negotiable invariants
 
@@ -204,6 +212,101 @@ evaluation. Perform one new training-data round under section 4; do not tune on 
 formal or sealed set. Architecture changes, probability calibration, note-aware
 runtime inference, self-training, and identity features require a new spec revision.
 
+### 5.1 Revision-2 precision recovery after the replacement round
+
+The replacement round is exhausted. No further training/development sample may be
+drawn from the 160-jie formal reserve. A complete audit of the replacement 3-of-3
+errors found 15 false positives and 12 false negatives. Ten false positives came
+from the boundary/anaphora stratum; recurrent structural families were
+single-character partials, standalone court-role references, generic offices or
+relations, and one exact boundary replacement. These are policy families, not a
+surface blacklist. Development surfaces and identities must not become runtime
+features.
+
+Revision 2 authorizes one precision controller consisting only of:
+
+- exact-geometry vote threshold `2` or `3`;
+- a minimum span-confidence threshold from the fixed grid
+  `{0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.92, 0.94,
+  0.96, 0.97, 0.98, 0.99}`.
+
+For one seed, a predicted span's confidence is the geometric mean of the
+**pre-constraint, per-position softmax** probabilities of the final emitted labels:
+the
+single character of a one-character span uses `B-PER`; longer spans use `B-PER`
+then `I-PER`. A decoder-forced label uses that label's pre-constraint probability,
+not the original argmax probability. Compute the geometric mean in log space. Equal
+logits use the frozen label order.
+For vote threshold `k`, ensemble confidence is the `k`th-highest seed confidence,
+with a non-supporting seed assigned zero. This is the weakest required supporter
+and has the same definition for both vote thresholds.
+
+The confidence controller is an explicitly authorized decoder-adjacent global
+abstention mechanism. It cannot contain a learned calibrator, minimum-length filter,
+surface feature, title lexicon, identity, translation, rule output, or development
+prediction. In particular, valid anchored single-character anaphors remain eligible.
+
+For revision 2, this section supersedes section 5's fresh-development selection.
+Partition the cumulative 280 former training jies once into `fit`, `calibration`,
+and `confirmation` groups with target proportions `5:1:1`:
+
+1. Group by juan; a juan may appear in only one partition. Use the sealed private
+   role manifests only to balance split membership, never as model input.
+2. For every juan, compute the vector `(examples, reference spans,
+   uniform, role/appellation, foreign-title, boundary/anaphora)`. Set each
+   partition's target vector to its `5:1:1` share of the global vector.
+3. Order juans by descending examples, descending spans, descending maximum
+   stratum count, then ascending SHA-256 of `20260807:<juan>`.
+4. Place each juan in the partition that minimizes the sum, over every partition
+   and vector component, of
+   `((current_after_placement - target) / max(1, target)) ** 2`.
+   Ties use `fit`, then `calibration`, then `confirmation`.
+5. Freeze the partition before model training. Calibration and confirmation must
+   each contain every stratum, and their example and span totals must be within
+   20% of target. Otherwise stop without manually changing the partition.
+
+Before model training, upgrade calibration and confirmation to formal-grade
+references. A human reviews 100% of their A/B positive union; 25% of
+consensus-negative jies receives an independent candidate-blind recall pass and
+focused review of additions, with the expansion rules from section 4.2. The review
+tasks cannot show model predictions, controller scores, split role, identities,
+translation, notes, rules, or v1. Freeze and hash-bind the upgraded references.
+Training-grade labels are insufficient for a `0.99` selection claim.
+
+Train the three production seeds on `fit` only. Use exactly epoch 5; neither
+calibration nor confirmation may select a checkpoint. The exact three resulting
+model artifacts are the only deployable revision-2 models and must not be retrained
+after controller selection.
+
+Evaluate all 30 predeclared vote/confidence operating points on calibration. An
+operating point is calibration-eligible only if it has at least 300 predictions,
+precision at least `0.99`, recall at least `0.95`, and a one-sided 95% span-level
+Wilson precision lower bound at least `0.98`. Choose highest recall, then highest
+precision, then higher confidence threshold, then higher vote threshold. Record
+the complete 30-point table. If none is eligible, stop without reading
+confirmation.
+
+Evaluate the one selected controller exactly once on confirmation. It passes only
+if confirmation contains at least 40 jies and 300 predictions, precision is at
+least `0.99`, recall is at least `0.95`, and the boundary-safe precision lower
+bound below is at least `0.98`. Confirmation cannot change the controller.
+
+The boundary-safe one-sided 95% precision lower bound is the minimum of the
+span-level Wilson bound, every leave-one-jie-out span-level Wilson bound, and the
+jie-level BCa bootstrap lower bound using 50,000 replicates and seed `20260808`.
+If BCa is undefined or non-finite at the zero-error boundary, omit BCa and use the
+minimum Wilson bounds. An evidence-size failure is reported as an underpowered
+partition, not a model-quality failure. Any powered quality failure terminates
+revision 2 with canonical rules retained; section 5's additional-data fallback no
+longer applies.
+
+The partition, three model artifacts, pre-constraint character probabilities,
+complete controller table, confirmation result, and selected operating point are
+append-never and hash-bound. Round 1 and Round 2 development remain diagnostic
+history only and cannot alter this selection. Formal tasks and candidate-model-blind
+references must be frozen before the exact confirmed models run on them. The formal
+evaluation remains the first and only promotion decision for revision 2.
+
 The selected bundle contains all three model artifacts, tokenizer files, decoder
 configuration, vote threshold, hashes, environment versions, and selection report.
 Inference must reject a missing or mismatched artifact.
@@ -233,23 +336,24 @@ retrain the evaluated candidate.
 ### 6.1 Power and adoption gates
 
 Before sampling, the planner computes and records the minimum random-jie count needed
-for 80% power, clustered at the jie level. Its anticipated precision is the lower of
-`0.985` and the development one-sided 95% cluster-bootstrap precision lower bound;
-it must not use the selected operating point's optimistic point estimate. The power
-simulation resamples complete development jies, uses 50,000 replicates, and records
-its code hash and assumptions. At least 1,000 predicted random-set spans and 100
-random jies are required regardless of the estimate. If inference produces fewer
-than 1,000 predictions, the evaluation is underpowered and fails without adding
-post-hoc tasks.
+for 80% power, clustered at the jie level. For revision 2, anticipated precision is
+the lower of `0.985` and the confirmation boundary-safe precision lower bound;
+consumed development is not an input. The power simulation resamples complete
+confirmation jies, uses 50,000 replicates, and records its code hash and assumptions.
+At least 1,000 predicted random-set spans and 100 random jies are required regardless
+of the estimate. If the fixed 160-jie reserve cannot fund the required random count
+plus all 60 challenge jies, formal evaluation is not created; no consumed inventory
+may supply extra tasks. If inference produces fewer than 1,000 predictions, the
+evaluation is underpowered and fails without adding post-hoc tasks.
 
 If that conservative anticipated precision is at or below `0.98`, the candidate
 cannot be powered for the adoption alternative and formal evaluation is not created.
 
 Adoption requires all of:
 
-- random-set exact precision one-sided 95% BCa jie-bootstrap lower bound, using
-  50,000 replicates, at least `0.98`; also report a span-level Wilson sensitivity
-  interval without using it for the decision;
+- random-set exact precision boundary-safe one-sided 95% lower bound, using the
+  confirmation definition with 50,000 BCa replicates and a span-level/leave-one-jie
+  Wilson fallback, at least `0.98`;
 - lower bound of the paired 90% jie-bootstrap exact-F1 difference from canonical
   Translation-assisted rules greater than zero;
 - exact recall at least `0.95`;
