@@ -106,6 +106,16 @@ python production_train.py `
   --output <new-seed-output-directory>
 ```
 
+After all three seeds are frozen, consume the one allowed development comparison:
+
+```powershell
+python production_select.py `
+  --dataset <frozen-dataset-directory> `
+  --private-roles <round-directory>\private\selection.json `
+  --run-root <seed-output-parent-directory> `
+  --output <new-selection-output-directory>
+```
+
 Run focused tests:
 
 ```powershell
