@@ -125,11 +125,15 @@ def _compare(before: list[dict], after: list[dict]) -> tuple[dict, list[dict]]:
     totals = Counter()
     changes = []
     for identity in sorted(before_by_id):
-        reference = _spans(before_by_id[identity]["reference_spans"])
-        if reference != _spans(after_by_id[identity]["reference_spans"]):
+        reference = set(_spans(before_by_id[identity]["reference_spans"]))
+        if reference != set(_spans(after_by_id[identity]["reference_spans"])):
             raise ValueError(f"recipe reference differs: {identity}")
-        before_spans = _spans(before_by_id[identity]["prediction_spans"])
-        after_spans = _spans(after_by_id[identity]["prediction_spans"])
+        before_spans = set(_spans(
+            before_by_id[identity]["prediction_spans"]
+        ))
+        after_spans = set(_spans(
+            after_by_id[identity]["prediction_spans"]
+        ))
         additions = sorted(after_spans - before_spans)
         removals = sorted(before_spans - after_spans)
         delta = geometry_delta(list(before_spans), list(after_spans))
