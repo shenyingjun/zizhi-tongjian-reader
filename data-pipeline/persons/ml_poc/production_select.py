@@ -30,6 +30,13 @@ def _load_jsonl(path: Path) -> list[dict]:
 
 
 def _geometry(span: dict) -> tuple[int, int, int, str]:
+    if not isinstance(span, dict):
+        return (
+            int(span.para_id),
+            int(span.start),
+            int(span.end),
+            str(span.surface),
+        )
     return (
         int(span["para_id"]),
         int(span["start"]),
