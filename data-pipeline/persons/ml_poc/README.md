@@ -86,6 +86,17 @@ Open `http://127.0.0.1:18766`. Rejecting an audited consensus candidate, accepti
 a negative-jie recall addition, or overriding any automatic third-teacher decision
 expands that task to full union-candidate review before it can be locked.
 
+After every required task is locked, freeze the private train/development split and
+BIO labels:
+
+```powershell
+python production_finalize.py `
+  --review <final-review-directory> `
+  --state <sealed-human-review-state-directory> `
+  --round <original-private-role-round-directory> `
+  --output <new-frozen-dataset-directory>
+```
+
 Run focused tests:
 
 ```powershell
