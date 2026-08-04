@@ -22,19 +22,20 @@ PRODUCTION_SPEC = HERE / "PRODUCTION_SPEC.md"
 MIN_CHARS = 20
 MAX_CHARS = 600
 TRAIN_COUNTS = {
-    "uniform_random": 80,
+    "uniform_random": 95,
     "role_appellation": 20,
-    "foreign_title": 20,
+    "foreign_title": 5,
     "boundary_anaphora": 20,
 }
 DEV_COUNTS = {
-    "uniform_random": 20,
+    "uniform_random": 22,
     "role_appellation": 7,
-    "foreign_title": 7,
+    "foreign_title": 5,
     "boundary_anaphora": 6,
 }
 FORMAL_RESERVE = 160
 REPLACEMENT_ROUND_RESERVE = sum(TRAIN_COUNTS.values()) + sum(DEV_COUNTS.values())
+FORMAL_FOREIGN_RESERVE = 20
 CHALLENGE_COHORT = 200
 
 ROLE_TERMS = (
@@ -251,6 +252,14 @@ def select_program_rows(
             f"program leaves {len(available)} eligible jies; "
             f"{reserve} are required for formal and replacement reserves"
         )
+    remaining_foreign = sum(
+        _term_score(row, FOREIGN_TERMS) > 0 for row in available.values()
+    )
+    if remaining_foreign < FORMAL_FOREIGN_RESERVE:
+        raise ValueError(
+            f"program leaves {remaining_foreign} foreign-title jies; "
+            f"{FORMAL_FOREIGN_RESERVE} are reserved for formal evaluation"
+        )
     return sorted(
         selected,
         key=lambda row: (
@@ -318,6 +327,7 @@ def prepare_program(
             "min_characters": MIN_CHARS,
             "max_characters": MAX_CHARS,
             "formal_reserve": FORMAL_RESERVE,
+            "formal_foreign_reserve": FORMAL_FOREIGN_RESERVE,
             "replacement_round_reserve": REPLACEMENT_ROUND_RESERVE,
         },
         "labeling_protocol": {

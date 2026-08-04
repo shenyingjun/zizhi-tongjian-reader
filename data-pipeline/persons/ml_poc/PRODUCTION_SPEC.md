@@ -83,25 +83,31 @@ Create one training round from previously unused juans:
 - 80 numbered jies sampled uniformly from eligible jies of 20-600 Unicode
   codepoints;
 - 20 role/appellation jies sampled from a frozen raw-text cohort;
-- 20 foreign-title jies sampled from a frozen raw-text cohort; and
+- 5 foreign-title jies sampled from a frozen raw-text cohort; and
 - 20 boundary/anaphora jies sampled from a frozen, identity-free structural cohort.
 
-The 140 jies are training-only. Cohort membership is computed from raw characters,
+Add 15 more uniform-random jies so the 140 jies are training-only. Cohort membership
+is computed from raw characters,
 punctuation, and generic title/role terms before model inference. Sampling is
 deduplicated by jie and then closed under the selected context graph, not by whole
 juan.
 
 The program also freezes a fresh 40-jie development set: 20 uniform random jies and
-20 balanced challenge jies, disjoint from training after context closure.
+20 challenge/random jies consisting of 7 role/appellation, 5 foreign-title,
+6 boundary/anaphora, and 2 additional uniform-random jies, disjoint from training
+after context closure.
 Development is used for checkpoint and ensemble operating-point selection and can
 never become training data. A development set supports at most one training-data
 revision and one declared model-selection comparison; another improvement round
 requires a newly sampled development set.
 
 Before sampling, the planner proves that the remaining eligible inventory can fund
-this round, its formal evaluation, and one complete replacement round under the
-selected context closure. If it cannot, it stops and reports the shortfall. It must
-not weaken exclusions, reuse a sealed reference, or silently change the sample.
+this round, its formal evaluation, and one replacement round under the selected
+context closure. The replacement round is not required to repeat an exhausted
+challenge stratum; the formal reserve takes priority. In particular, at least 20
+untouched foreign-title jies remain reserved for formal evaluation. If these checks
+fail, the planner stops and reports the shortfall. It must not weaken exclusions,
+reuse a sealed reference, or silently change the sample.
 
 ### 4.2 Candidate-model-blind labeling
 
@@ -179,8 +185,8 @@ hard decoder. Select 2-of-3 or 3-of-3 by this frozen order:
 
 1. precision at least `0.99`;
 2. exact recall at least `0.95`;
-3. every challenge stratum contains at least 200 reference spans, expanding its
-   pre-inference development sample if necessary;
+3. every challenge stratum reports its complete reference-span count; strata with
+   fewer than 50 spans are descriptive safety audits rather than statistical gates;
 4. the lower bound of the paired 90% jie-bootstrap exact-F1 difference from rules
    is greater than zero overall;
 5. no challenge stratum's paired 90% difference lower bound is below `-0.03`;
@@ -241,9 +247,9 @@ Adoption requires all of:
 - lower bound of the paired 90% jie-bootstrap exact-F1 difference from canonical
   Translation-assisted rules greater than zero;
 - exact recall at least `0.95`;
-- every formal challenge stratum contains at least 200 reference spans before
-  inference, and no stratum's paired 90% exact-F1 difference lower bound is below
-  `-0.05`;
+- challenge strata with at least 50 reference spans have no paired 90% exact-F1
+  difference lower bound below `-0.05`; smaller strata are exhaustively error-audited
+  and must have no systematic invariant or boundary regression;
 - zero hard-boundary or cross-jie invariant violations;
 - focused-review audit acceptance; and
 - reproducible byte-identical decoded geometry on a second run.

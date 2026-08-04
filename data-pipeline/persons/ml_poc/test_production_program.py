@@ -107,6 +107,10 @@ class ProductionProgramTest(unittest.TestCase):
                     + manifest["sampling_frame"]["replacement_round_reserve"]
                 ),
             )
+            self.assertGreaterEqual(
+                manifest["sampling_frame"]["formal_foreign_reserve"],
+                20,
+            )
             for task_row in manifest["tasks"]:
                 path = output / task_row["task"]
                 task = json.loads(path.read_text(encoding="utf-8"))

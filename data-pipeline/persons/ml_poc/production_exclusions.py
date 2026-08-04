@@ -19,7 +19,7 @@ REQUIRED_STATUSES = {
     "round11_fresh_promotion_tasks_before_labeling",
     "round13_compact_challenge_tasks_before_labeling",
 }
-CANONICAL_WHOLE_JUAN_EXCLUSIONS = {
+WHOLE_JUAN_REASONS = {
     21: "first_leaked_sealed_selection",
     201: "first_leaked_sealed_selection",
     204: "first_leaked_sealed_selection",
@@ -222,7 +222,10 @@ def build_exclusion_inventory(
         status for statuses in statuses_by_file.values() for status in statuses
     }
     whole_juan_sources = []
-    for juan, reason in CANONICAL_WHOLE_JUAN_EXCLUSIONS.items():
+    for juan in sorted(claimed_juans):
+        reason = WHOLE_JUAN_REASONS.get(
+            juan, "historical_conservative_whole_juan_exclusion"
+        )
         source_path = source_dir / f"juan_{juan:03d}.json"
         if not source_path.is_file():
             raise FileNotFoundError(
