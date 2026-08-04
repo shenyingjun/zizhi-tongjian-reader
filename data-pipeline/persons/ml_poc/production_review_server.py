@@ -16,7 +16,7 @@ HERE = Path(__file__).resolve().parent
 STATIC = HERE / "static"
 UI_GEOMETRY_VERSION = 1
 EXPECTED_TASKS = 180
-FINAL_STATUS = "ml_production_focused_review_with_negative_audit"
+FINAL_STATUS = "ml_production_focused_review_with_third_teacher"
 
 
 def _read(path: Path) -> dict:
@@ -68,7 +68,24 @@ class ProductionReviewStore:
             self.selected[task_id] = row
             self.order.append(task_id)
         audit_inventory = manifest.get("negative_audit_inventory")
+        third_inventory = manifest.get("third_teacher_inventory")
         counts = manifest.get("counts")
+        bound_third_reviews = {}
+        for task_id, selection in self.selected.items():
+            review = _read(self._bound_path(
+                selection, "review", "review_sha256"
+            ))
+            has_hash = isinstance(review.get("third_teacher_sha256"), str)
+            has_candidates = any(
+                isinstance(candidate.get("third_teacher"), dict)
+                for candidate in review.get("candidates", [])
+            )
+            if has_hash != has_candidates:
+                raise ValueError(
+                    f"incomplete third-teacher review binding: {task_id}"
+                )
+            if has_hash:
+                bound_third_reviews[task_id] = review
         if (
             not isinstance(audit_inventory, dict)
             or not audit_inventory
@@ -90,6 +107,61 @@ class ProductionReviewStore:
             )
         ):
             raise ValueError("negative-jie audit binding differs")
+        if (
+            not isinstance(third_inventory, dict)
+            or not third_inventory
+            or not isinstance(
+                manifest.get("third_teacher_task_manifest_sha256"), str
+            )
+            or set(third_inventory) != set(bound_third_reviews)
+            or sum(
+                int(value.get("decisions", -1))
+                for value in third_inventory.values()
+                if isinstance(value, dict)
+            )
+            != int(counts.get("third_teacher_decisions", -1))
+            or any(
+                not isinstance(value, dict)
+                or not isinstance(value.get("sha256"), str)
+                or int(value.get("decisions", -1)) < 0
+                or int(value.get("additions", -1)) < 0
+                or int(value.get("novel_additions", -1)) < 0
+                or int(value.get("duplicate_existing", -1)) < 0
+                or int(value.get("additions", -1))
+                != (
+                    int(value.get("novel_additions", -1))
+                    + int(value.get("duplicate_existing", -1))
+                )
+                for value in third_inventory.values()
+            )
+        ):
+            raise ValueError("third-teacher binding differs")
+        for task_id, inventory in third_inventory.items():
+            review = bound_third_reviews[task_id]
+            third_candidates = [
+                candidate
+                for candidate in review.get("candidates", [])
+                if isinstance(candidate.get("third_teacher"), dict)
+            ]
+            novel_additions = [
+                candidate for candidate in third_candidates
+                if candidate.get("channels")
+                == ["copilot_independent_c_adjudicator"]
+            ]
+            decisions = [
+                candidate for candidate in third_candidates
+                if candidate not in novel_additions
+            ]
+            if (
+                review.get("third_teacher_sha256")
+                != inventory["sha256"]
+                or len(decisions) != int(inventory["decisions"])
+                or len(novel_additions)
+                != int(inventory["novel_additions"])
+            ):
+                raise ValueError(
+                    f"third-teacher review binding differs: {task_id}"
+                )
 
     def _bound_path(self, row: dict, key: str, hash_key: str) -> Path:
         path = (self.review_dir / str(row[key])).resolve()
@@ -178,10 +250,29 @@ class ProductionReviewStore:
         if (
             not isinstance(initial, dict)
             or not set(initial).issubset(result)
-            or any(value != "accept" for value in initial.values())
+            or any(value not in {"accept", "reject"} for value in initial.values())
         ):
             raise ValueError(f"invalid initial decisions: {task_id}")
-        self._validate_annotations(task, review.get("initial_annotations"))
+        initial_annotations = self._validate_annotations(
+            task, review.get("initial_annotations")
+        )
+        annotation_geometry = {
+            (row["para_id"], row["start"], row["end"])
+            for row in initial_annotations
+        }
+        accepted_geometry = {
+            (
+                int(result[candidate_id]["para_id"]),
+                int(result[candidate_id]["start"]),
+                int(result[candidate_id]["end"]),
+            )
+            for candidate_id, decision in initial.items()
+            if decision == "accept"
+        }
+        if annotation_geometry != accepted_geometry:
+            raise ValueError(
+                f"initial decisions differ from annotations: {task_id}"
+            )
         return result
 
     @staticmethod
@@ -357,8 +448,8 @@ class ProductionReviewStore:
         reason = str(candidate.get("review_reason", ""))
         candidate_id = str(candidate["id"])
         return (
-            initial_decisions.get(candidate_id) == "accept"
-            and decision == "reject"
+            candidate_id in initial_decisions
+            and decision != initial_decisions[candidate_id]
         ) or (
             reason.startswith("Predeclared 20% audit")
             and decision == "reject"

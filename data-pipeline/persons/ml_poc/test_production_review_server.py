@@ -66,15 +66,25 @@ class ProductionReviewStoreTest(unittest.TestCase):
                 "surface": "曹操",
             }],
             "initial_decisions": {self.auto_id: "accept"},
+            "third_teacher_sha256": "c" * 64,
             "candidates": [{
                 "id": self.auto_id,
                 "para_id": 7,
                 "start": 1,
                 "end": 3,
                 "surface": "曹操",
-                "channels": ["copilot_independent_a", "copilot_independent_b"],
+                "channels": [
+                    "copilot_independent_a",
+                    "copilot_independent_b",
+                    "copilot_independent_c_adjudicator",
+                ],
                 "confidence": "high",
                 "review_reason": "",
+                "third_teacher": {
+                    "decision": "accept",
+                    "confidence": "high",
+                    "review_reason": "",
+                },
             }, {
                 "id": self.audit_id,
                 "para_id": 7,
@@ -93,15 +103,26 @@ class ProductionReviewStoreTest(unittest.TestCase):
         self.manifest_path = self.review / "manifest.json"
         write(self.manifest_path, {
             "schema_version": 1,
-            "status": "ml_production_focused_review_with_negative_audit",
+            "status": "ml_production_focused_review_with_third_teacher",
             "candidate_model_blind": True,
             "model_predictions_used": False,
+            "third_teacher_task_manifest_sha256": "b" * 64,
+            "third_teacher_inventory": {
+                self.task_id: {
+                    "sha256": "c" * 64,
+                    "decisions": 1,
+                    "additions": 0,
+                    "novel_additions": 0,
+                    "duplicate_existing": 0,
+                }
+            },
             "negative_audit_inventory": {
                 self.task_id: {"sha256": "a" * 64, "candidates": 0}
             },
             "counts": {
                 "negative_jie_third_pass": 1,
                 "negative_audit_review": 0,
+                "third_teacher_decisions": 1,
             },
             "selected": [{
                 "task_id": self.task_id,
@@ -273,6 +294,25 @@ class ProductionReviewStoreTest(unittest.TestCase):
         self.assertEqual(self.task_id, row["task_id"])
         self.assertNotIn("role", row)
         self.assertNotIn("stratum", row)
+
+    def test_initial_high_confidence_reject_is_supported(self):
+        self.pack["initial_annotations"] = []
+        self.pack["initial_decisions"] = {self.auto_id: "reject"}
+        review_hash = write(self.pack_path, self.pack)
+        manifest = json.loads(
+            self.manifest_path.read_text(encoding="utf-8")
+        )
+        manifest["selected"][0]["review_sha256"] = review_hash
+        write(self.manifest_path, manifest)
+        store = ProductionReviewStore(self.review, self.state)
+
+        payload = store.payload(self.task_id)
+
+        self.assertEqual([], payload["state"]["annotations"])
+        self.assertEqual(
+            {self.auto_id: "reject"},
+            payload["state"]["effective_decisions"],
+        )
 
 
 if __name__ == "__main__":

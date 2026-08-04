@@ -125,13 +125,18 @@ For every task:
 1. Copilot pass A performs recall-first tagging.
 2. Independently, Copilot pass B performs exact-boundary-first tagging.
 3. Exact non-low A/B consensus is accepted provisionally.
-4. For training and development, the human reviews all disagreements, explicit-low
-   candidates, and deterministic audit samples of 20% of consensus spans plus 20%
-   of consensus-negative jies.
-5. Any incorrect audited positive or any missed person in an audited negative jie
+4. For training and development, a third Copilot teacher adjudicates every A/B
+   disagreement and explicit-low candidate. It sees the current jie and anonymous
+   union candidates, but not their source pass, confidence, prior decision, split,
+   stratum, identities, model/rule/v1 output, translation, notes, or other jies.
+   Its high-confidence exact accept/reject decisions pass provisionally; medium/low
+   decisions and geometry conflicts require human review.
+5. The human reviews all non-high third-teacher decisions and deterministic audit
+   samples of 20% of A/B consensus spans plus 20% of consensus-negative jies.
+6. Any incorrect audited positive or any missed person in an audited negative jie
    expands that task to 100% union-candidate review. If the stratum's audited exact
    error rate exceeds 1%, audit all union candidates in that stratum before freeze.
-6. For formal evaluation, the human reviews 100% of the A/B positive union. A
+7. For formal evaluation, the human reviews 100% of the A/B positive union. A
    deterministic 25% of A/B-consensus-negative jies receives a third independent
    recall pass and focused review of any additions. Any miss expands the remaining
    consensus-negative jies in that stratum to a third pass.
@@ -140,10 +145,11 @@ The pipeline validates task inventory, provenance, source hashes, bounds, surfac
 non-overlap, and legal geometry independently of teacher self-reports. Persist only
 main-text geometry and provenance; note or translation prose is transient.
 
-Copilot agreement is never treated as independent ground truth. Full formal-positive
-review prevents shared false-positive biases from inflating measured precision, and
-the adaptive negative audit measures shared omissions without assigning blank-text
-exhaustive annotation to the user.
+Copilot passes are one correlated model family, not independent ground truth. The
+third teacher reduces routine training/development adjudication; it does not reduce
+formal-positive review. Full formal-positive review prevents shared false-positive
+biases from inflating measured precision, and the adaptive negative audit measures
+shared omissions without assigning blank-text exhaustive annotation to the user.
 
 ### 4.3 Error-directed improvement
 

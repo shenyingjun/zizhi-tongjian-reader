@@ -45,7 +45,23 @@ python production_negative_audit.py `
   --output <new-complete-review-directory>
 ```
 
-Run the ported local web UI against the immutable complete review pack. Human
+Prepare source-hidden third-teacher adjudication tasks. After an independent teacher
+produces one matching output per task, merge its high-confidence accept/reject
+decisions into a new immutable review version:
+
+```powershell
+python production_third_teacher.py prepare `
+  --review <complete-review-directory> `
+  --output <new-third-teacher-task-directory>
+
+python production_third_teacher.py merge `
+  --review <complete-review-directory> `
+  --tasks <third-teacher-task-directory> `
+  --adjudications <third-teacher-output-directory> `
+  --output <new-third-teacher-review-directory>
+```
+
+Run the ported local web UI against the immutable third-teacher review pack. Human
 decisions are written only to the separate state directory:
 
 ```powershell
@@ -55,8 +71,8 @@ python production_review_server.py `
 ```
 
 Open `http://127.0.0.1:18766`. Rejecting an audited consensus candidate, accepting
-a negative-jie recall addition, or overriding an auto-accepted candidate expands
-that task to full union-candidate review before it can be locked.
+a negative-jie recall addition, or overriding any automatic third-teacher decision
+expands that task to full union-candidate review before it can be locked.
 
 Run focused tests:
 
