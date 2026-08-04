@@ -426,10 +426,25 @@ function nextUnresolvedTask() {
   setStatus("所有任务均已完成。");
 }
 
+function nextHumanTask() {
+  const current = state.index.tasks.findIndex(
+    row => row.task_id === state.taskId);
+  for (let step = 1; step <= state.index.tasks.length; step++) {
+    const row = state.index.tasks[
+      (current + step) % state.index.tasks.length];
+    if (!row.complete && row.required > 0) {
+      loadTask(row.task_id);
+      return;
+    }
+  }
+  setStatus("没有剩余需要人工复核的任务。");
+}
+
 $("task").onchange = event => loadTask(event.target.value);
 $("previous-task").onclick = () => adjacentTask(-1);
 $("next-task").onclick = () => adjacentTask(1);
 $("next-unresolved").onclick = nextUnresolvedTask;
+$("next-human").onclick = nextHumanTask;
 $("show-resolved").onchange = renderCandidates;
 $("save").onclick = () => save().catch(() => {});
 $("complete").onclick = complete;
