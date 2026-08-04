@@ -97,6 +97,15 @@ python production_finalize.py `
   --output <new-frozen-dataset-directory>
 ```
 
+Train the three predeclared deterministic seeds one at a time:
+
+```powershell
+python production_train.py `
+  --dataset <frozen-dataset-directory> `
+  --seed 20260727 `
+  --output <new-seed-output-directory>
+```
+
 Run focused tests:
 
 ```powershell
