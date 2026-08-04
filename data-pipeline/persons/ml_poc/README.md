@@ -25,6 +25,39 @@ python production_program.py `
 The command requires a clean commit, never overwrites a round, and emits tasks that
 contain no model, rules, v1, identity, translation, note, or challenge-role data.
 
+After the two mutually hidden Copilot passes are complete, validate them and freeze
+the focused-review pack:
+
+```powershell
+python production_review.py `
+  --round <frozen-round-directory> `
+  --teachers <pass-a-and-pass-b-directory> `
+  --audit-seed <prospectively-recorded-seed> `
+  --output <new-review-directory>
+```
+
+Merge the independent audit of sampled A/B-negative jies before human review:
+
+```powershell
+python production_negative_audit.py `
+  --review <review-directory> `
+  --audit <negative-audit-pass-directory> `
+  --output <new-complete-review-directory>
+```
+
+Run the ported local web UI against the immutable complete review pack. Human
+decisions are written only to the separate state directory:
+
+```powershell
+python production_review_server.py `
+  --review-dir <complete-review-directory> `
+  --state-dir <new-human-review-state-directory>
+```
+
+Open `http://127.0.0.1:18766`. Rejecting an audited consensus candidate, accepting
+a negative-jie recall addition, or overriding an auto-accepted candidate expands
+that task to full union-candidate review before it can be locked.
+
 Run focused tests:
 
 ```powershell

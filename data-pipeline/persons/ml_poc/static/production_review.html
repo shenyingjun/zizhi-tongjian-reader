@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent-1 生产数据人工复核</title>
+  <link rel="stylesheet" href="style.css?v=4">
+</head>
+<body>
+  <header>
+    <h1>Agent-1 生产数据人工复核</h1>
+    <p id="status">正在载入…</p>
+  </header>
+  <nav class="toolbar">
+    <button id="previous-task">← 上一题</button>
+    <label>任务 <select id="task"></select></label>
+    <button id="next-task">下一题 →</button>
+    <button id="next-unresolved">下一个未完成任务</button>
+    <button id="save">保存</button>
+    <button id="complete" class="danger">完成并锁定本题</button>
+  </nav>
+  <p class="hint">
+    接受或拒绝右侧候选。修正边界时先拒绝原候选，再依次点击正文跨度的首字和末字。
+    蓝色下划线是当前最终标注；源复核包始终只读。
+  </p>
+  <p id="expansion" class="error" hidden>
+    抽审发现错误，本题已自动扩大为全部 union 候选复核。
+  </p>
+  <main id="production-review-workspace">
+    <section>
+      <h2 id="task-title"></h2>
+      <div id="text"></div>
+      <h2>当前最终标注</h2>
+      <div id="annotations"></div>
+    </section>
+    <section id="candidate-panel">
+      <h2>待审候选</h2>
+      <p>
+        <span id="counts"></span>
+        <label><input id="show-resolved" type="checkbox"> 显示已处理候选</label>
+      </p>
+      <div id="candidates"></div>
+    </section>
+  </main>
+  <script src="production_review.js?v=1"></script>
+</body>
+</html>
