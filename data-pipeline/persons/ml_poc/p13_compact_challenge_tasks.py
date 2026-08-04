@@ -5,7 +5,6 @@ import hashlib
 import json
 import random
 import tempfile
-from collections import defaultdict
 from dataclasses import asdict
 from pathlib import Path
 
@@ -167,9 +166,6 @@ def prepare_compact_challenge_tasks(
                 "characters": len(jie.text),
             })
     selected = select_challenges(frame, SELECTION_SEED)
-    grouped: dict[int, list[dict]] = defaultdict(list)
-    for row in selected:
-        grouped[int(row["juan"])].append(row)
     manifest = {
         "schema_version": 1,
         "status": "round13_compact_challenge_tasks_before_labeling",
@@ -226,7 +222,10 @@ def prepare_compact_challenge_tasks(
         staging = Path(temporary)
         tasks_dir = staging / "tasks"
         tasks_dir.mkdir()
-        for juan, rows in sorted(grouped.items()):
+        for row in sorted(
+            selected, key=lambda item: (item["juan"], item["jie_index"])
+        ):
+            juan = int(row["juan"])
             task = {
                 "schema_version": 1,
                 "phase": "copilot_double_pass",
@@ -246,9 +245,11 @@ def prepare_compact_challenge_tasks(
                     "text": row["text"],
                     "segments": row["segments"],
                     "annotations": [],
-                } for row in sorted(rows, key=lambda item: item["jie_index"])],
+                }],
             }
-            task_path = tasks_dir / f"blind_juan_{juan:03d}.json"
+            task_path = tasks_dir / (
+                f"blind_juan_{juan:03d}_jie_{row['jie_index']:03d}.json"
+            )
             task_path.write_text(
                 json.dumps(task, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
@@ -258,7 +259,7 @@ def prepare_compact_challenge_tasks(
                 "task": str(Path("tasks") / task_path.name),
                 "task_sha256": _sha256(task_path),
                 "source_sha256": source_hashes[str(juan)],
-                "sampled_jies": len(rows),
+                "sampled_jies": 1,
             })
         (staging / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
@@ -290,7 +291,7 @@ def main() -> int:
     )
     print(json.dumps({
         "selected_jies": len(manifest["private_selected_jies"]),
-        "task_juans": len(manifest["selected"]),
+        "tasks": len(manifest["selected"]),
         "characters": sum(
             row["characters"] for row in manifest["private_selected_jies"]
         ),
