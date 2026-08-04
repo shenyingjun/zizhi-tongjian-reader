@@ -10,6 +10,7 @@ from production_program import (
     TRAIN_COUNTS,
     load_exact_exclusions,
     prepare_program,
+    select_program_rows,
 )
 
 
@@ -127,6 +128,39 @@ class ProductionProgramTest(unittest.TestCase):
                 )
                 self.assertNotIn("split", task_row)
                 self.assertNotIn("stratum", task_row)
+
+    def test_replacement_preserves_exhausted_foreign_reserve(self):
+        rows = [
+            {
+                "juan": index + 1,
+                "jie_index": 1,
+                "jie_number": 1,
+                "text": ("可汗" if index < 20 else "甲") + "乙" * 30,
+                "segments": [],
+                "characters": 32,
+            }
+            for index in range(220)
+        ]
+        counts = {
+            "uniform_random": 2,
+            "role_appellation": 0,
+            "foreign_title": 2,
+            "boundary_anaphora": 0,
+        }
+
+        selected = select_program_rows(
+            rows,
+            seed=20260806,
+            train_counts=counts,
+            dev_counts=counts,
+            replacement_round=True,
+        )
+
+        self.assertEqual(8, len(selected))
+        self.assertFalse(any("可汗" in row["text"] for row in selected))
+        self.assertTrue(all(
+            row["stratum"] == "uniform_random" for row in selected
+        ))
 
 
 if __name__ == "__main__":

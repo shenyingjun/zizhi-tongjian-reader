@@ -193,6 +193,15 @@ def select_program_rows(
         cohorts[stratum] = [
             item for item in ranked[:CHALLENGE_COHORT] if item[2] > 0
         ]
+    formal_foreign_reserved = {}
+    if replacement_round:
+        for key, row, _score in cohorts["foreign_title"]:
+            if key in available:
+                formal_foreign_reserved[key] = available.pop(key)
+            if len(formal_foreign_reserved) == FORMAL_FOREIGN_RESERVE:
+                break
+        if len(formal_foreign_reserved) != FORMAL_FOREIGN_RESERVE:
+            raise ValueError("replacement round cannot preserve foreign formal reserve")
 
     def draw_uniform(
         split: str,
@@ -215,13 +224,17 @@ def select_program_rows(
         stratum: str,
         count: int,
         stream: int,
-    ) -> None:
+    ) -> int:
         cohort = [
             item for item in cohorts[stratum] if item[0] in available
         ]
         if len(cohort) < count:
-            raise ValueError(f"not enough {stratum} challenge jies")
-        chosen = random.Random(seed + stream).sample(cohort, count)
+            if not replacement_round:
+                raise ValueError(f"not enough {stratum} challenge jies")
+            count_to_draw = len(cohort)
+        else:
+            count_to_draw = count
+        chosen = random.Random(seed + stream).sample(cohort, count_to_draw)
         for key, row, score in chosen:
             selected.append({
                 "split": split,
@@ -229,21 +242,26 @@ def select_program_rows(
                 "term_score": score,
                 **available.pop(key),
             })
+        return count - count_to_draw
 
     streams = iter(range(1, 30))
     for split, counts in (("train", train_counts), ("development", dev_counts)):
         draw_uniform(split, counts["uniform_random"], next(streams))
+    shortfalls = {"train": 0, "development": 0}
     for split, counts in (("train", train_counts), ("development", dev_counts)):
-        draw_challenge(
+        shortfalls[split] += draw_challenge(
             split, "role_appellation", counts["role_appellation"], next(streams),
         )
-        draw_challenge(
+        shortfalls[split] += draw_challenge(
             split, "foreign_title", counts["foreign_title"], next(streams),
         )
-        draw_challenge(
+        shortfalls[split] += draw_challenge(
             split, "boundary_anaphora",
             counts["boundary_anaphora"], next(streams),
         )
+    for split, shortfall in shortfalls.items():
+        if shortfall:
+            draw_uniform(split, shortfall, next(streams))
 
     expected = sum(train_counts.values()) + sum(dev_counts.values())
     if len(selected) != expected:
@@ -251,13 +269,14 @@ def select_program_rows(
     reserve = FORMAL_RESERVE + (
         0 if replacement_round else REPLACEMENT_ROUND_RESERVE
     )
-    if len(available) < reserve:
+    remaining = {**available, **formal_foreign_reserved}
+    if len(remaining) < reserve:
         raise ValueError(
-            f"program leaves {len(available)} eligible jies; "
+            f"program leaves {len(remaining)} eligible jies; "
             f"{reserve} are required for formal and replacement reserves"
         )
     remaining_foreign = sum(
-        _term_score(row, FOREIGN_TERMS) > 0 for row in available.values()
+        _term_score(row, FOREIGN_TERMS) > 0 for row in remaining.values()
     )
     if remaining_foreign < FORMAL_FOREIGN_RESERVE:
         raise ValueError(
@@ -366,6 +385,21 @@ def prepare_program(
             "development": sum(
                 row["split"] == "development" for row in selected
             ),
+        },
+        "stratum_counts": {
+            split: {
+                stratum: sum(
+                    row["split"] == split and row["stratum"] == stratum
+                    for row in selected
+                )
+                for stratum in (
+                    "uniform_random",
+                    "role_appellation",
+                    "foreign_title",
+                    "boundary_anaphora",
+                )
+            }
+            for split in ("train", "development")
         },
         "tasks": [],
     }
