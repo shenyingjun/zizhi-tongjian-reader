@@ -268,7 +268,8 @@ and `confirmation` groups with target proportions `5:1:1`:
 Before model training, upgrade calibration and confirmation to formal-grade
 references. A human reviews 100% of their A/B positive union; 25% of
 consensus-negative jies receives an independent candidate-blind recall pass and
-focused review of additions, with the expansion rules from section 4.2. The review
+focused review of additions, sampled with seed `20260809`, with the expansion rules
+from section 4.2. The review
 tasks cannot show model predictions, controller scores, split role, identities,
 translation, notes, rules, or v1. Freeze and hash-bind the upgraded references.
 Training-grade labels are insufficient for a `0.99` selection claim.

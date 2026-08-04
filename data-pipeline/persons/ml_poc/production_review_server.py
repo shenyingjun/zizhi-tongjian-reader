@@ -18,6 +18,7 @@ UI_GEOMETRY_VERSION = 1
 EXPECTED_TASKS = 180
 FINAL_STATUS = "ml_production_focused_review_with_third_teacher"
 REDUCED_STATUS = "ml_production_focused_review_with_reduced_audit"
+PRECISION_STATUS = "ml_production_precision_reference_review"
 
 
 def _read(path: Path) -> dict:
@@ -57,9 +58,11 @@ class ProductionReviewStore:
         self.manifest_path = self.review_dir / "manifest.json"
         self.manifest_sha256 = _sha256(self.manifest_path)
         manifest = _read(self.manifest_path)
+        self.manifest_status = manifest.get("status")
         if (
             manifest.get("schema_version") != 1
-            or manifest.get("status") not in {FINAL_STATUS, REDUCED_STATUS}
+            or manifest.get("status")
+            not in {FINAL_STATUS, REDUCED_STATUS, PRECISION_STATUS}
             or manifest.get("candidate_model_blind") is not True
             or manifest.get("model_predictions_used") is not False
         ):
@@ -98,9 +101,18 @@ class ProductionReviewStore:
             ):
                 raise ValueError("reduced consensus-audit binding differs")
         selected = manifest.get("selected")
-        if not isinstance(selected, list) or len(selected) != EXPECTED_TASKS:
+        expected_tasks = (
+            int(manifest.get("expected_tasks", -1))
+            if manifest.get("status") == PRECISION_STATUS
+            else EXPECTED_TASKS
+        )
+        if (
+            expected_tasks <= 0
+            or not isinstance(selected, list)
+            or len(selected) != expected_tasks
+        ):
             raise ValueError(
-                f"production review must contain {EXPECTED_TASKS} tasks"
+                f"production review must contain {expected_tasks} tasks"
             )
         self.selected = {}
         self.order = []
@@ -169,7 +181,7 @@ class ProductionReviewStore:
             )
         ):
             raise ValueError("negative-jie audit binding differs")
-        if (
+        if manifest.get("status") != PRECISION_STATUS and (
             not isinstance(third_inventory, dict)
             or not third_inventory
             or not isinstance(
@@ -198,7 +210,11 @@ class ProductionReviewStore:
             )
         ):
             raise ValueError("third-teacher binding differs")
-        for task_id, inventory in third_inventory.items():
+        if manifest.get("status") == PRECISION_STATUS and (
+            third_inventory != {} or bound_third_reviews
+        ):
+            raise ValueError("precision review must not carry third-teacher decisions")
+        for task_id, inventory in (third_inventory or {}).items():
             review = bound_third_reviews[task_id]
             third_candidates = [
                 candidate
@@ -247,7 +263,12 @@ class ProductionReviewStore:
         if (
             task.get("schema_version") != 1
             or review.get("schema_version") != 1
-            or review.get("phase") != "assisted"
+            or review.get("phase")
+            != (
+                "precision-reference-review"
+                if self.manifest_status == PRECISION_STATUS
+                else "assisted"
+            )
             or review.get("candidate_model_blind") is not True
             or review.get("task_id") != task_id
             or int(review.get("juan")) != int(task.get("juan"))

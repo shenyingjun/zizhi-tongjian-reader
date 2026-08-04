@@ -138,6 +138,27 @@ class ProductionReviewStoreTest(unittest.TestCase):
         self.temp.cleanup()
         self.task_count.stop()
 
+    def test_accepts_manifest_declared_precision_review_task_count(self):
+        self.pack.pop("third_teacher_sha256")
+        self.pack["initial_annotations"] = []
+        self.pack["initial_decisions"] = {}
+        for candidate in self.pack["candidates"]:
+            candidate.pop("third_teacher", None)
+            candidate["confidence"] = "low"
+        review_hash = write(self.pack_path, self.pack)
+        manifest = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        manifest["status"] = "ml_production_precision_reference_review"
+        manifest["expected_tasks"] = 1
+        manifest["third_teacher_inventory"] = {}
+        manifest.pop("third_teacher_task_manifest_sha256")
+        manifest["counts"]["third_teacher_decisions"] = 0
+        manifest["selected"][0]["review_sha256"] = review_hash
+        write(self.manifest_path, manifest)
+
+        store = ProductionReviewStore(self.review, self.state)
+
+        self.assertEqual(store.order, [self.task_id])
+
     def test_initializes_from_auto_accept_without_mutating_source(self):
         source_before = self.pack_path.read_bytes()
 
