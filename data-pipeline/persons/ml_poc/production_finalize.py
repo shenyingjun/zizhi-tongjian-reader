@@ -70,6 +70,7 @@ def freeze_dataset(
         or len(roles.get("selected_jies", [])) != EXPECTED_TASKS
     ):
         raise ValueError("production dataset source binding differs")
+    round_number = 2 if round_manifest.get("replacement_round") is True else 1
     review_rows = {
         str(row["task_id"]): row
         for row in review_manifest["selected"]
@@ -102,23 +103,34 @@ def freeze_dataset(
 
     store = ProductionReviewStore(review_root, state_root)
     index = store.index()
-    required_ids = {
+    index_required_ids = {
         str(row["task_id"])
         for row in index["tasks"]
         if int(row["required"]) > 0
     }
+    required_ids = {
+        str(row["task_id"])
+        for row in review_manifest["selected"]
+        if int(row.get("review_candidates", 0)) > 0
+    }
     state_names = {path.name for path in state_root.glob("*.json")}
     receipt_root = state_root / "completed"
-    receipt_names = (
-        {path.name for path in receipt_root.glob("task_*.json")}
+    receipt_entries = (
+        list(receipt_root.iterdir())
         if receipt_root.is_dir()
-        else set()
+        else []
     )
+    receipt_names = {path.name for path in receipt_entries}
     expected_names = {f"task_{task_id}.json" for task_id in required_ids}
     if (
-        len(required_ids) != 7
+        not required_ids
+        or index_required_ids != required_ids
         or state_names != expected_names
         or receipt_names != expected_names
+        or any(
+            not path.is_file() or path.is_symlink()
+            for path in receipt_entries
+        )
     ):
         raise ValueError("production human-state inventory differs")
 
@@ -152,7 +164,8 @@ def freeze_dataset(
                 }
             },
             label_provenance=(
-                "production_round1_teacher_high_confidence_and_focused_human"
+                f"production_round{round_number}_teacher_high_confidence_"
+                "and_focused_human"
             ),
         )
         if len(examples) != 1:
@@ -202,7 +215,9 @@ def freeze_dataset(
         _write_jsonl(development_path, split_rows["development"])
         manifest = {
             "schema_version": 1,
-            "status": "ml_production_round1_frozen_dataset",
+            "status": f"ml_production_round{round_number}_frozen_dataset",
+            "round": round_number,
+            "replacement_round": round_number == 2,
             "training_only": False,
             "formal_evaluation": False,
             "eligible_for_training": True,

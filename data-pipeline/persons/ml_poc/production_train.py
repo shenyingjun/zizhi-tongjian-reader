@@ -55,15 +55,22 @@ def run_training(
         ])
         for split in ("train", "development")
     }
+    dataset_status = manifest.get("status")
+    expected_train_examples = {
+        "ml_production_round1_frozen_dataset": 140,
+        "ml_production_round2_cumulative_frozen_dataset": 280,
+    }.get(dataset_status)
     if (
         manifest.get("schema_version") != 1
-        or manifest.get("status") != "ml_production_round1_frozen_dataset"
+        or expected_train_examples is None
         or manifest.get("eligible_for_training") is not True
         or manifest.get("eligible_for_checkpoint_selection") is not True
         or manifest.get("formal_evaluation") is not False
-        or manifest.get("splits", {}).get("train", {}).get("examples") != 140
+        or manifest.get("splits", {}).get("train", {}).get("examples")
+        != expected_train_examples
         or manifest.get("splits", {}).get("development", {}).get("examples") != 40
-        or actual_examples != {"train": 140, "development": 40}
+        or actual_examples
+        != {"train": expected_train_examples, "development": 40}
         or manifest.get("outputs", {}).get("train_sha256")
         != hashlib.sha256(snapshots["train.jsonl"]).hexdigest()
         or manifest.get("outputs", {}).get("development_sha256")
