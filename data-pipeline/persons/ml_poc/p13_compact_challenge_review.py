@@ -53,6 +53,11 @@ def _normalize_teacher(
     normalized["diagnostic_only"] = True
     if pass_name == "pass-b":
         normalized["teacher_pass"] = "B-boundary-first"
+    for candidate in normalized["candidates"]:
+        if candidate.get("confidence") == "high":
+            candidate["review_reason"] = ""
+        elif not candidate.get("review_reason"):
+            candidate["review_reason"] = "Teacher marked this candidate non-high."
     return normalized
 
 
