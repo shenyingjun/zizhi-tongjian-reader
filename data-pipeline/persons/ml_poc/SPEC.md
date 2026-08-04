@@ -371,3 +371,47 @@ accumulation; large models are out of scope.
 - Compute overrun: measure before committing to schedules.
 - Labor relocation: compare annotation/review cost with rule-writing cost; the POC
   may validly conclude that the rules should remain.
+
+## 9. Final POC outcome
+
+The POC selected the Round 7 recipe (`3e-5`, deterministic three-seed training,
+exact-geometry 2-of-3 ensemble) on a separate 20-jie development reference. A fresh
+37-juan, 37-jie candidate-model-blind promotion reference then gave:
+
+- Round 6 exact P/R/F1: `0.967262 / 0.984848 / 0.975976`;
+- Round 7 exact P/R/F1: `0.981982 / 0.990909 / 0.986425`; and
+- Round 6 to Round 7: 3 raw additions, 6 removals, net growth -3,
+  2 reference recoveries, 0 regressions, 1 added false positive,
+  6 removed false positives, and 2 geometry replacements.
+
+Round 7 is therefore the promoted **ML recipe**, not an adopted production system.
+On the same frozen reference, canonical Translation-assisted production rules scored
+exact F1 `0.829508`. Jie bootstrap 90% F1 intervals were
+`0.976146-0.996033` for Round 7 and `0.774435-0.881250` for rules, but the
+Round 7 one-sided 95% precision lower bound was only `0.965409`, below the required
+`0.98`. The production adoption gate failed.
+
+A later supplementary compact challenge used eight previously unseen jies: four
+role/appellation and four foreign-title draws from frozen raw-text top-40 cohorts.
+It was not a probability sample and was declared unable to reverse the failed
+precision gate. After candidate-blind Copilot A/B labeling and focused review, its
+corrected 168-span reference gave:
+
+| Stratum | Round 6 F1 | Round 7 F1 | Translation-assisted rules F1 |
+| --- | ---: | ---: | ---: |
+| Role/appellation | 0.957983 | 0.966102 | 0.796380 |
+| Foreign title | 0.918367 | 0.907216 | 0.692308 |
+| Overall diagnostic | 0.946429 | 0.948949 | 0.769231 |
+
+Round 7 exceeded rules by more than five points in both challenge strata. Relative
+to Round 6 it had 2 raw additions, 5 removals, net growth -3, 1 reference recovery,
+2 regressions, 1 added false positive, 3 removed false positives, and 2 geometry
+replacements. These supplementary results do not change the formal decision:
+
+- production adoption and auto-publication are **not authorized**;
+- the production Translation-assisted rules remain the default;
+- P4+ calibration, hybrid deployment, and note-aware model work are not authorized;
+- the Round 11 promotion and Round 13 challenge references remain sealed from
+  training, tuning, calibration, and checkpoint selection; and
+- further ML work requires a separately approved training program and a new,
+  prospectively declared fresh evaluation, rather than reuse of these sealed sets.

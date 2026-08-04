@@ -286,3 +286,46 @@ P2 Copilot teacher 不改变上述 P1 模型定义：未经 focused review 的 a
   note/translation-only 逐跨度确认。
 - 算力超支：先测量再安排计划。
 - 劳动只是转移：比较标注/审阅与规则编写成本；POC 可以合理选择保留规则。
+
+## 9. POC 最终结果
+
+POC 在独立的 20-jie development reference 上选出 Round 7 recipe（学习率
+`3e-5`、确定性三 seed、精确 geometry 2-of-3 ensemble）。随后在全新的
+37-juan、37-jie、对候选模型盲化的 promotion reference 上得到：
+
+- Round 6 精确 P/R/F1：`0.967262 / 0.984848 / 0.975976`；
+- Round 7 精确 P/R/F1：`0.981982 / 0.990909 / 0.986425`；
+- Round 6 到 Round 7：3 个 raw additions、6 个 removals、net growth -3、
+  2 个 reference recoveries、0 个 regressions、1 个 added false positive、
+  6 个 removed false positives、2 个 geometry replacements。
+
+因此 Round 7 晋升的是 **ML recipe**，并不等于生产采用。在同一冻结 reference
+上，canonical Translation-assisted production rules 的精确 F1 为 `0.829508`。
+按 jie bootstrap 的 90% F1 区间分别为 Round 7 的
+`0.976146-0.996033` 和 rules 的 `0.774435-0.881250`；但 Round 7 的单侧
+95% precision 下界只有 `0.965409`，低于要求的 `0.98`。生产采用 gate 失败。
+
+后续 supplementary compact challenge 使用 8 个此前从未使用的 jie：
+4 个 role/appellation 和 4 个 foreign-title，均从冻结的 raw-text top-40
+cohort 抽取。它不是概率样本，并在设计时明确不能反转已失败的 precision gate。
+完成 candidate-blind Copilot A/B 标注和 focused review 后，修正后的 168-span
+reference 得到：
+
+| 分层 | Round 6 F1 | Round 7 F1 | Translation-assisted rules F1 |
+| --- | ---: | ---: | ---: |
+| Role/appellation | 0.957983 | 0.966102 | 0.796380 |
+| Foreign title | 0.918367 | 0.907216 | 0.692308 |
+| Overall diagnostic | 0.946429 | 0.948949 | 0.769231 |
+
+两个 challenge strata 中 Round 7 均领先 rules 超过 5 个百分点。相对 Round 6，
+它有 2 个 raw additions、5 个 removals、net growth -3、1 个 reference
+recovery、2 个 regressions、1 个 added false positive、3 个 removed false
+positives、2 个 geometry replacements。这些 supplementary 结果不改变正式结论：
+
+- **不授权** production adoption 或 auto-publication；
+- 生产默认继续使用 Translation-assisted rules；
+- 不授权 P4+ calibration、hybrid deployment 或 note-aware model 工作；
+- Round 11 promotion 与 Round 13 challenge reference 必须继续封存，不得用于
+  training、tuning、calibration 或 checkpoint selection；
+- 若继续 ML，必须另行批准新的训练计划和前瞻声明的 fresh evaluation，不得复用
+  这些 sealed sets。
