@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent-1 P0 人名跨度标注</title>
+  <link rel="stylesheet" href="style.css?v=3">
+</head>
+<body>
+  <header>
+    <h1>Agent-1 P0 人名跨度标注</h1>
+    <p id="status">正在载入…</p>
+  </header>
+  <nav id="juans"></nav>
+  <main>
+    <section class="toolbar">
+      <label>阶段 <select id="phase">
+        <option value="blind">盲标</option>
+        <option value="assisted">Copilot 辅助审核</option>
+        <option value="recall">候选补漏</option>
+        <option value="role_audit">角色复核</option>
+      </select></label>
+      <button id="previous-jie" title="上一节">← 上一节</button>
+      <label>节 <select id="jie"></select></label>
+      <button id="next-jie" title="下一节">下一节 →</button>
+      <button id="last-tagged-jie" title="跳到最后一个已有标注的节">最后已标节</button>
+      <button id="accept-rest" title="接受当前节中所有未处理且不与人工修正重叠的候选">
+        接受本节其余候选
+      </button>
+      <button id="save">保存</button>
+      <button id="complete" class="danger">完成并锁定本阶段</button>
+    </section>
+    <p class="hint">添加：依次点击跨度首字和末字。纠正人工标注：点击已有蓝色下划线删除，再选择正确跨度。检查完当前节后，可批量接受其余未改动候选。</p>
+    <div id="review-workspace">
+      <section id="text"></section>
+      <section id="recall-panel" hidden>
+        <h2 id="review-title">候选补漏</h2>
+        <p>正文中的橙色底纹对应待审候选。点击候选卡可定位原文。</p>
+        <p><span id="recall-counts"></span>
+          <label><input id="show-resolved" type="checkbox"> 显示已在盲标确认/已处理候选</label>
+          <button id="next-unresolved">跳到下一个待审节</button>
+        </p>
+        <div id="candidates"></div>
+        <h3>同 jie 注文锚点（仅作人工提示）</h3>
+        <div id="notes"></div>
+      </section>
+    </div>
+    <section>
+      <h2>当前节标注</h2>
+      <div id="annotations"></div>
+    </section>
+  </main>
+  <script src="app.js?v=8"></script>
+</body>
+</html>
