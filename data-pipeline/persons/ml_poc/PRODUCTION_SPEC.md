@@ -543,6 +543,139 @@ additions. ML-only additions require exact precision at least `0.99` and a one-s
 paired exact F1 over canonical rules. High combined precision cannot hide imprecise ML
 additions.
 
+### 5.3 Revision-4 fit-only structural hard-negative verifier
+
+Revision 3 is terminally blocked before confirmation. Its four leave-one-juan-out
+verifier heads did not improve the frontier: the highest-recall powered point predicted
+474 spans at threshold `0.50`, with precision `0.953586` and recall `0.963753`; the
+highest-precision point with at least 300 predictions used threshold `0.90`, with
+precision `0.971429` and recall `0.652452`. Held-out folds contained only 6–26
+negative candidates, and several unseen negative types received scores above `0.92`.
+Revision-3 confirmation remains unread.
+
+Revision 4 keeps the exact frozen candidate generator, `0.30` candidate-lattice rule,
+structural hard vetoes, threshold table, conflict resolver, confirmation firewall, and
+add-only rules integration from section 5.2. It replaces only verifier training and
+feature inputs. Revision 3's consumed calibration labels, OOF scores, and errors are
+architecture diagnostics; they are not revision-4 training examples.
+
+#### 5.3.1 Clean data roles
+
+- **Verifier fit:** all 189 jies in the frozen `fit` partition, grouped by their
+  28 original juans. They may train verifier parameters but cannot select a threshold.
+- **Verifier calibration:** the 45 consumed calibration jies. They select one threshold
+  from the unchanged 15-point grid but do not train verifier parameters, fit a scaler,
+  choose an epoch, choose a negative policy, or alter features.
+- **Diagnostic confirmation:** the still-unread 46 confirmation jies. They retain the
+  one-shot rules and gates from section 5.2.4.
+
+The frozen deployment generator was trained on verifier-fit, so its fit predictions
+are in-sample and cannot identify realistic whole-span mistakes. Do not use those
+predictions for verifier examples. Instead create a mining-only out-of-fold generator:
+
+1. Assign all 28 fit juans to five folds with the normalized vector objective from
+   section 5.1, targeting one fifth of every vector component per fold, replacing the
+   ordering seed with `20260813`, and resolving placement ties by fold number `1..5`.
+2. For each fold, train the exact three pinned candidate seeds for fixed epoch 5 on
+   the other four folds. Neither the held-out fold nor any development data selects a
+   checkpoint.
+3. Infer the unchanged one-seed/`0.30` lattice exactly once on the held-out fold.
+4. Concatenate all held-out geometries. No mining prediction may come from a model
+   trained on its jie or juan.
+
+These 15 mining models and their predictions are verifier-training artifacts only and
+are never deployment candidates. Freeze every fold assignment, dataset, model,
+prediction, environment, and hash. The concatenated OOF lattice must cover at least
+`0.98` of all fit reference spans; otherwise stop before verifier training. All
+reported selection metrics still begin on verifier calibration.
+
+#### 5.3.2 Deterministic fit example construction
+
+For every fit jie, positive verifier examples are every exact frozen reference span.
+Build negative examples from the following closed policies, in this order:
+
+1. **Generator mistakes:** every mining OOF candidate at the unchanged
+   one-seed/`0.30` lattice rule that is not an exact reference geometry.
+2. **Strict partials:** for every reference span of length at least two, remove exactly
+   one character from the left to create `[start+1,end)`, and separately remove
+   exactly one character from the right to create `[start,end-1)`. A length-two
+   reference therefore produces two one-character partials. Retain each source-valid
+   non-empty geometry that is not another exact reference.
+3. **One-character overreach:** extend each reference exactly one character left,
+   right, and both directions when the extension remains in the same paragraph,
+   contains no hard separator, punctuation, symbol, or functional numeral, and is not
+   another exact reference.
+4. **Adjacent merge:** when two reference spans satisfy
+   `left.end == right.start` in one paragraph, add their exact union if that union is
+   not itself a reference.
+
+Deduplicate exact geometry before training. A geometry that exactly equals any
+reference is always positive and cannot be relabeled by a negative policy. When
+multiple negative policies produce one geometry, retain the earliest policy in the
+numbered list above as its primary provenance and retain the complete ordered policy
+membership list for audit/counting. Do not
+generate arbitrary O-text substrings, literal error surfaces, identity-derived
+variants, cross-jie examples, or random negatives.
+
+Sort negatives by `(juan,jie_index,para_id,start,end,policy)` and retain at most four
+negatives per positive within each jie, taking policies round-robin in the order above.
+Within one policy, take examples in ascending
+`(juan,jie_index,para_id,start,end)` order.
+Every jie with positives retains at least one example from each available negative
+policy before a policy receives its second example. Freeze the complete pre-cap and
+post-cap inventories, policy counts, exact geometries, source hashes, and discarded
+rows. Every floor applies to the post-cap training inventory. Require at least 2,000
+total negatives, at least 150 OOF generator mistakes, at least 100 strict-partial
+examples, at least 100 one-character-overreach examples, and at least 20 of the
+frozen 28 fit juans with negatives; otherwise stop before training. Adjacent-merge
+counts are reported but have no minimum because the corpus determines availability.
+Policy floors count complete policy membership after the cap, not only primary
+provenance, so a generator mistake that is also a strict partial contributes to both
+audited families without becoming two training rows.
+
+The functional-numeral check is the exact hash-bound implementation used by section
+5.2.1; negative generation cannot reinterpret it. AI-assisted fit references may
+contain teacher boundary errors, so record every synthetic negative that overlaps a
+positive geometry as a label-noise audit stratum. Geometry remains negative unless it
+exactly equals another frozen reference; this training-grade uncertainty is one reason
+revision 4 remains diagnostic.
+
+#### 5.3.3 Verifier features and fixed training
+
+Use the same pinned frozen encoder and candidate/left-boundary/right-boundary/jie
+context pooling from revision 3. Remove generator support count and confidence from
+the verifier input so synthetic negatives cannot be distinguished by missing
+generator metadata. The only non-encoder inputs are:
+
+- `log1p(span length)`;
+- one-hot Unicode boundary categories for the immediate left and right characters; and
+- two edge bits stating whether the candidate starts or ends its paragraph.
+
+Fit feature mean and scale on all verifier-fit examples only and freeze them before
+reading calibration. Use the unchanged two-layer MLP: hidden width `256`, GELU,
+dropout `0.10`, AdamW `1e-4`, weight decay `0.01`, batch size `32`, positive class
+weight `1.0`, seed `20260812`, and exactly 20 epochs. Calibration cannot select an
+epoch. Encoder fine-tuning, generator features, class reweighting, focal loss,
+additional negative policies, or hyperparameter search requires another revision.
+
+Train one verifier once on the complete frozen fit example inventory. Emit calibration
+scores once, apply all section 5.2 hard vetoes, and evaluate the unchanged 15
+thresholds with the unchanged deterministic conflict resolver. End-to-end recall uses
+all 469 calibration reference spans, including lattice misses and vetoed geometries.
+The section 5.2.3 prediction-count, precision, recall, Wilson, selection order, and
+stop rules apply. Calibration is acknowledged as repeatedly consumed diagnostic
+evidence; its metrics cannot support a production claim.
+
+If and only if one threshold is eligible, freeze the exact already-trained verifier,
+scaler, threshold, calibration scores, and table. Do not retrain on calibration.
+Proceed to the same one-shot diagnostic confirmation and candidate-model-blind
+formal-grade upgrade in section 5.2.4. A blocked calibration point leaves confirmation
+unread and terminates revision 4.
+
+Even a confirmation pass is only an AI-assisted diagnostic result. Repeated
+architecture work on fit/calibration and the mining-model lineage do not gain
+production weight; only the blinded formal-grade upgrade and section 6 can do so.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
