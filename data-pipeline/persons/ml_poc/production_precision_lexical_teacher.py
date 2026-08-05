@@ -15,7 +15,7 @@ from production_train import _make_read_only
 
 OUTPUT_STATUS = "ml_production_precision_lexical_teacher_outputs"
 LABELS = {"definitely_not_person", "possible_person_or_boundary"}
-TEACHERS = {"A", "B", "C"}
+TEACHERS = {"A", "B", "C", "D"}
 BATCHES = 8
 
 
