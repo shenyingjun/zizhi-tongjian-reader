@@ -1064,6 +1064,14 @@ additional mining, relabeling, human review, threshold change, or second trainin
 is permitted. Confirmation remains unread unless the unchanged calibration gate
 passes.
 
+Revision 9 completed its 299-candidate blind audit with zero exclusions and froze
+3,126 safe negatives across all 28 fit juans. The single training run passed the
+fit-positive sanity tripwire at `1.0`, but no calibration threshold passed. At
+threshold `0.94`, the model retained recall `0.9530916844` but reached only precision
+`0.9738562092` and one-sided 95% Wilson lower precision `0.9585532989`
+(`447` true positives from `459` predictions). Revision 9 is therefore blocked;
+confirmation remains unread and the artifact has no production weight.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
