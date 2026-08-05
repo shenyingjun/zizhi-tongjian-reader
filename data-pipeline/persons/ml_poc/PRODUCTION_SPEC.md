@@ -1,6 +1,6 @@
 # Agent-1 ML production program
 
-Status: revision-3 diagnostic implementation contract. This program authorizes new
+Status: revision-5 diagnostic implementation contract. This program authorizes new
 engineering and candidate-model-blind data work, but no ML candidate is authorized
 for production.
 
@@ -675,6 +675,44 @@ unread and terminates revision 4.
 Even a confirmation pass is only an AI-assisted diagnostic result. Repeated
 architecture work on fit/calibration and the mining-model lineage do not gain
 production weight; only the blinded formal-grade upgrade and section 6 can do so.
+
+### 5.4 Revision-5 mining-purpose gate correction
+
+Revision 4 is terminally blocked before hard-negative freeze or verifier training.
+Its 15 mining models and OOF predictions were successfully frozen, but their
+concatenated lattice covered `2393/2483 = 0.963754` fit reference spans, below the
+revision-4 `0.98` gate. The same artifacts produced 297 source-verified OOF generator
+mistakes and a valid 7,363-row post-cap negative inventory across all 28 fit juans;
+every other section 5.3.2 floor passed. Confirmation remains unread.
+
+The failed gate measured a property not used by the verifier:
+
+- every exact fit reference is independently included as a positive verifier example;
+- a mining-model miss is absence, not a negative label;
+- mining recall does not bound deployment candidate recall or any calibration metric;
+  the full-fit deployment lattice already passed its separate `460/469 = 0.980810`
+  calibration recall gate; and
+- four-of-five-fold mining models are expected to have lower recall than the full-fit
+  deployment generator, while their purpose is to expose realistic wrong geometries.
+
+Revision 5 prospectively corrects only this mining-purpose gate. It reuses the exact
+immutable revision-4 fold plan, 15 model artifacts, and 15 held-out prediction
+artifacts; retraining or replacing any of them is forbidden. Mining OOF recall becomes
+a pipeline-sanity tripwire of `0.90`, derived before verifier training as deployment
+calibration recall minus a fixed `0.08` out-of-fold tolerance. A lower value indicates
+broken folds or mining training and still stops the program.
+
+The actual authorization to freeze hard negatives is the complete post-cap evidence
+gate from section 5.3.2: at least 2,000 total negatives, 150 OOF generator mistakes,
+100 strict-partial memberships, 100 one-character-overreach memberships, and 20 fit
+juans with negatives. Record mining recall and every miss for audit, but do not use it
+as a model-quality or deployment-recall claim.
+
+All other revision-4 inputs, feature bans, fixed verifier controls, calibration gates,
+confirmation firewall, formal-grade upgrade, add-only integration, and stop rules
+remain unchanged. This correction has no production weight and is valid only because
+neither revision-4 verifier training nor confirmation inference occurred before it
+was written.
 
 ## 6. Fresh formal evaluation
 
