@@ -1,6 +1,6 @@
 # Agent-1 ML production program
 
-Status: revision-7 diagnostic implementation contract. This program authorizes new
+Status: revision-9 diagnostic implementation contract. This program authorizes new
 engineering and candidate-model-blind data work, but no ML candidate is authorized
 for production.
 
@@ -996,6 +996,73 @@ fixed because it requires D plus two same-family source-hidden votes, not to cle
 spanning all 28 fit juans or stop before training. This correction is valid only
 because no mined negative has entered training and no human decision, calibration
 score, confirmation example, or downstream metric was read before it was written.
+
+### 5.8 Revision-9 existing-label safety veto
+
+Revision 8 is stopped by user decision before any human review or training. Its
+cross-family routing produced 4,701 provisional passes and 493 disagreements, but the
+mandatory audit plus disagreements would require 964 new human decisions.
+
+The mined spans carry `O` in the fit BIO sequences only because they do not overlap
+the non-exhaustive fit references. That absence does not authorize a negative label.
+Revision 9 instead narrows teacher-authorized candidates to the strongest
+cross-family agreement stratum and measures its residual false-negative rate.
+
+Freeze a safe-negative candidate inventory using only these rules:
+
+1. retain only the 3,127 cross-family-unanimous candidates for which Claude runs A,
+   B, and C plus GPT run D all chose `definitely_not_person`; these are two model
+   families, not four independent families; discard the 1,453 A/B/D passes not read
+   by C, the 121 candidates with only two-of-three original-family support, and all
+   493 cross-family or majority disagreements without adjudicating them;
+2. discard any candidate overlapping any same-paragraph, same-numbered-jie candidate
+   geometry in the hash-validated
+   `data-pipeline/persons/twostage/translation/evidence/` whose mapping status binds
+   it to that canonical paragraph and numbered jie.
+
+Translation is a positive-side veto only. Its absence cannot authorize a negative,
+and it cannot add or alter a positive fit reference. The evidence must predate and be
+independent of sealed references, calibration, and confirmation. Validate exact NFC
+paragraph-text SHA-256 equality among the fit task, canonical text, and translation
+evidence; jie indexes; every per-juan artifact hash; source surface; and half-open
+code-point geometry before applying the veto. Do not use the current canonical
+Agent-1 output as a second veto: its recorded translation-evidence manifest SHA-256
+does not equal the present evidence manifest and therefore fails the required binding.
+
+Require at least 2,000 candidates spanning all 28 fit juans after vetoes or stop.
+Select a deterministic digest-ordered simple random sample of
+`ceil(log(0.05) / log(0.99)) = 299` candidates, or the full inventory if smaller, for
+source-hidden human audit. With zero observed errors this gives a one-sided 95%
+binomial upper bound below 1% on the residual false-negative rate. Show the numbered
+jie, exact highlighted geometry, and approved same-jie translation when available,
+but no teacher decision, rationale, model score, intended negative label, agreement
+count, or audit purpose before the human's initial judgment is immutably recorded.
+Only after that judgment may the reviewer reveal the four teacher rationales. The
+post-reveal decision may remain unchanged or become the more conservative
+`exclude_from_negative_training`; it cannot change an exclusion to `not_person`.
+
+The reviewer chooses only `not_person` or `exclude_from_negative_training`. Review may
+stop at the first exclusion; any exclusion stops Revision 9 before training. Only a
+complete zero-error audit authorizes the unaudited candidate inventory as the frozen
+safe-negative stratum. The statistical claim bounds only the marginal candidate-level
+false-negative proportion, not the absence of a recurring surface-level error family.
+Freeze every kept, vetoed, excluded, and audited geometry;
+veto memberships; source manifests and hashes; complete A/B/C/D provenance; audit
+selection digest; exact confidence calculation; and the abandoned Revision-8
+human-pack manifest hash.
+
+Train the revision-9 existence head exactly as section 5.6.3, using the frozen safe
+negatives as the `0.25` mined-negative loss stratum. Before calibration, score the
+2,525 real-OOF occurrence-positive fit rows and require at least `0.95` recall at
+existence threshold `0.50`; this is only a fit-pipeline sanity tripwire, not a
+negative-label safety or generalization claim. Assert the exact 2,525/171 grouped-data
+inventory and reject any canonical-geometry collision before training. Copy the
+revision-6 ranker byte-for-byte.
+
+Then execute section 5.6.4's single unchanged calibration pass and stop rules. No
+additional mining, relabeling, human review, threshold change, or second training pass
+is permitted. Confirmation remains unread unless the unchanged calibration gate
+passes.
 
 ## 6. Fresh formal evaluation
 
