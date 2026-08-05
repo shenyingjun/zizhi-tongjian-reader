@@ -7,6 +7,7 @@ from production_precision_infer import _span_confidence
 from production_precision_reference import _labels_from_annotations
 from production_precision_select import _metric, _wilson_lower
 from production_verifier_lattice import _intrinsic_vetoes
+from production_span_verifier import _resolve_group
 
 
 class PrecisionControllerTest(unittest.TestCase):
@@ -67,6 +68,57 @@ class PrecisionControllerTest(unittest.TestCase):
         self.assertEqual(
             _intrinsic_vetoes("张三，"),
             ["numeric_punctuation_or_symbol"],
+        )
+
+    def test_overlap_resolution_penalizes_weak_fragments(self):
+        def candidate(start, end, score):
+            return {
+                "id": "juan-001-jie-0001",
+                "para_id": 4,
+                "start": start,
+                "end": end,
+                "surface": "人物名"[start:end],
+                "score": score,
+                "support_count": 3,
+                "seed_confidences": {"a": 0.9, "b": 0.9, "c": 0.9},
+            }
+
+        selected = _resolve_group(
+            [
+                candidate(0, 3, 0.99),
+                candidate(0, 1, 0.51),
+                candidate(1, 3, 0.51),
+            ],
+            0.50,
+        )
+
+        self.assertEqual([(row["start"], row["end"]) for row in selected], [(0, 3)])
+
+    def test_overlap_resolution_can_keep_two_strong_adjacent_spans(self):
+        def candidate(start, end, score):
+            return {
+                "id": "juan-001-jie-0001",
+                "para_id": 4,
+                "start": start,
+                "end": end,
+                "surface": "甲乙丙丁"[start:end],
+                "score": score,
+                "support_count": 3,
+                "seed_confidences": {"a": 0.9, "b": 0.9, "c": 0.9},
+            }
+
+        selected = _resolve_group(
+            [
+                candidate(0, 4, 0.51),
+                candidate(0, 2, 0.99),
+                candidate(2, 4, 0.99),
+            ],
+            0.50,
+        )
+
+        self.assertEqual(
+            [(row["start"], row["end"]) for row in selected],
+            [(0, 2), (2, 4)],
         )
 
 
