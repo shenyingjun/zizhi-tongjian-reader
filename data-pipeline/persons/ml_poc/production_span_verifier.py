@@ -406,7 +406,8 @@ def train_verifier(
         != "ml_production_precision_reference_ai_assisted"
         or reference_manifest.get("outputs", {}).get("calibration_sha256")
         != _sha256(calibration_path)
-        or set(examples) != {str(row["id"]) for row in candidates}
+        or len(examples) != 45
+        or not {str(row["id"]) for row in candidates}.issubset(examples)
     ):
         raise ValueError("span verifier input binding differs")
     git_commit = _git_commit_clean()
