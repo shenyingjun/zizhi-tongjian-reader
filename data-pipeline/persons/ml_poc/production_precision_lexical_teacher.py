@@ -118,7 +118,7 @@ def validate_teacher_output(
     validated = []
     seen = set()
     source_hashes = {}
-    for path in sorted(raw_root.glob("*.json")):
+    for path in sorted(raw_root.rglob("*.json")):
         payload = _read(path)
         task_id = str(payload.get("task_id", ""))
         source = expected_tasks.get(task_id)
@@ -178,7 +178,7 @@ def validate_teacher_output(
             ],
         })
         seen.add(task_id)
-        source_hashes[path.name] = _sha256(path)
+        source_hashes[str(path.relative_to(raw_root))] = _sha256(path)
     if seen != set(expected_tasks):
         missing = sorted(set(expected_tasks) - seen)
         raise ValueError(f"lexical teacher tasks missing: {missing[:5]}")

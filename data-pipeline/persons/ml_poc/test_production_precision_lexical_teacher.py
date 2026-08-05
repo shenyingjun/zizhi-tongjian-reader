@@ -55,7 +55,9 @@ class TeacherValidationTest(unittest.TestCase):
             "status": "ml_production_precision_lexical_teacher_batches",
             "task_manifest_sha256": manifest_sha,
         }), encoding="utf-8")
-        (raw / "t1.json").write_text(json.dumps({
+        nested = raw / "batch-0"
+        nested.mkdir()
+        (nested / "t1.json").write_text(json.dumps({
             "schema_version": 1,
             "phase": "lexical-negative-verification",
             "teacher": "A",
