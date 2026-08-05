@@ -85,24 +85,28 @@ def _assembled_bounds(example: dict, row: dict) -> tuple[int, int, dict]:
     return start, end, segment
 
 
-def _extract_features(
+def _pool_candidate_encodings(
     examples: dict[str, dict],
     candidates: list[dict],
     model,
     tokenizer,
     device,
-) -> np.ndarray:
+) -> tuple[int, list[dict]]:
+    """Pool the frozen encoder for every candidate.
+
+    Returns the encoder hidden size and, for each candidate index, the shared
+    candidate/left/right/context poolings plus the immediate boundary characters,
+    span length, and paragraph-edge bits. This is deterministic and free of any
+    generator metadata, so revision-3 and revision-4 verifier feature builders can
+    reuse it without duplicating unsafe encoder logic.
+    """
     import torch
 
     by_id = {}
     for index, row in enumerate(candidates):
         by_id.setdefault(str(row["id"]), []).append((index, row))
     hidden_size = int(model.config.hidden_size)
-    numeric_size = 1 + 1 + 3 + len(BOUNDARY_CATEGORIES) * 2
-    features = np.zeros(
-        (len(candidates), hidden_size * 4 + numeric_size),
-        dtype=np.float32,
-    )
+    pooled: list[dict] = [None] * len(candidates)
     model.eval()
     with torch.inference_mode():
         for identity in sorted(by_id):
@@ -171,27 +175,58 @@ def _extract_features(
                     if right_index is not None
                     else None
                 )
-                numeric = [
-                    math.log1p(end - start),
-                    int(row["support_count"]) / 3,
-                    *[
-                        float(row["seed_confidences"][str(seed)])
-                        for seed in (20260727, 20260728, 20260729)
-                    ],
-                ]
-                for value in (left_character, right_character):
-                    category = _category(value)
-                    numeric.extend(
-                        float(category == expected)
-                        for expected in BOUNDARY_CATEGORIES
-                    )
-                features[output_index] = np.concatenate((
-                    candidate_mean,
-                    left_hidden,
-                    right_hidden,
-                    context_mean,
-                    np.asarray(numeric, dtype=np.float32),
-                ))
+                pooled[output_index] = {
+                    "candidate_mean": candidate_mean,
+                    "left_hidden": left_hidden,
+                    "right_hidden": right_hidden,
+                    "context_mean": context_mean,
+                    "left_character": left_character,
+                    "right_character": right_character,
+                    "length": end - start,
+                    "starts_paragraph": left_index is None,
+                    "ends_paragraph": right_index is None,
+                }
+    return hidden_size, pooled
+
+
+def _extract_features(
+    examples: dict[str, dict],
+    candidates: list[dict],
+    model,
+    tokenizer,
+    device,
+) -> np.ndarray:
+    hidden_size, pooled = _pool_candidate_encodings(
+        examples, candidates, model, tokenizer, device
+    )
+    numeric_size = 1 + 1 + 3 + len(BOUNDARY_CATEGORIES) * 2
+    features = np.zeros(
+        (len(candidates), hidden_size * 4 + numeric_size),
+        dtype=np.float32,
+    )
+    for output_index, row in enumerate(candidates):
+        parts = pooled[output_index]
+        numeric = [
+            math.log1p(parts["length"]),
+            int(row["support_count"]) / 3,
+            *[
+                float(row["seed_confidences"][str(seed)])
+                for seed in (20260727, 20260728, 20260729)
+            ],
+        ]
+        for value in (parts["left_character"], parts["right_character"]):
+            category = _category(value)
+            numeric.extend(
+                float(category == expected)
+                for expected in BOUNDARY_CATEGORIES
+            )
+        features[output_index] = np.concatenate((
+            parts["candidate_mean"],
+            parts["left_hidden"],
+            parts["right_hidden"],
+            parts["context_mean"],
+            np.asarray(numeric, dtype=np.float32),
+        ))
     return features
 
 
