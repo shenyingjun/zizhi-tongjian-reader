@@ -1,6 +1,6 @@
 # Agent-1 ML production program
 
-Status: revision-5 diagnostic implementation contract. This program authorizes new
+Status: revision-6 diagnostic implementation contract. This program authorizes new
 engineering and candidate-model-blind data work, but no ML candidate is authorized
 for production.
 
@@ -713,6 +713,116 @@ confirmation firewall, formal-grade upgrade, add-only integration, and stop rule
 remain unchanged. This correction has no production weight and is valid only because
 neither revision-4 verifier training nor confirmation inference occurred before it
 was written.
+
+### 5.5 Revision-6 separated existence and boundary objectives
+
+Revision 5 is terminally blocked before confirmation. Its fit-only binary verifier
+mixed 2,483 positives with 7,363 negatives and improved calibration precision at
+threshold `0.50` to `0.979499`, but recall fell to `0.916844`. Of 39 end-to-end misses,
+30 were lattice-covered exact positives scored below `0.50`; 9 were deployment-lattice
+misses. Nine false positives remained. Raising the threshold monotonically reduced
+recall; no point reached `0.95`. The failure shows that one binary objective cannot
+simultaneously learn occurrence existence from realistic OOF mistakes and exact
+boundary preference from synthetic overlapping alternatives.
+
+Revision 6 reuses the exact immutable revision-5 mining plan, 15 mining models,
+15 OOF predictions, hard-negative inventories, pinned encoder, deployment lattice,
+calibration reference, structural vetoes, and confirmation firewall. It replaces only
+the verifier head, training objective, and overlap resolver with two separately
+supervised components.
+
+#### 5.5.1 Existence head
+
+Train the existence head only on real OOF generator candidates from section 5.3.1.
+For half-open intervals in the same paragraph, define occurrence overlap as
+`candidate_start < reference_end and reference_start < candidate_end`:
+
+- positive: every OOF candidate overlapping at least one fit reference;
+- negative: every OOF generator candidate overlapping no fit reference; and
+- excluded: all synthetic partial, overreach, and adjacent-merge geometries not emitted
+  by an OOF generator.
+
+This occurrence-level label intentionally allows an imperfect boundary to reach the
+boundary ranker; it does not authorize that geometry as output. The frozen inventory
+must contain exactly the source-verified OOF lattice before synthetic augmentation.
+Require at least 2,000 positive candidates, 150 negative candidates, and 20 fit juans
+with negatives. A candidate may appear once after exact geometry dedup. Freeze its
+label, overlapping reference geometries, source fold, and source prediction bindings.
+
+Use the pinned frozen encoder poolings plus:
+
+- `log1p(span length)`;
+- left/right Unicode boundary categories; and
+- paragraph-edge bits.
+
+The head is the fixed two-layer MLP from revision 3: width `256`, GELU, dropout `0.10`,
+one sigmoid output, AdamW `1e-4`, weight decay `0.01`, batch size `32`, seed `20260814`,
+and exactly 20 epochs. Use class-balanced binary cross entropy with immutable row
+weight `N / (2 * N_class)` computed from the complete frozen existence inventory.
+Normalize the mean loss by the sum of row weights in each batch. Fit scaler and head
+on fit OOF candidates only. No synthetic row enters this loss, and no generator
+support or confidence feature is permitted because mining-fold and full-fit confidence
+scales differ.
+
+#### 5.5.2 Boundary ranker
+
+Train a separate score head on each frozen fit reference and its source-valid
+overlapping negative alternatives from the complete strict-partial,
+one-character-overreach, adjacent-merge, and OOF-generator-mistake memberships.
+Only candidates whose intervals overlap a positive in the same paragraph enter a
+ranking group. Whole-span negatives with no positive overlap remain existence-only.
+
+For every `(positive, negative)` pair in a group, the head emits an unbounded scalar
+logit and optimizes `max(0, 1 - logit_positive + logit_negative)`. A geometry equal to
+any frozen reference is always on the positive side. If an alternative overlaps two
+references, create one pair against each overlapping exact reference. Cap at eight
+negatives per positive by membership priority `generator_mistake`, `strict_partial`,
+`one_character_overreach`, `adjacent_merge`, then ascending
+`(juan,jie_index,para_id,start,end)`. Freeze all pairs, membership sets, and discarded
+alternatives. A geometry may occur in both the existence and ranking inventories but
+enters each loss only once per frozen row or pair. Require at least 2,000 pairs
+spanning at least 20 fit juans and at least 100 pairs from strict-partial and
+one-character-overreach membership.
+
+The rank head uses the same frozen encoder poolings plus only `log1p(span length)`,
+boundary categories, and paragraph-edge bits; it cannot read generator support or
+confidence. It has the same two-layer architecture without an output sigmoid, AdamW
+`1e-4`, weight decay `0.01`, batch size `32` pairs, seed `20260815`, and exactly 20
+epochs. Batch loss is the arithmetic mean of pair hinge losses. The existence and
+rank heads share no learned parameters and cannot select each other's epoch.
+
+#### 5.5.3 Fixed inference and calibration
+
+For each deployment-lattice candidate:
+
+1. apply the unchanged structural hard vetoes;
+2. compute an existence probability;
+3. retain it when probability is at least threshold `t`; and
+4. within each paragraph, sort retained candidates by descending unbounded rank logit,
+   then descending generator support, descending summed generator confidence,
+   descending covered length, and ascending `(start,end)`;
+5. greedily accept a candidate if it overlaps no already accepted candidate.
+
+This ordinal resolver never adds rank logits and therefore does not assume that
+pairwise scores are cardinally comparable. The rank logit has no global admission
+threshold and cannot delete a non-overlapping candidate that passed existence.
+Generator metadata is used only as a deterministic inference tie-break and is not a
+learned feature. Freeze exact float-to-order behavior: reject non-finite values and
+compare the stored IEEE-754 float32 rank logits directly before integer/string
+tie-break keys. Quantize summed generator confidence with round-to-nearest,
+ties-to-even at `1e-6` before comparing it.
+
+Train both heads once on their frozen fit inventories. Score calibration once and
+evaluate only the unchanged 15 existence thresholds. End-to-end recall uses all 469
+calibration reference spans. The section 5.2.3 minimum predictions, precision,
+recall, Wilson lower bound, threshold selection, artifact freeze, and stop rules
+remain unchanged. Neither calibration nor revision-5 scores may select loss weights,
+pair policy, head width, epoch, or rank combination.
+
+If no threshold is eligible, terminate revision 6 without reading confirmation. If a
+threshold is eligible, freeze both already-trained heads and proceed exactly once
+through section 5.2.4. This remains AI-assisted diagnostic evidence with no production
+weight.
 
 ## 6. Fresh formal evaluation
 
