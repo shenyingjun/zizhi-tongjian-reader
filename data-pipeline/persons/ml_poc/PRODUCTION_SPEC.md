@@ -890,7 +890,9 @@ provisionally. Send every other item, plus a deterministic 10% audit sample of t
 provisional agreements selected by SHA-256 order over the canonical geometry key, to
 a source-hidden third AI teacher with the same two labels and visibility restrictions.
 A third-teacher `definitely_not_person` at confidence at least `0.95` passes; every
-other item requires human review.
+other item requires human review. The audit size is `ceil(0.10 * provisional_count)`;
+sort the lowercase hexadecimal SHA-256 digests of the ASCII
+`juan:jie_index:para_id:start:end` keys and take the first audit-size rows.
 
 The human reviewer sees only the jie, highlighted geometry, and three rationales,
 without scores or model identities, and chooses `not_person` or

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -24,7 +26,11 @@ class TeacherValidationTest(unittest.TestCase):
         self.scratch = Path(tempfile.mkdtemp(dir=Path(__file__).parent))
 
     def tearDown(self):
-        shutil.rmtree(self.scratch, ignore_errors=True)
+        def remove_readonly(function, path, _):
+            os.chmod(path, stat.S_IWRITE)
+            function(path)
+
+        shutil.rmtree(self.scratch, onerror=remove_readonly)
 
     def _fixture(self, *, confidence=0.97, rationale="非人词。"):
         tasks = self.scratch / "tasks"
