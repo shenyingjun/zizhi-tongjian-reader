@@ -73,47 +73,22 @@ def _span_confidence(
     return math.exp(sum(math.log(value) for value in probabilities) / len(probabilities))
 
 
-def infer(
-    model_root: Path,
-    reference_root: Path,
-    output_dir: Path,
-    *,
-    seed: int,
-    split: str,
-) -> dict:
-    if seed not in SEEDS or split not in {"calibration", "confirmation"}:
-        raise ValueError("unsupported precision inference control")
-    if output_dir.exists() or output_dir.is_symlink():
-        raise FileExistsError(f"precision inference output exists: {output_dir}")
-    report_path = model_root / "report.json"
-    report = _read(report_path)
-    control = report.get("precision_control", {})
-    reference_manifest_path = reference_root / "manifest.json"
-    reference_manifest = _read(reference_manifest_path)
-    input_path = reference_root / f"{split}.jsonl"
-    if (
-        control.get("seed") != seed
-        or control.get("base_model_revision") != MODEL_REVISION
-        or control.get("checkpoint_selection") != "fixed_epoch_5"
-        or control.get("reference_manifest_sha256") != _sha256(reference_manifest_path)
-        or _model_artifact(model_root / "model") != control.get("model_artifact")
-        or reference_manifest.get("status") != REFERENCE_STATUS
-        or reference_manifest.get("eligible_for_production_precision_claim") is not False
-        or reference_manifest.get("outputs", {}).get(f"{split}_sha256")
-        != _sha256(input_path)
-    ):
-        raise ValueError("precision inference binding differs")
-    examples = _read_jsonl(input_path)
-    if len(examples) != {"calibration": 45, "confirmation": 46}[split]:
-        raise ValueError("precision inference split size differs")
-    git_commit = _git_commit_clean()
+def run_confidence_inference(
+    model_dir: Path,
+    examples: list[dict],
+) -> tuple[list[dict], dict]:
+    """Emit span-confidence prediction rows for the given examples.
 
+    The exact span-confidence semantics and provenance are shared by the
+    revision-2 confidence path and the revision-4 mining out-of-fold path so
+    that no unsafe inference logic is duplicated.
+    """
     import torch
     from transformers import AutoModelForTokenClassification, AutoTokenizer
 
     device = torch.device("cuda")
-    tokenizer = AutoTokenizer.from_pretrained(model_root / "model", use_fast=True)
-    model = AutoModelForTokenClassification.from_pretrained(model_root / "model")
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, use_fast=True)
+    model = AutoModelForTokenClassification.from_pretrained(model_dir)
     model.to(device)
     model.eval()
     prepared, context = add_soft_context(
@@ -203,6 +178,45 @@ def infer(
                 ],
                 "prediction_spans": prediction_rows,
             })
+    return rows, context
+
+
+def infer(
+    model_root: Path,
+    reference_root: Path,
+    output_dir: Path,
+    *,
+    seed: int,
+    split: str,
+) -> dict:
+    if seed not in SEEDS or split not in {"calibration", "confirmation"}:
+        raise ValueError("unsupported precision inference control")
+    if output_dir.exists() or output_dir.is_symlink():
+        raise FileExistsError(f"precision inference output exists: {output_dir}")
+    report_path = model_root / "report.json"
+    report = _read(report_path)
+    control = report.get("precision_control", {})
+    reference_manifest_path = reference_root / "manifest.json"
+    reference_manifest = _read(reference_manifest_path)
+    input_path = reference_root / f"{split}.jsonl"
+    if (
+        control.get("seed") != seed
+        or control.get("base_model_revision") != MODEL_REVISION
+        or control.get("checkpoint_selection") != "fixed_epoch_5"
+        or control.get("reference_manifest_sha256") != _sha256(reference_manifest_path)
+        or _model_artifact(model_root / "model") != control.get("model_artifact")
+        or reference_manifest.get("status") != REFERENCE_STATUS
+        or reference_manifest.get("eligible_for_production_precision_claim") is not False
+        or reference_manifest.get("outputs", {}).get(f"{split}_sha256")
+        != _sha256(input_path)
+    ):
+        raise ValueError("precision inference binding differs")
+    examples = _read_jsonl(input_path)
+    if len(examples) != {"calibration": 45, "confirmation": 46}[split]:
+        raise ValueError("precision inference split size differs")
+    git_commit = _git_commit_clean()
+
+    rows, context = run_confidence_inference(model_root / "model", examples)
 
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
