@@ -6,6 +6,7 @@ import unittest
 from production_precision_infer import _span_confidence
 from production_precision_reference import _labels_from_annotations
 from production_precision_select import _metric, _wilson_lower
+from production_verifier_lattice import _intrinsic_vetoes
 
 
 class PrecisionControllerTest(unittest.TestCase):
@@ -59,6 +60,13 @@ class PrecisionControllerTest(unittest.TestCase):
         self.assertAlmostEqual(
             metric["wilson_precision_lower_one_sided_95"],
             _wilson_lower(399, 399),
+        )
+
+    def test_intrinsic_veto_does_not_reject_numeral_shaped_name_character(self):
+        self.assertEqual(_intrinsic_vetoes("万安"), [])
+        self.assertEqual(
+            _intrinsic_vetoes("张三，"),
+            ["numeric_punctuation_or_symbol"],
         )
 
 
