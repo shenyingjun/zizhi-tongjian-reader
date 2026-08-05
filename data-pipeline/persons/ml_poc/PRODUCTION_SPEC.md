@@ -443,12 +443,12 @@ revision before execution.
 Because the consumed calibration jies train the verifier, select its threshold only
 from grouped out-of-fold predictions:
 
-1. Assign complete juans to five folds by ascending SHA-256 of
-   `20260811:<juan>`, greedily placing the next juan in the fold with the fewest
-   examples, then fewest reference spans, then lowest fold number.
-2. For each fold, train the exact fixed verifier on the other four folds and emit
-   scores once for the held-out fold.
-3. Concatenate the five held-out outputs. No example may be scored by a verifier that
+1. The frozen calibration contains exactly four juans (`105`, `151`, `278`, and
+   `282`). Assign them to four leave-one-juan-out folds by ascending SHA-256 of
+   `20260811:<juan>`; each fold holds one complete juan.
+2. For each fold, train the exact fixed verifier on the other three juans and emit
+   scores once for the held-out juan.
+3. Concatenate the four held-out outputs. No example may be scored by a verifier that
    trained on its jie or juan.
 4. Evaluate thresholds
    `{0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.92, 0.94,
@@ -472,15 +472,15 @@ compared. Conflict resolution cannot invent, extend, or split geometry.
 An out-of-fold point is diagnostic-eligible only with at least 300 predictions,
 precision at least `0.99`, recall at least `0.95`, and one-sided 95% Wilson precision
 lower bound at least `0.98`. Select highest recall, then precision, then higher
-threshold. Freeze the complete fold assignment, five model artifacts, all scores,
+threshold. Freeze the complete fold assignment, four model artifacts, all scores,
 the 15-point table, and the selected threshold. If no point is eligible, stop without
 reading confirmation. Precision and recall are end-to-end exact metrics against every
 frozen reference span in consumed calibration; lattice misses, hard-veto removals, and
 conflict-resolution losses remain in the recall denominator.
 
 After selection, train one final verifier with the same fixed recipe on every consumed
-calibration jie. The out-of-fold threshold is provisional because five 80%-data heads
-and the final 100%-data head need not have identical score distributions. No
+calibration jie. The out-of-fold threshold is provisional because four three-juan
+heads and the final four-juan head need not have identical score distributions. No
 post-hoc score mapping, Platt scaling, isotonic calibration, or threshold change is
 allowed; one-shot confirmation measures the transfer directly. This final verifier
 is the only verifier allowed to read revision-2 confirmation. No full-data retraining
@@ -732,7 +732,7 @@ Revision 3 uses this more specific order before the prospective formal-plan step
 ```text
 freeze revision-2 generator and consumed calibration
   -> build and validate the 0.30 one-seed candidate lattice
-  -> freeze five grouped verifier folds
+  -> freeze four leave-one-juan-out verifier folds
   -> train fixed frozen-encoder verifier heads
   -> emit exactly-once out-of-fold scores
   -> select or block from the fixed 15-point threshold table
