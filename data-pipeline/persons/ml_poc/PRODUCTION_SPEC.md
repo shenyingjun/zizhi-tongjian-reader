@@ -944,6 +944,59 @@ and proceed exactly once through section 5.2.4. This remains AI-assisted diagnos
 evidence with no production weight. Repeated mining, a second retraining pass, or
 changing the candidate quota after seeing calibration is forbidden.
 
+### 5.7 Revision-8 categorical fourth-teacher correction
+
+Revision 7's source-hidden A/B/C labeling completed before existence retraining and
+without reading calibration or confirmation. The scalar-confidence gate would pass
+2,828 candidates and route 2,366 to humans. Of those human-routed candidates, 2,270
+had the third teacher's categorical `definitely_not_person` decision but a
+self-reported confidence below `0.95`. This confirms the pre-implementation challenge
+that raw self-reported confidence is not calibrated across agents.
+
+Revision 8 changes only training-label adjudication. It reuses the immutable mining
+inventory and frozen A/B/C outputs and does not alter candidates, model features,
+training controls, calibration, confirmation, or production gates.
+
+Freeze the already-used teacher provenance as A/B/C model ID
+`claude-sonnet-5` and D model ID `gpt-5.6-sol`, including every batch agent/run
+identifier. A candidate can pass only with categorical support from both the Claude
+and GPT model families.
+
+1. Run a source-hidden fourth teacher over all 5,194 candidates, including the 1,553
+   not read by C. It sees only the
+   current numbered jie and highlighted geometry, with the same KB, translation,
+   score, source, and cross-jie restrictions. It cannot see A/B/C decisions or
+   rationales.
+2. For a candidate read by C, provisionally pass a fourth-teacher
+   `definitely_not_person` decision only when at least two of A/B/C also returned
+   `definitely_not_person`.
+3. For a candidate not read by C, provisionally pass only when A and B were the
+   original high-confidence `definitely_not_person` agreement and D also returned
+   `definitely_not_person`.
+4. Every other item requires human review.
+5. From all provisional passes, select
+   `ceil(0.10 * provisional_pass_count)` by the exact section 5.6.2 canonical
+   geometry SHA-256 order for human audit. The auditor sees the current jie,
+   highlighted geometry, all available rationales (A/B/C/D when C read the item,
+   otherwise A/B/D), and approved same-jie translation evidence when available. The
+   auditor cannot see scores, KBs, identities, or other jies. Any possible-person
+   decision must be confirmed against same-jie source and, when available,
+   translation evidence; a confirmed `exclude_from_negative_training` decision stops
+   Revision 8 before training and cannot be handled by deleting only that row.
+
+The fourth teacher uses the same closed categorical labels and rationale schema.
+D confidence remains recorded audit metadata but has no gating role; the frozen
+A/B `0.95` gate only defines the already-existing Revision-7 routing partition.
+Before D routing, assert that every candidate not read by C is exactly an A/B
+high-confidence agreement excluded only because it was outside the deterministic C
+audit; stop on any missing or differently routed item. Freeze the exact model IDs,
+JSON schema hash, all routing, prompts, responses, and bindings. The majority rule is
+fixed because it requires D plus two same-family source-hidden votes, not to clear the
+2,000 floor. After human resolution, require at least 2,000 verified negatives
+spanning all 28 fit juans or stop before training. This correction is valid only
+because no mined negative has entered training and no human decision, calibration
+score, confirmation example, or downstream metric was read before it was written.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
