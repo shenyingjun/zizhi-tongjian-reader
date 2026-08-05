@@ -20,7 +20,7 @@ BATCHES = 8
 
 
 def _read(path: Path) -> dict:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(path.read_text(encoding="utf-8-sig"))
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON object: {path}")
     return value

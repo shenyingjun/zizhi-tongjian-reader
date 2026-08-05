@@ -69,7 +69,7 @@ class TeacherValidationTest(unittest.TestCase):
                 "confidence": confidence,
                 "rationale": rationale,
             }],
-        }), encoding="utf-8")
+        }), encoding="utf-8-sig")
         return tasks, batches, raw
 
     def test_accepts_complete_schema(self):
