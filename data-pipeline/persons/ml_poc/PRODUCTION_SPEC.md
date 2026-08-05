@@ -1,6 +1,6 @@
 # Agent-1 ML production program
 
-Status: revision-6 diagnostic implementation contract. This program authorizes new
+Status: revision-7 diagnostic implementation contract. This program authorizes new
 engineering and candidate-model-blind data work, but no ML candidate is authorized
 for production.
 
@@ -823,6 +823,124 @@ If no threshold is eligible, terminate revision 6 without reading confirmation. 
 threshold is eligible, freeze both already-trained heads and proceed exactly once
 through section 5.2.4. This remains AI-assisted diagnostic evidence with no production
 weight.
+
+### 5.6 Revision-7 fit-only lexical hard-negative mining
+
+Revision 6 is terminally blocked before confirmation. At existence threshold `0.50`
+it produced 456 exact true positives, 21 false positives, precision `0.955975`, and
+recall `0.972281`. Exact error decomposition found:
+
+- 20 selected false positives overlapping no calibration reference;
+- 1 selected boundary overreach replacing a covered exact reference;
+- 3 covered exact references rejected by the existence threshold;
+- 1 covered exact reference replaced by the ranker; and
+- the unchanged 9 deployment-lattice misses.
+
+The boundary ranker therefore selected the exact candidate in 459 of 460
+lattice-covered reference cases when the exact candidate was admitted. The dominant
+failure is whole-span existence discrimination. Revision 7 must not alter or retrain
+the revision-6 ranker, resolver, generator, lattice, reference, encoder, thresholds,
+or gates.
+
+#### 5.6.1 Frozen mining model and candidate universe
+
+Use only the frozen revision-6 existence head, scaler, and pinned encoder as a mining
+model. Validate their hashes against the terminal revision-6 manifest. The mining
+model and every source label are fit-only; revision-6 calibration scores and
+calibration examples are forbidden inputs.
+
+For every target paragraph in each of the 189 frozen fit jies, enumerate every
+contiguous source span of 1 through 8 Unicode code points. A mining candidate must:
+
+- stay inside one target paragraph;
+- overlap no frozen fit reference under section 5.5.1's half-open rule;
+- pass the unchanged intrinsic hard vetoes; and
+- not duplicate a geometry in the frozen revision-6 existence inventory.
+
+Score every surviving candidate with the frozen revision-6 existence head. Within
+each jie, sort by descending stored float32 score, then ascending
+`(para_id,start,end)`, and retain exactly
+`min(candidate_count, max(8, 2 * reference_count))`. No score threshold, surface
+list, calibration observation, or morphology heuristic may change this quota or
+ordering.
+
+Freeze every pool geometry and float32 score in deterministic per-jie NPZ arrays,
+every retained row in reviewer-readable JSONL, per-jie pool/retained counts, source
+text and reference bindings, mining-model hashes, and exact ordering. Require at
+least 4,000 retained candidates spanning all 28 fit juans; otherwise stop before
+review.
+
+#### 5.6.2 Source-hidden negative verification
+
+The frozen fit references are training references, not candidate-free exhaustive
+formal annotation. A retained non-reference geometry therefore cannot become a
+negative label from absence alone.
+
+Run two independent AI teachers over every retained candidate. Each sees the full
+current numbered jie and the highlighted geometry, but not its mining score, rank,
+model identity, other teacher response, translation, notes, person KB, or identity
+KB. Each returns exactly:
+
+- `definitely_not_person`; or
+- `possible_person_or_boundary`;
+
+plus a confidence and short source-grounded rationale. Only unanimous
+`definitely_not_person` decisions with both confidences at least `0.95` pass
+provisionally. Send every other item, plus a deterministic 10% audit sample of the
+provisional agreements selected by SHA-256 order over the canonical geometry key, to
+a source-hidden third AI teacher with the same two labels and visibility restrictions.
+A third-teacher `definitely_not_person` at confidence at least `0.95` passes; every
+other item requires human review.
+
+The human reviewer sees only the jie, highlighted geometry, and three rationales,
+without scores or model identities, and chooses `not_person` or
+`exclude_from_negative_training`. A possible person or boundary error is only
+excluded; it does not add or change a positive reference. Freeze all prompts,
+responses, confidence values, rationales, task bindings, human state, and completion
+receipt. Each AI response must validate against a pinned JSON schema containing the
+closed label enum, a finite confidence in `[0,1]`, and a non-empty rationale. Require
+at least 2,000 verified mined negatives spanning all 28 fit juans; otherwise stop
+before training.
+
+#### 5.6.3 Existence-only retraining
+
+Create the revision-7 existence inventory as the exact union of:
+
+- all 2,696 frozen revision-6 real OOF existence rows with their unchanged labels; and
+- all section 5.6.2 verified mined rows, each labeled negative.
+
+Deduplicate by the canonical
+`(juan,jie_index,para_id,start,end)` key and stop on any collision rather than
+selecting a provenance. Any serialized `id` is only the canonical jie identifier for
+the same `(juan,jie_index)` and is not an independent key. Use the exact section 5.5.1
+features, architecture, optimizer, batch size, and 20 fixed epochs, changing only the
+seed to `20260816`. Assign aggregate loss mass prospectively by stratum:
+
+- `0.50` to real OOF occurrence-positive rows;
+- `0.25` to real OOF non-overlap negative rows; and
+- `0.25` to verified mined negative rows.
+
+For a dataset of `N` rows, each row in stratum `s` receives immutable weight
+`mass_s * N / N_s`; optimize the arithmetic mean of weighted per-row BCE losses in
+each shuffled batch. Fit a new scaler on this complete fit-only inventory. Do not
+initialize from the mining head.
+
+Copy the revision-6 rank head and rank scaler byte-for-byte into the revision-7
+artifact and verify their hashes before and after copying. Do not extract rank
+training features or execute a rank optimizer.
+
+#### 5.6.4 Fixed calibration and stop rule
+
+Score the unchanged 517-candidate calibration lattice once with the new existence
+head and copied ranker. Apply section 5.5.3's veto, unchanged 15 thresholds, ordinal
+resolver, 469-reference denominator, Wilson gate, selection order, and artifact
+freeze exactly.
+
+If no threshold is eligible, terminate revision 7 without reading confirmation. If a
+threshold is eligible, freeze the already-trained existence head and copied ranker
+and proceed exactly once through section 5.2.4. This remains AI-assisted diagnostic
+evidence with no production weight. Repeated mining, a second retraining pass, or
+changing the candidate quota after seeing calibration is forbidden.
 
 ## 6. Fresh formal evaluation
 
