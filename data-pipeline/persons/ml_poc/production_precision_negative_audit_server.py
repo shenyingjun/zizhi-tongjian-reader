@@ -350,6 +350,46 @@ class SafeNegativeAuditStore:
                 "stopped": self._stopped(),
             }
 
+    def all_payloads(self) -> dict:
+        with self._lock:
+            stopped = self._stopped()
+            payloads = []
+            decided = 0
+            complete = 0
+            total_candidates = 0
+            for task_id in self.order:
+                task, rationales = self._sources(task_id)
+                state = self._load_state(task_id, task)
+                rationale_index = {
+                    row["candidate_id"]: row["judgments"]
+                    for row in rationales["candidates"]
+                }
+                revealed = {
+                    candidate_id: rationale_index[candidate_id]
+                    for candidate_id, decision in state["decisions"].items()
+                    if decision["rationales_revealed"]
+                }
+                final_count = sum(
+                    row.get("final") in LABELS
+                    for row in state["decisions"].values()
+                )
+                decided += final_count
+                complete += int(state["complete"])
+                total_candidates += len(task["candidates"])
+                payloads.append({
+                    "task": task,
+                    "state": state,
+                    "revealed_rationales": revealed,
+                })
+            return {
+                "payloads": payloads,
+                "complete": complete,
+                "total": len(payloads),
+                "decided": decided,
+                "total_candidates": total_candidates,
+                "stopped": stopped,
+            }
+
     def initial(self, task_id: str, candidate_id: str, label: str) -> dict:
         with self._lock:
             if label not in LABELS:
@@ -389,6 +429,80 @@ class SafeNegativeAuditStore:
                 row["judgments"] for row in rationales["candidates"]
                 if row["candidate_id"] == candidate_id
             )
+
+    def reveal_task(self, task_id: str) -> dict[str, list[dict]]:
+        with self._lock:
+            if self._stopped():
+                raise PermissionError("audit stopped after exclusion")
+            task, rationales = self._sources(task_id)
+            state = self._load_state(task_id, task)
+            candidates = self._candidate_index(task)
+            if (
+                set(state["decisions"]) != set(candidates)
+                or any(
+                    row["initial"] != "not_person"
+                    or row["final"] not in {None, "not_person"}
+                    for row in state["decisions"].values()
+                )
+                or (
+                    state["complete"]
+                    and any(
+                        row["final"] != "not_person"
+                        or not row["rationales_revealed"]
+                        for row in state["decisions"].values()
+                    )
+                )
+            ):
+                raise PermissionError(
+                    "all independent initial judgments are required"
+                )
+            for decision in state["decisions"].values():
+                decision["rationales_revealed"] = True
+            self._write_state(task_id, state)
+            return {
+                row["candidate_id"]: row["judgments"]
+                for row in rationales["candidates"]
+            }
+
+    def reveal_all(self) -> dict[str, dict[str, list[dict]]]:
+        with self._lock:
+            if self._stopped():
+                raise PermissionError("audit stopped after exclusion")
+            prepared = []
+            revealed = {}
+            for task_id in self.order:
+                task, rationales = self._sources(task_id)
+                state = self._load_state(task_id, task)
+                candidates = self._candidate_index(task)
+                if (
+                    set(state["decisions"]) != set(candidates)
+                    or any(
+                        row["initial"] != "not_person"
+                        or row["final"] not in {None, "not_person"}
+                        for row in state["decisions"].values()
+                    )
+                    or (
+                        state["complete"]
+                        and any(
+                            row["final"] != "not_person"
+                            or not row["rationales_revealed"]
+                            for row in state["decisions"].values()
+                        )
+                    )
+                ):
+                    raise PermissionError(
+                        "all independent initial judgments are required"
+                    )
+                prepared.append((task_id, state))
+                revealed[task_id] = {
+                    row["candidate_id"]: row["judgments"]
+                    for row in rationales["candidates"]
+                }
+            for task_id, state in prepared:
+                for decision in state["decisions"].values():
+                    decision["rationales_revealed"] = True
+                self._write_state(task_id, state)
+            return revealed
 
     def final(self, task_id: str, candidate_id: str, label: str) -> dict:
         with self._lock:
@@ -434,6 +548,84 @@ class SafeNegativeAuditStore:
             self._write_state(task_id, state)
             return state
 
+    def confirm_task(self, task_id: str) -> dict:
+        with self._lock:
+            if self._stopped():
+                raise PermissionError("audit stopped after exclusion")
+            task, _ = self._sources(task_id)
+            state = self._load_state(task_id, task)
+            candidates = self._candidate_index(task)
+            if (
+                state["complete"]
+                or set(state["decisions"]) != set(candidates)
+                or any(
+                    row["initial"] != "not_person"
+                    or not row["rationales_revealed"]
+                    or row["final"] not in {None, "not_person"}
+                    for row in state["decisions"].values()
+                )
+            ):
+                raise PermissionError(
+                    "all rationales must be reviewed before batch confirmation"
+                )
+            for decision in state["decisions"].values():
+                decision["final"] = "not_person"
+            state["complete"] = True
+            state["completion_receipt"] = _canonical_sha256({
+                key: value for key, value in state.items()
+                if key != "completion_receipt"
+            })
+            self._write_state(task_id, state)
+            return state
+
+    def confirm_all(self) -> dict:
+        with self._lock:
+            if self._stopped():
+                raise PermissionError("audit stopped after exclusion")
+            prepared = []
+            for task_id in self.order:
+                task, _ = self._sources(task_id)
+                state = self._load_state(task_id, task)
+                candidates = self._candidate_index(task)
+                if state["complete"]:
+                    if any(
+                        row["final"] != "not_person"
+                        for row in state["decisions"].values()
+                    ):
+                        raise PermissionError(
+                            "completed task contains an exclusion"
+                        )
+                    continue
+                if (
+                    set(state["decisions"]) != set(candidates)
+                    or any(
+                        row["initial"] != "not_person"
+                        or not row["rationales_revealed"]
+                        or row["final"] not in {None, "not_person"}
+                        for row in state["decisions"].values()
+                    )
+                ):
+                    raise PermissionError(
+                        "all rationales must be reviewed before confirmation"
+                    )
+                prepared.append((task_id, state))
+            for task_id, state in prepared:
+                for decision in state["decisions"].values():
+                    decision["final"] = "not_person"
+                state["complete"] = True
+                state["completion_receipt"] = _canonical_sha256({
+                    key: value for key, value in state.items()
+                    if key != "completion_receipt"
+                })
+                self._write_state(task_id, state)
+            return {
+                "complete_tasks": len(self.order),
+                "confirmed_candidates": sum(
+                    int(self.selected[task_id]["candidates"])
+                    for task_id in self.order
+                ),
+            }
+
 
 class Handler(SimpleHTTPRequestHandler):
     store: SafeNegativeAuditStore
@@ -463,6 +655,9 @@ class Handler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/safe-negative-audit/index":
                 self._json(HTTPStatus.OK, self.store.index())
                 return
+            if parsed.path == "/api/safe-negative-audit/all":
+                self._json(HTTPStatus.OK, self.store.all_payloads())
+                return
             if parsed.path == "/api/safe-negative-audit/task":
                 task_id = parse_qs(parsed.query).get("task_id", [""])[0]
                 self._json(HTTPStatus.OK, self.store.payload(task_id))
@@ -487,11 +682,19 @@ class Handler(SimpleHTTPRequestHandler):
                 result = {"judgments": self.store.reveal(
                     task_id, str(body.get("candidate_id", ""))
                 )}
+            elif parsed.path == "/api/safe-negative-audit/reveal-task":
+                result = {"judgments": self.store.reveal_task(task_id)}
+            elif parsed.path == "/api/safe-negative-audit/reveal-all":
+                result = {"judgments": self.store.reveal_all()}
             elif parsed.path == "/api/safe-negative-audit/final":
                 result = self.store.final(
                     task_id, str(body.get("candidate_id", "")),
                     str(body.get("label", "")),
                 )
+            elif parsed.path == "/api/safe-negative-audit/confirm-task":
+                result = self.store.confirm_task(task_id)
+            elif parsed.path == "/api/safe-negative-audit/confirm-all":
+                result = self.store.confirm_all()
             elif parsed.path == "/api/safe-negative-audit/complete":
                 result = self.store.complete(task_id)
             else:

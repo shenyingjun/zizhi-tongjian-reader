@@ -6,13 +6,15 @@
   <title>跨度人名判定</title>
   <style>
     body { font: 16px/1.65 system-ui, sans-serif; margin: 0 auto; max-width: 980px; padding: 20px; color: #24292f; }
-    header { position: sticky; top: 0; background: white; padding: 10px 0; border-bottom: 1px solid #d0d7de; }
+    header { position: sticky; top: 0; z-index: 2; background: white; padding: 10px 0; border-bottom: 1px solid #d0d7de; }
     select, button { font: inherit; padding: 7px 12px; margin: 4px; }
     button { cursor: pointer; }
     button.danger { color: #cf222e; }
     .paragraph { margin: 12px 0; padding: 10px; background: #f6f8fa; }
     mark { background: #fff1a8; font-weight: 700; }
     .candidate { border: 1px solid #d0d7de; border-radius: 8px; margin: 16px 0; padding: 14px; }
+    .candidate.active { border-color: #0969da; box-shadow: 0 0 0 2px #ddf4ff; }
+    .jie { border-bottom: 4px solid #d8dee4; margin-bottom: 36px; padding-bottom: 24px; }
     .done { opacity: .65; }
     .rationale { border-left: 3px solid #54aeff; margin: 8px 0; padding-left: 10px; }
     .error, .stopped { color: #cf222e; font-weight: 700; }
@@ -21,16 +23,13 @@
 <body>
   <header>
     <strong>跨度人名判定</strong>
-    <select id="task"></select>
-    <button id="previous">上一节</button><button id="next">下一节</button>
     <span id="progress"></span>
+    <button id="reveal-all" hidden>展开全部 AI 理由</button>
+    <button id="confirm-all" hidden>维持全部判断并完成</button>
     <div id="status"></div>
   </header>
   <main>
-    <h2 id="title"></h2>
-    <div id="text"></div>
-    <div id="candidates"></div>
-    <button id="complete">锁定本节</button>
+    <div id="tasks"></div>
   </main>
   <script src="/span_person_judgment.js"></script>
 </body>

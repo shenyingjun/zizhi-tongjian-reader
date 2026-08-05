@@ -129,6 +129,14 @@ class SafeNegativeAuditStoreTest(unittest.TestCase):
             self.store.payload(self.task_id)["revealed_rationales"],
         )
 
+    def test_single_page_payload_keeps_unrevealed_rationales_hidden(self):
+        result = self.store.all_payloads()
+
+        self.assertEqual(1, len(result["payloads"]))
+        self.assertEqual(
+            {}, result["payloads"][0]["revealed_rationales"]
+        )
+
     def test_exclusion_stops_the_full_audit(self):
         decision = self.store.initial(
             self.task_id, self.candidate_id,
@@ -157,6 +165,41 @@ class SafeNegativeAuditStoreTest(unittest.TestCase):
 
         self.assertTrue(completed["complete"])
         self.assertEqual(64, len(completed["completion_receipt"]))
+        self.assertTrue(self.store.payload(self.task_id)["state"]["complete"])
+        self.assertIn(self.task_id, self.store.reveal_all())
+
+    def test_task_batch_requires_initials_then_reveals_and_confirms(self):
+        with self.assertRaisesRegex(
+            PermissionError, "independent initial judgments"
+        ):
+            self.store.reveal_task(self.task_id)
+        self.store.initial(
+            self.task_id, self.candidate_id, "not_person"
+        )
+
+        revealed = self.store.reveal_task(self.task_id)
+        completed = self.store.confirm_task(self.task_id)
+
+        self.assertEqual(
+            [self.candidate_id], list(revealed)
+        )
+        self.assertTrue(completed["complete"])
+        self.assertEqual(
+            "not_person",
+            completed["decisions"][self.candidate_id]["final"],
+        )
+
+    def test_global_batch_requires_initials_then_reveals_and_confirms(self):
+        self.store.initial(
+            self.task_id, self.candidate_id, "not_person"
+        )
+
+        revealed = self.store.reveal_all()
+        completed = self.store.confirm_all()
+
+        self.assertIn(self.candidate_id, revealed[self.task_id])
+        self.assertEqual(1, completed["complete_tasks"])
+        self.assertEqual(1, completed["confirmed_candidates"])
         self.assertTrue(self.store.payload(self.task_id)["state"]["complete"])
 
 
