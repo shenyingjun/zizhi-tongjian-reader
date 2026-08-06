@@ -1072,6 +1072,93 @@ threshold `0.94`, the model retained recall `0.9530916844` but reached only prec
 (`447` true positives from `459` predictions). Revision 9 is therefore blocked;
 confirmation remains unread and the artifact has no production weight.
 
+### 5.9 Revision-10 candidate-conditioned same-jie context
+
+Revision 9 demonstrated that a frozen candidate/left/right/global-mean representation
+cannot separate the remaining context-dependent negatives. Revision 10 changes only
+same-jie context aggregation. It must not load Revision-9 calibration candidates,
+scores, references, errors, or thresholds, and it must not read confirmation before
+the fit-only gate below passes.
+
+Reuse the exact Revision-9 frozen encoder and 5,822-row existence inventory: 2,525 real
+OOF occurrence-positive rows, 171 real OOF negatives, and 3,126 zero-error-audited
+mined negatives. Preserve the `.50/.25/.25` stratum masses. No new label, teacher
+decision, translation evidence, person KB, identity KB, neighboring jie, or
+cross-jie recurrence feature is permitted.
+
+Encode each numbered jie with the unchanged overlapping 512-token windows and
+single-owner character geometry. For every candidate, compute its candidate mean and
+immediate left/right character vectors. Replace the global context mean with one
+candidate-conditioned attention layer:
+
+- query: a learned 128-wide projection of the candidate mean;
+- keys: a learned 128-wide projection of every owned non-newline character in the
+  current numbered jie;
+- values: the unchanged frozen character vectors;
+- additive learned scalar biases for relative-distance buckets
+  `inside`, `1`, `2-4`, `5-16`, `17-64`, `65+`, and `other_paragraph`; distance is
+  Unicode code points from the nearest candidate boundary, `inside` takes precedence,
+  and `other_paragraph` takes precedence over numeric distance; and
+- softmax only over owned characters in the current jie.
+
+Concatenate candidate, left, right, attended-context, current-paragraph mean, and
+whole-jie mean vectors with section 5.3.3's existing boundary features plus normalized
+candidate start/end within its paragraph, normalized paragraph ordinal within the jie,
+and paragraph-count `log1p`. Feed this to one 256-wide GELU/dropout binary existence
+head. The encoder remains frozen. Use attention width `128`, dropout `0.1`, AdamW
+learning rate `1e-4`, weight decay `0.01`, 20 epochs, and seed `20260817`. Candidate
+scores, generator support, teacher confidence, surface identity, and cross-jie
+features remain forbidden.
+
+Fit two scalers on each fold's 24-juan training subset only: one per-dimension
+mean/std over every owned non-newline frozen character vector, applied to all
+candidate, boundary, attention-key/value, paragraph, and jie vectors; and one
+mean/std over the candidate-row numeric features. Clamp either scale to `1.0` below
+`1e-6`. Missing left/right boundaries remain exact zero vectors after scaling. Apply
+the frozen fold scalers unchanged to its four held-out juans.
+
+Cache each fold's frozen character vectors once. Training examples are candidate rows,
+not variable-size jie batches: shuffle rows uniformly with batch size `32`. Give every
+row in stratum `s` immutable weight `mass_s * N / N_s` and optimize the arithmetic
+mean of weighted per-row BCE in each batch, exactly as section 5.6.3. A jie may share
+one cached character tensor across its rows, but this must not change row-level
+shuffling, batch membership, or loss normalization. Recompute `N` and every `N_s`
+from each fold's 24-juan training subset; only the final full fit uses the complete
+28-juan counts.
+
+Before any training, freeze seven folds by sorting the 28 fit juans numerically and
+assigning them round-robin to folds `0..6`; each fold therefore holds four complete
+juans. For each fold, fit a fresh attention/head/scaler on the other 24 juans and emit
+scores for every row in the four held-out juans. No row, candidate from the same jie,
+or fitted scaler may cross the fold boundary.
+
+Evaluate the concatenated OOF scores at the unchanged 15 thresholds. A threshold is
+fit-eligible only when:
+
+- OOF recall over the 2,525 real positives is at least `0.98`;
+- OOF precision over all labeled OOF rows is at least `0.99`;
+- the one-sided 95% Wilson precision lower bound is at least `0.985`;
+- mined-negative rejection is at least `0.99`;
+- real-OOF-negative rejection is at least `0.98`; and
+- every fold has positive recall at least `0.95`.
+
+The real-negative rejection gate is the primary fit-only evidence for the stated
+context-separation goal. Mined-negative rejection is only a safety sanity check:
+those candidates were selected with a full-fit mining model and are not unbiased OOF
+generalization evidence. The row-level Wilson bound is uncorrected for jie/juan
+clustering and is also only a fit diagnostic. Both remain necessary-but-not-sufficient
+conservative eligibility floors; confirmation remains the sole fresh transfer gate.
+
+Select the eligible threshold by descending global recall, precision, then threshold.
+If none is eligible, stop Revision 10 without fitting a full model or reading
+confirmation. If one is eligible, freeze the OOF table and selected threshold, fit
+exactly one final model on all 28 fit juans with the same controls, copy the
+Revision-6 ranker byte-for-byte, and evaluate confirmation exactly once at that fixed
+existence threshold through section 5.2.4's complete generator, hard-veto, copied
+ranker, ordinal resolver, lattice-recall, precision, recall, Wilson, and minimum-count
+gates. No old calibration pass, threshold adjustment, second model, or
+post-confirmation retry is permitted.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
