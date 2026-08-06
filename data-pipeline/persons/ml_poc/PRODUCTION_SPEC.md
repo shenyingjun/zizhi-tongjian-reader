@@ -1167,6 +1167,108 @@ improved real-negative rejection only to `0.5087719298` while recall fell to
 `0.9259405941`. No threshold was eligible. Candidate-conditioned same-jie attention
 therefore did not solve cross-juan separation of the 171 real hard negatives.
 
+### 5.10 Revision-11 candidate-marked encoder fine-tuning
+
+Revision 10 shows that a learned head over frozen character vectors is insufficient.
+Revision 11 permits the encoder itself to adapt, but remains a fit-only experiment:
+it must not load any calibration or confirmation candidate, reference, prediction,
+score, error inventory, or threshold. The seven Revision-10 juan folds and all
+eligibility gates remain unchanged.
+
+Reuse the exact 2,696 real OOF rows and 3,126 audited mined negatives. Relabel the real
+OOF rows from their frozen geometry and `overlapping_references` only:
+
+- `exact_person`: the candidate exactly equals an overlapping reference (`2,393`);
+- `boundary_alternative`: it overlaps a reference but is not exact (`132`); and
+- `not_person`: it overlaps no reference (`171`).
+
+Every audited mined negative is also `not_person`, but remains a distinct
+`mined_not_person` loss stratum. Do not invent semantic subtype labels from surfaces,
+teacher rationales, lexicons, translations, or model scores. In particular,
+collective, role, and metalinguistic errors are learned only through the observed
+`not_person` decision unless a future candidate-blind human protocol supplies those
+subtype labels.
+
+For each row, construct one candidate-marked input containing only its numbered jie.
+Segment A is the exact candidate surface. Segment B is the assembled current-jie text
+with reserved in-vocabulary marker tokens immediately before and after the occurrence
+identified by the row's frozen paragraph-local `[start,end)` geometry, never by a
+surface search, and a reserved paragraph marker replacing each newline. Before
+training, bind the sentinels to `㈠` (left), `㈡` (right), and `㈢` (paragraph).
+Require their distinct tokenizer IDs `8680`, `11019`, and `12821`, their absence from
+every fit-jie source string, and exactly one token for each whitespace-delimited
+literal. Sentinel-delimiting ASCII spaces are model-input syntax, not source text.
+Adding tokens or resizing embeddings is forbidden.
+
+The `384`-wordpiece limit includes Segment A, Segment B, all three marker types, and
+every tokenizer special token. Tokenize complete code points; never split a code point
+or candidate. First try the complete marked jie. If it does not fit, define one fixed
+expansion sequence from the complete candidate geometry: prepend one code point, then
+append one, alternating from the left; when one jie edge is exhausted, continue only
+on the other side. Select the longest prefix of that expansion sequence whose complete
+paired tokenization is at most `384` wordpieces. Find the prefix by binary search over
+its integer length and assert that the selected prefix fits while the next prefix does
+not. This tokenizer's character-level token count must be nondecreasing over that
+sequence; a violated assertion stops the run. Freeze the resulting assembled-text
+codepoint bounds and exact token IDs. Paragraph markers inside the slice count against
+the same budget.
+
+Preflight every row before fold training. Segment A must contain at least one
+non-special token; both occurrence markers must appear exactly once in Segment B in
+the correct order; and at least one Segment-B token must lie between them. Any failure
+stops the complete Revision-11 run rather than dropping a row or changing a metric
+denominator. Candidate text, marker IDs, and current-jie text are the only inputs;
+generator support, confidence, identity, person KBs, neighboring jies, and cross-jie
+recurrence remain forbidden.
+
+Initialize from the exact Revision-9 encoder. Fine-tune all encoder parameters and a
+new three-class head. Concatenate the final-layer `[CLS]` vector, the mean Segment-A
+candidate vector, and the mean marked-occurrence vector; apply dropout `0.10` and one
+linear three-logit classifier. Use cross entropy with immutable fold-local stratum
+masses `0.45` exact person, `0.15` boundary alternative, `0.20` real not-person, and
+`0.20` mined not-person. For each fold, compute `N` and `N_s` from only that fold's
+24-juan training subset and give each row weight `mass_s * N / N_s`; only a permitted
+final full fit uses all 28-juan counts. For each deterministic accumulation group,
+sum weighted per-row losses and divide by the actual row count in that group. Split
+that already-known divisor across its physical micro-batches before backpropagation;
+the last partial group therefore uses its own actual row count. Use seed `20260818`,
+exactly 3 epochs, Adafactor encoder learning rate `1e-5`, classifier learning rate `1e-4`,
+weight decay `0.01`, physical batch size `1`, gradient accumulation `32`, gradient norm
+cap `1.0`, and no scheduler, warmup, early stopping, augmentation, or hyperparameter
+search. Shuffle rows deterministically each epoch. Fit each fold from the same
+untouched Revision-9 initialization; no model or optimizer state crosses folds.
+Use Transformers Adafactor with `scale_parameter=False`, `relative_step=False`,
+`warmup_init=False`, and no first-moment term. Keep model parameters, gradients, and
+factored optimizer state on the GPU.
+
+The admission score is softmax probability of `exact_person`. Evaluate the concatenated
+OOF scores at the unchanged 15 threshold values, with Revision-10 gates restated for
+the new exact-geometry labels. A threshold is eligible only when:
+
+- recall over the fixed 2,393 `exact_person` rows is at least `0.98`;
+- precision counts only admitted `exact_person` rows as true positives and is at least
+  `0.99`;
+- the corresponding one-sided 95% Wilson precision lower bound is at least `0.985`;
+- rejection of the 3,126 mined not-person rows is at least `0.99`;
+- rejection of the 171 real not-person rows is at least `0.98`;
+- rejection of the 132 boundary alternatives is at least `0.90`; and
+- every fold's recall over its exact-person rows is at least `0.95`.
+
+Report the complete three-by-three argmax confusion matrix and score distributions by
+all four loss strata, but neither may change the fixed threshold table or controls.
+At inference, sort threshold-admitted overlapping candidates first by descending
+stored float32 exact-person probability, then by the copied Revision-6 rank logit and
+its existing deterministic tie-breaks. The copied ranker always runs against its
+original pinned Revision-9 encoder and scaler, never the fine-tuned encoder; inference
+therefore loads the fine-tuned encoder for admission and the pinned encoder for
+ranking.
+
+If no threshold is eligible, stop without a full fit or confirmation read. If one is
+eligible, freeze the OOF artifact and selected threshold, fit one final model on all 28
+fit juans, and run the unchanged one-shot confirmation workflow with the copied
+Revision-6 ranker. No calibration read, threshold adjustment, retry, semantic-label
+expansion, or post-confirmation retraining is permitted.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
