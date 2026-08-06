@@ -1159,6 +1159,14 @@ ranker, ordinal resolver, lattice-recall, precision, recall, Wilson, and minimum
 gates. No old calibration pass, threshold adjustment, second model, or
 post-confirmation retry is permitted.
 
+Revision 10 completed the seven-fold fit-only OOF selector and stopped without a
+final fit or confirmation read. At threshold `0.50`, precision was `0.9321579149`,
+recall was `0.9631683168`, mined-negative rejection was `0.9772872681`, and
+real-negative rejection was only `0.3801169591`. Raising the threshold to `0.99`
+improved real-negative rejection only to `0.5087719298` while recall fell to
+`0.9259405941`. No threshold was eligible. Candidate-conditioned same-jie attention
+therefore did not solve cross-juan separation of the 171 real hard negatives.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
