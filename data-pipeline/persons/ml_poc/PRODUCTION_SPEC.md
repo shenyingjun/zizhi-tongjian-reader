@@ -1319,6 +1319,11 @@ AI rationales may be revealed only after the immutable first judgment. No AI agr
 or human decision enters training until the complete 303-row audit is frozen.
 Routing likewise publishes one atomic root with a sealed adjudication sibling and a
 human-review sibling containing only current-jie tasks and candidate geometry.
+For this Revision-12 audit, the user explicitly authorizes a fresh source-hidden
+Copilot teacher to act as the human adjudicator. Its first judgments use the identical
+label-free human bundle and immutable state API; they carry human-gate authority for
+this diagnostic training audit, but do not convert the underlying AI-assisted
+references into formal-grade evidence.
 
 After freeze, report the original-to-audited confusion matrix separately for the 171
 real negatives and 132 boundary alternatives. A row audited `exact_person` is removed
