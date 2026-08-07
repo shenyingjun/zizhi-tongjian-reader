@@ -1335,6 +1335,51 @@ label alone may not invent that target. A `not_person` row remains a semantic ne
 Any final `uncertain` row is excluded from Revision-12 training. Specify and challenge
 the pairwise training revision only after these counts and geometries are frozen.
 
+The frozen audit contains 56 `not_person`, 77 `exact_person`, and 170
+`wrong_boundary` decisions with no uncertainty. Of the original 171 real negatives,
+only 56 remain semantic negatives; 61 are exact person spans and 54 are boundary
+errors. Of the original 132 boundary alternatives, 16 are exact and 116 remain
+boundary errors. These corrections explain the failure of Revisions 6–11 and replace
+the old labels for future fit-only work.
+
+### 5.12 Revision-13 blind exact-target geometry audit
+
+Do not infer the correct side of a pairwise boundary objective from the old reference.
+Create a new source-hidden task for all 170 audited `wrong_boundary` rows. Each task
+contains only complete current-jie text, paragraph geometry, and the audited wrong
+candidate. It hides the old reference, original class, model scores, all prior AI
+labels/rationales, and every other artifact. The user-authorized Copilot teacher acts
+as the geometry adjudicator under the same diagnostic, non-formal claim limit.
+
+For each wrong candidate, the teacher returns every exact individual-person geometry
+that overlaps it in the same paragraph. Normally this is one target. Multiple targets
+are permitted only when the wrong candidate merges multiple person mentions.
+`uncertain` is permitted when current-jie text cannot establish exact geometry.
+Here `wrong_boundary` is overlap-type by definition; a disjoint nearby person does not
+make a non-person candidate a boundary error. For multiple targets, every target must
+be contained by the wrong candidate and the targets must be pairwise disjoint.
+Every target must be a non-empty source-exact paragraph-local `[start,end)` span,
+overlap the wrong candidate, and be unique within the decision. A target equal to the
+wrong candidate is invalid. Freeze task hashes, teacher output, target geometry,
+surface, and decision state before constructing corrected labels.
+
+For corrected fit labels, begin with the complete frozen fit references. For every
+audited candidate, remove only existing reference geometries that overlap that
+candidate in the same paragraph, then:
+
+- `exact_person`: add the audited candidate geometry;
+- `wrong_boundary`: add every frozen exact target and add one pair from each target
+  against the wrong candidate; and
+- `not_person`: add no positive and retain the candidate as a semantic negative.
+
+Deduplicate exact geometry after all replacements. If two corrections prescribe
+conflicting overlapping exact targets, or any boundary decision remains uncertain,
+stop before training. Preserve the 3,126 Revision-9 audited mined negatives as a
+separate easy-negative stratum; “56 semantic negatives” refers only to the corrected
+real-hard-negative inventory.
+In this frozen audit all 56 `not_person` rows originated as no-overlap real negatives;
+the corrected-inventory builder must assert that none removes a reference.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
