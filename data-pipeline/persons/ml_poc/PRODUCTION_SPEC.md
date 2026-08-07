@@ -1450,6 +1450,8 @@ authorize production decoding. It must not load Revision-9/10/11 scores,
 predictions, error inventories, or fine-tuned checkpoints. Its only model input is
 the untouched hash-bound Revision-9 base encoder/tokenizer; its only data inputs are
 current-jie text, corrected geometry/classes/strata, and the frozen juan-fold map.
+Historical five-fold mining fields retained on source rows are provenance only and
+must not override or be validated as the new seven-fold assignment.
 Bind the implementation commit, corrected-inventory manifest, ordered rows,
 encoder/tokenizer artifact, threshold list, deterministic flags, package/CUDA/cuDNN
 versions, and GPU type.

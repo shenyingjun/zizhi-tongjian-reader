@@ -132,8 +132,6 @@ def _validate_candidate(
     expected_fold = fold_by_juan.get(candidate["juan"])
     if expected_fold is None:
         raise ValueError("corrected encoder candidate juan is outside folds")
-    if "fold" in row and int(row["fold"]) != expected_fold:
-        raise ValueError("corrected encoder frozen fold differs")
     return candidate
 
 

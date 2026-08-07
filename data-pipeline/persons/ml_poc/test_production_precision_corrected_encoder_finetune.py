@@ -136,6 +136,13 @@ class CorrectedEncoderInventoryTest(unittest.TestCase):
         ):
             corrected._assemble_inventory(*values)
 
+    def test_historical_source_fold_does_not_override_seven_fold_map(self):
+        values = list(_synthetic_inputs())
+        values[2][0]["fold"] = 99
+        with _count_patch():
+            inventory = corrected._assemble_inventory(*values)
+        self.assertEqual(0, int(inventory["fold_ids"][0]))
+
 
 class CorrectedEncoderMetricTest(unittest.TestCase):
     def _metric_arrays(self):
