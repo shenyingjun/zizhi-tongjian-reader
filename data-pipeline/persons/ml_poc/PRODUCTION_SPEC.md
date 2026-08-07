@@ -1399,10 +1399,70 @@ duplicates within either source remain errors.
 For this frozen inventory the exhaustive partition must be 3,115 easy negatives and
 11 mined boundary alternatives with 11 total overlaps.
 
-“56 semantic negatives” refers only to the corrected real-hard-negative inventory.
-In this frozen audit all 56 `not_person` rows originated as no-overlap real negatives;
+“59 semantic negatives” refers only to the conflict-reconciled real-hard-negative
+inventory. In this frozen audit all 59 `not_person` rows originated as no-overlap
+real negatives;
 the corrected-inventory builder must assert both that none removes a baseline
 reference and that none overlaps a final corrected reference.
+
+#### 5.12.1 Revision-13 corrected-label encoder OOF
+
+Run one fit-only rerun of the Revision-11 candidate-marked current-jie encoder after
+the corrected inventory is frozen. Reuse Revision 11's tokenizer, sentinels,
+deterministic 384-token slicing, seven whole-juan folds, seed `20260818`, Adafactor
+configuration, three epochs, batch size one, accumulation 32, learning rates,
+dropout, weight decay, and gradient clipping without tuning. Do not load calibration
+or confirmation.
+
+Construct one unique-geometry classifier inventory from the complete corrected
+references, corrected rank-pair negatives, semantic negatives, and easy negatives.
+Every one of the 2,566 corrected references must be reachable in the union of the
+frozen corrected candidate geometries before training. The resulting immutable
+12,937-row inventory is:
+
+- 2,566 corrected exact-person references;
+- 7,197 unique corrected rank-pair negatives, including the 11 corrected mined
+  boundary alternatives, pooled into one boundary-alternative loss stratum;
+- 59 corrected semantic not-person rows; and
+- 3,115 remaining easy not-person rows.
+
+Retain Revision 11's loss masses: exact person `0.45`, pooled boundary alternative
+`0.15`, semantic not-person `0.20`, and easy not-person `0.20`. Recompute row weights
+inside each fold from its training juans only and require every training fold to
+contain every stratum. Bind the ordered-row hash and assert exactly one class and
+stratum per geometry.
+
+Evaluate the concatenated OOF exact-person probability at the unchanged 15
+thresholds using float32 `score >= threshold`. A threshold is fit-eligible only when
+recall over all 2,566 corrected references is at least `0.98`, precision on the
+unchanged 2,696 real-candidate diagnostic subset is at least `0.99`, easy-negative
+rejection is at least `0.99`, semantic-negative rejection at least `0.98`, pooled
+boundary-alternative rejection at least `0.95`, and every fold's exact recall at
+least `0.95`. Report worst-fold semantic and boundary rejection but do not impose a
+new small-denominator fold gate. Row-level Wilson intervals remain descriptive only:
+they are not eligibility gates because rows cluster within jie and the same fit data
+selects among thresholds. The full-fit-mined easy-negative rejection is likewise a
+biased safety diagnostic, not primary transfer evidence. Select by descending exact
+recall, real-candidate precision, then threshold.
+
+This gate tests whether corrected labels repair candidate admission; it does not
+authorize production decoding. It must not load Revision-9/10/11 scores,
+predictions, error inventories, or fine-tuned checkpoints. Its only model input is
+the untouched hash-bound Revision-9 base encoder/tokenizer; its only data inputs are
+current-jie text, corrected geometry/classes/strata, and the frozen juan-fold map.
+Bind the implementation commit, corrected-inventory manifest, ordered rows,
+encoder/tokenizer artifact, threshold list, deterministic flags, package/CUDA/cuDNN
+versions, and GPU type.
+
+Do not copy or reuse the Revision-9 ranker, because
+its geometry labels are stale. If no threshold passes, stop with no final fit. If a
+threshold passes, fit and freeze the full corrected-label encoder/classifier only,
+exactly once from the untouched base encoder. Freeze the OOF threshold as an
+eligibility diagnostic only; do not alter it from final-fit scores and do not treat
+it as a deployment threshold. Then separately specify and validate corrected
+boundary decoding from the 7,205 corrected rank pairs before reading calibration or
+confirmation. That stage must not mutate the frozen admission encoder, and any later
+end-to-end operating point requires its own prospective calibration protocol.
 
 Before constructing that corrected inventory, derive the Revision-13
 conflict-adjudication overlay from all proposed additions: the 77 `exact_person`
