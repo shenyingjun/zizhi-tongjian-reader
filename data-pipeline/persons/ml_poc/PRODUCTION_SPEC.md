@@ -1269,6 +1269,67 @@ fit juans, and run the unchanged one-shot confirmation workflow with the copied
 Revision-6 ranker. No calibration read, threshold adjustment, retry, semantic-label
 expansion, or post-confirmation retraining is permitted.
 
+Revision 11 completed all seven OOF folds and stopped without a full fit or
+confirmation read. At threshold `0.50`, exact recall was `0.9870455495`, precision was
+`0.9391650099`, real-negative rejection was `0.6140350877`, and boundary-alternative
+rejection was `0.4621212121`. Higher thresholds improved rejection only by sacrificing
+recall; no threshold was eligible. Encoder adaptation therefore preserved exact
+positives but did not establish the required transfer separation.
+
+### 5.11 Revision-12 blind hard-label audit
+
+Before another model revision, audit all 303 difficult fit geometries: the 171 real
+OOF rows labeled not-person and the 132 occurrence-positive rows whose geometry does
+not exactly equal an overlapping reference. This is label diagnosis, not model
+selection. Revision-11 scores, predictions, argmax classes, fold metrics, and error
+inventories must not enter a review task or reviewer prompt. Calibration and
+confirmation remain unread.
+
+Create one immutable task per numbered jie containing its complete current-jie text,
+paragraph geometry, and every selected candidate's source-verified paragraph-local
+`[start,end)` geometry and surface. Hide the frozen class, overlapping references,
+policy provenance, generator score/support, model score, and all other candidates
+outside the 303-row inventory. Candidate IDs are SHA-256 digests of exact geometry and
+the bound grouped-data manifest. Randomize candidate display order by digest while
+retaining complete numbered-jie context. No reviewer may use neighboring jies, a
+person or identity KB, translation evidence, or cross-jie recurrence.
+Publish one atomic audit root containing sibling `reviewer-tasks` and
+`sealed-original-labels` directories. Distribute only `reviewer-tasks`; its manifest
+contains no answer key or path to the sealed sibling.
+
+Two independent model families judge every candidate using exactly four labels:
+
+- `exact_person`: the candidate geometry is exactly one individual-person mention;
+- `wrong_boundary`: a person is present but the candidate includes too much, omits
+  part of the name/appellation, or merges multiple mentions;
+- `not_person`: the candidate is not an individual-person mention; and
+- `uncertain`: the text does not support a reliable decision.
+
+Each judgment includes confidence in `[0,1]` and a non-empty same-jie rationale.
+Reviewers are source-hidden from one another. Validate complete candidate coverage,
+task hashes, labels, confidence, and provenance before comparison.
+Each validated output declares a model-family identifier, and routing must reject
+equal family identifiers.
+
+Accept an AI audit decision only when both families give the same non-`uncertain`
+label with confidence at least `0.90`. Route every disagreement, uncertainty, or
+lower-confidence agreement to one blind human review page. The page initially hides
+AI labels and rationales; the human chooses the same four labels from current-jie text.
+AI rationales may be revealed only after the immutable first judgment. No AI agreement
+or human decision enters training until the complete 303-row audit is frozen.
+Routing likewise publishes one atomic root with a sealed adjudication sibling and a
+human-review sibling containing only current-jie tasks and candidate geometry.
+
+After freeze, report the original-to-audited confusion matrix separately for the 171
+real negatives and 132 boundary alternatives. A row audited `exact_person` is removed
+from negative training and added as an exact positive only if its geometry is
+source-valid and does not conflict with another audited exact positive. A
+`wrong_boundary` row may enter only a pairwise boundary objective against the audited
+exact geometry identified by a subsequent candidate-blind geometry review; the audit
+label alone may not invent that target. A `not_person` row remains a semantic negative.
+Any final `uncertain` row is excluded from Revision-12 training. Specify and challenge
+the pairwise training revision only after these counts and geometries are frozen.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
