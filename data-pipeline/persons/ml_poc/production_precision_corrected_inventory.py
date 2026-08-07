@@ -27,6 +27,8 @@ CORRECTED_STATUS = "ml_production_precision_corrected_fit_inventory"
 EXPECTED_AUDITED = 303
 EXPECTED_TARGETS = 171
 EXPECTED_REAL_ROWS = 2696
+EXPECTED_EASY_NEGATIVES = 3115
+EXPECTED_MINED_BOUNDARIES = 11
 
 
 def _geometry(row: dict) -> tuple[int, int, int]:
@@ -97,6 +99,74 @@ def _candidate(row: dict) -> dict:
     }
 
 
+def _baseline_references(
+    examples: list[dict],
+    existence_rows: list[dict],
+    examples_by_id: dict[str, dict],
+) -> dict[tuple[str, int, int, int], dict]:
+    if all("labels" in example for example in examples):
+        references = {}
+        for example in examples:
+            text = str(example["text"])
+            labels = list(example["labels"])
+            if len(labels) != len(text):
+                raise ValueError("fit BIO label length differs")
+            index = 0
+            while index < len(labels):
+                label = labels[index]
+                if label == "O":
+                    index += 1
+                    continue
+                if label != "B-PER":
+                    raise ValueError("fit BIO continuation lacks a beginning")
+                start = index
+                index += 1
+                while index < len(labels) and labels[index] == "I-PER":
+                    index += 1
+                end = index
+                segments = [
+                    segment
+                    for segment in example["segments"]
+                    if int(segment["assembled_start"]) <= start
+                    and end <= int(segment["assembled_end"])
+                ]
+                if len(segments) != 1:
+                    raise ValueError("fit BIO reference crosses a paragraph")
+                segment = segments[0]
+                normalized = {
+                    "id": str(example["id"]),
+                    "juan": int(example["juan"]),
+                    "jie_index": int(example["jie_index"]),
+                    "para_id": int(segment["para_id"]),
+                    "start": start - int(segment["assembled_start"]),
+                    "end": end - int(segment["assembled_start"]),
+                    "surface": text[start:end],
+                }
+                _validate_source(examples_by_id, normalized)
+                key = _full_geometry(normalized)
+                if key in references:
+                    raise ValueError("duplicate fit BIO reference")
+                references[key] = _reference(normalized, "frozen_fit")
+        return references
+
+    references = {}
+    for row in existence_rows:
+        for reference in row["overlapping_references"]:
+            normalized = {
+                "id": str(row["id"]),
+                "juan": int(row["juan"]),
+                "jie_index": int(row["jie_index"]),
+                **reference,
+            }
+            _validate_source(examples_by_id, normalized)
+            key = _full_geometry(normalized)
+            prior = references.get(key)
+            if prior is not None and prior["surface"] != normalized["surface"]:
+                raise ValueError("baseline reference surface differs")
+            references[key] = _reference(normalized, "frozen_fit")
+    return references
+
+
 def _build_corrected_inventory(
     examples: list[dict],
     existence_rows: list[dict],
@@ -114,21 +184,9 @@ def _build_corrected_inventory(
     if len(real_by_geometry) != len(existence_rows):
         raise ValueError("duplicate corrected real-row geometry")
 
-    baseline_references: dict[tuple[str, int, int, int], dict] = {}
-    for row in existence_rows:
-        for reference in row["overlapping_references"]:
-            normalized = {
-                "id": str(row["id"]),
-                "juan": int(row["juan"]),
-                "jie_index": int(row["jie_index"]),
-                **reference,
-            }
-            _validate_source(examples_by_id, normalized)
-            key = _full_geometry(normalized)
-            prior = baseline_references.get(key)
-            if prior is not None and prior["surface"] != normalized["surface"]:
-                raise ValueError("baseline reference surface differs")
-            baseline_references[key] = _reference(normalized, "frozen_fit")
+    baseline_references = _baseline_references(
+        examples, existence_rows, examples_by_id
+    )
 
     audit_by_candidate = {}
     for row in audit_rows:
@@ -477,12 +535,19 @@ def _build_corrected_inventory(
     exact_keys = set(corrected)
     retained_pairs = []
     dropped_pairs = []
+    retained_pair_keys = set()
     for pair in rank_pairs:
         positive_key = _full_geometry(pair["positive"])
         negative_key = _full_geometry(pair["negative"])
         if positive_key not in exact_keys or negative_key in exact_keys:
             dropped_pairs.append(pair)
         else:
+            pair_key = (positive_key, negative_key)
+            if pair_key in retained_pair_keys:
+                raise ValueError(
+                    f"duplicate retained corrected rank pair: {pair_key}"
+                )
+            retained_pair_keys.add(pair_key)
             retained_pairs.append(pair)
     added_pairs = []
     for correction in corrections:
@@ -501,31 +566,141 @@ def _build_corrected_inventory(
                     "policy_membership": ["audited_wrong_boundary"],
                 },
             })
+    fold_by_juan = {}
+    for row in existence_rows:
+        juan = int(row["juan"])
+        fold = int(row["fold"])
+        prior = fold_by_juan.get(juan)
+        if prior is not None and prior != fold:
+            raise ValueError("corrected inventory fold mapping differs")
+        fold_by_juan[juan] = fold
+
+    easy_negatives = []
+    mined_boundaries = []
+    mined_pairs = []
+    for row in easy_rows:
+        _validate_source(examples_by_id, row)
+        overlaps = [
+            reference
+            for reference in references
+            if reference["id"] == str(row["id"])
+            and _overlaps(_geometry(row), _geometry(reference))
+        ]
+        common = {
+            key: value for key, value in row.items() if key != "label"
+        }
+        common.update({
+            "original_audit_label": int(row["label"]),
+            "origin": "revision_9_mined",
+        })
+        if not overlaps:
+            easy_negatives.append({
+                **common,
+                "occurrence_label": 0,
+                "exact_class": "not_person",
+                "rank_role": "none",
+            })
+            continue
+        exact = [
+            reference
+            for reference in overlaps
+            if _full_geometry(reference) == _full_geometry(row)
+        ]
+        if exact:
+            raise ValueError(
+                f"easy negative exactly matches corrected reference: "
+                f"{_full_geometry(row)}"
+            )
+        if any(
+            left["para_id"] != right["para_id"]
+            or _overlaps(_geometry(left), _geometry(right))
+            for index, left in enumerate(overlaps)
+            for right in overlaps[index + 1:]
+        ):
+            raise ValueError("mined boundary references are malformed")
+        fold = fold_by_juan.get(int(row["juan"]))
+        if fold is None:
+            raise ValueError("mined boundary fold mapping missing")
+        overlap_values = [
+            {
+                "para_id": int(reference["para_id"]),
+                "start": int(reference["start"]),
+                "end": int(reference["end"]),
+                "surface": str(reference["surface"]),
+            }
+            for reference in overlaps
+        ]
+        mined_boundaries.append({
+            **common,
+            "fold": fold,
+            "occurrence_label": 1,
+            "exact_class": "boundary_alternative",
+            "rank_role": "negative",
+            "overlapping_references": overlap_values,
+        })
+        for reference in overlaps:
+            mined_pairs.append({
+                "positive": _candidate({
+                    **reference,
+                    "fold": fold,
+                }),
+                "negative": {
+                    **_candidate({**row, "fold": fold}),
+                    "policy_membership": ["corrected_mined_boundary"],
+                },
+            })
+
     pair_by_geometry = {}
-    for pair in [*retained_pairs, *added_pairs]:
+    for pair in [*added_pairs, *mined_pairs]:
         key = (
             _full_geometry(pair["positive"]),
             _full_geometry(pair["negative"]),
         )
+        if key in pair_by_geometry:
+            raise ValueError(f"duplicate mandatory corrected rank pair: {key}")
+        pair_by_geometry[key] = pair
+    mandatory_pair_keys = set(pair_by_geometry)
+    superseded_pairs = []
+    for pair in retained_pairs:
+        key = (
+            _full_geometry(pair["positive"]),
+            _full_geometry(pair["negative"]),
+        )
+        if key in mandatory_pair_keys:
+            superseded_pairs.append(pair)
+            continue
+        if key in pair_by_geometry:
+            raise ValueError(f"duplicate retained corrected rank pair: {key}")
         pair_by_geometry[key] = pair
     corrected_pairs = [
         pair_by_geometry[key] for key in sorted(pair_by_geometry)
     ]
-
-    for row in easy_rows:
-        _validate_source(examples_by_id, row)
-        if any(
-            reference["id"] == str(row["id"])
-            and _overlaps(_geometry(row), _geometry(reference))
-            for reference in references
-        ):
-            raise ValueError("easy negative overlaps a corrected reference")
+    mandatory_counts = {}
+    for source, pairs in (
+        ("audited_wrong_boundary", added_pairs),
+        ("corrected_mined_boundary", mined_pairs),
+    ):
+        for pair in pairs:
+            key = _full_geometry(pair["positive"])
+            value = mandatory_counts.setdefault(key, {
+                **_candidate(pair["positive"]),
+                "audited_wrong_boundary_pairs": 0,
+                "corrected_mined_boundary_pairs": 0,
+                "total_mandatory_pairs": 0,
+            })
+            value[f"{source}_pairs"] += 1
+            value["total_mandatory_pairs"] += 1
+    mandatory_pair_counts = [
+        mandatory_counts[key] for key in sorted(mandatory_counts)
+    ]
 
     return {
         "references": references,
         "existence": sorted(corrected_existence, key=_full_geometry),
         "rank_pairs": corrected_pairs,
-        "easy_negatives": sorted(easy_rows, key=_full_geometry),
+        "mandatory_pair_counts": mandatory_pair_counts,
+        "easy_negatives": sorted(easy_negatives, key=_full_geometry),
+        "mined_boundaries": sorted(mined_boundaries, key=_full_geometry),
         "corrections": corrections,
         "counts": {
             "baseline_references": len(baseline_references),
@@ -551,11 +726,27 @@ def _build_corrected_inventory(
             "semantic_negatives": sum(
                 not bool(row["label"]) for row in corrected_existence
             ),
-            "easy_negatives": len(easy_rows),
+            "safe_rows": len(easy_rows),
+            "easy_negatives": len(easy_negatives),
+            "mined_boundary_alternatives": len(mined_boundaries),
+            "mined_boundary_overlaps": sum(
+                len(row["overlapping_references"])
+                for row in mined_boundaries
+            ),
             "retained_rank_pairs": len(retained_pairs),
             "dropped_rank_pairs": len(dropped_pairs),
+            "superseded_rank_pairs": len(superseded_pairs),
             "added_rank_pairs": len(added_pairs),
+            "mined_boundary_rank_pairs": len(mined_pairs),
             "corrected_rank_pairs": len(corrected_pairs),
+            "mandatory_pair_positives": len(mandatory_pair_counts),
+            "maximum_mandatory_pairs_per_positive": max(
+                (
+                    row["total_mandatory_pairs"]
+                    for row in mandatory_pair_counts
+                ),
+                default=0,
+            ),
             "revised_audit_labels": dict(sorted(Counter(
                 row["audited_label"] for row in corrections
             ).items())),
@@ -675,7 +866,12 @@ def build_corrected_inventory(
         or counts["real_rows"] != EXPECTED_REAL_ROWS
         or sum(counts["revised_audit_labels"].values())
         != EXPECTED_AUDITED
-        or counts["easy_negatives"] != EXPECTED_SAFE
+        or counts["safe_rows"] != EXPECTED_SAFE
+        or counts["easy_negatives"] != EXPECTED_EASY_NEGATIVES
+        or counts["mined_boundary_alternatives"]
+        != EXPECTED_MINED_BOUNDARIES
+        or counts["mined_boundary_overlaps"] != EXPECTED_MINED_BOUNDARIES
+        or counts["mined_boundary_rank_pairs"] != EXPECTED_MINED_BOUNDARIES
     ):
         raise ValueError("corrected inventory derived counts differ")
 
@@ -688,7 +884,9 @@ def build_corrected_inventory(
             "references": "references.jsonl",
             "existence": "existence.jsonl",
             "rank_pairs": "rank-pairs.jsonl",
+            "mandatory_pair_counts": "mandatory-pair-counts.jsonl",
             "easy_negatives": "easy-negatives.jsonl",
+            "mined_boundaries": "mined-boundaries.jsonl",
             "corrections": "corrections.jsonl",
         }
         for key, name in output_names.items():

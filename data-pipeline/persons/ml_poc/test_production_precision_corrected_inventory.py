@@ -85,6 +85,9 @@ class CorrectedInventoryTest(unittest.TestCase):
         )
         self.assertEqual(1, result["counts"]["added_rank_pairs"])
         self.assertEqual(1, result["counts"]["removed_references"])
+        self.assertEqual(
+            1, result["mandatory_pair_counts"][0]["total_mandatory_pairs"]
+        )
 
     def test_semantic_negative_cannot_remove_reference(self):
         reference = {"para_id": 7, "start": 1, "end": 3, "surface": "乙丙"}
@@ -122,10 +125,29 @@ class CorrectedInventoryTest(unittest.TestCase):
                 [_example()], [left, right], [], audits, targets, [], []
             )
 
-    def test_easy_negative_cannot_overlap_corrected_reference(self):
+    def test_easy_negative_overlap_becomes_mined_boundary(self):
         exact = _row(0, 2, "甲乙", 0, [])
         easy = _row(1, 3, "乙丙", 0, [])
-        with self.assertRaisesRegex(ValueError, "easy negative"):
+        result = _build_corrected_inventory(
+            [_example()],
+            [exact],
+            [],
+            [_audit("exact", 0, 2, "甲乙", "exact_person")],
+            [],
+            [],
+            [easy],
+        )
+        self.assertEqual([], result["easy_negatives"])
+        self.assertEqual(
+            "boundary_alternative",
+            result["mined_boundaries"][0]["exact_class"],
+        )
+        self.assertEqual(1, result["counts"]["mined_boundary_rank_pairs"])
+
+    def test_easy_negative_exact_collision_stops(self):
+        exact = _row(0, 2, "甲乙", 0, [])
+        easy = _row(0, 2, "甲乙", 0, [])
+        with self.assertRaisesRegex(ValueError, "exactly matches"):
             _build_corrected_inventory(
                 [_example()],
                 [exact],

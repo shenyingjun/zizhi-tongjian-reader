@@ -1384,11 +1384,25 @@ target set for `wrong_boundary`, and the empty set for `not_person`. This constr
 must be invariant to correction order and record which candidate or target triggered
 every baseline removal.
 
-Preserve the 3,126 Revision-9 audited mined negatives as a separate easy-negative
-stratum; “56 semantic negatives” refers only to the corrected real-hard-negative
-inventory. In this frozen audit all 56 `not_person` rows originated as no-overlap real
-negatives; the corrected-inventory builder must assert both that none removes a
-baseline reference and that none overlaps a final corrected reference.
+Reconcile all 3,126 Revision-9 audited mined rows against the final corrected
+references. A row with no overlap remains `easy_not_person`. A source-exact,
+non-exact overlap becomes `mined_boundary_alternative`: encode its task-specific
+labels as occurrence-positive, exact-class boundary alternative, and rank-negative,
+then add one mandatory rank pair per overlapping final reference. Pool these rows
+with the existing boundary-alternative loss stratum rather than assigning a new loss
+mass. Exact collisions or malformed overlapping references stop for adjudication;
+no row is silently dropped. Revision-13 mandatory correction pairs are exempt from
+the old eight-negative mining cap and their per-positive counts must be reported. If
+a mandatory corrected pair exactly duplicates a retained old pair, the mandatory
+copy explicitly supersedes the old provenance and the manifest records that count;
+duplicates within either source remain errors.
+For this frozen inventory the exhaustive partition must be 3,115 easy negatives and
+11 mined boundary alternatives with 11 total overlaps.
+
+“56 semantic negatives” refers only to the corrected real-hard-negative inventory.
+In this frozen audit all 56 `not_person` rows originated as no-overlap real negatives;
+the corrected-inventory builder must assert both that none removes a baseline
+reference and that none overlaps a final corrected reference.
 
 Before constructing that corrected inventory, derive the Revision-13
 conflict-adjudication overlay from all proposed additions: the 77 `exact_person`
