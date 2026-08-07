@@ -1363,9 +1363,13 @@ overlap the wrong candidate, and be unique within the decision. A target equal t
 wrong candidate is invalid. Freeze task hashes, teacher output, target geometry,
 surface, and decision state before constructing corrected labels.
 
-For corrected fit labels, begin with the complete frozen fit references. For every
-audited candidate, remove only existing reference geometries that overlap that
-candidate in the same paragraph, then:
+For corrected fit labels, begin with the complete frozen fit references. Construct
+all additions before mutating that immutable baseline. For a positive correction,
+remove only baseline reference geometries in the same jie and paragraph that overlap
+either the audited candidate or one of that correction's exact additions. This
+one-hop removal never applies transitively and never removes another correction's
+addition. For `not_person`, the candidate must overlap neither a baseline reference
+nor any final corrected reference. Then:
 
 - `exact_person`: add the audited candidate geometry;
 - `wrong_boundary`: add every frozen exact target and add one pair from each target
@@ -1374,11 +1378,54 @@ candidate in the same paragraph, then:
 
 Deduplicate exact geometry after all replacements. If two corrections prescribe
 conflicting overlapping exact targets, or any boundary decision remains uncertain,
-stop before training. Preserve the 3,126 Revision-9 audited mined negatives as a
-separate easy-negative stratum; “56 semantic negatives” refers only to the corrected
-real-hard-negative inventory.
-In this frozen audit all 56 `not_person` rows originated as no-overlap real negatives;
-the corrected-inventory builder must assert that none removes a reference.
+stop before training. The final corrected references overlapping each audited
+candidate must equal exactly the candidate for `exact_person`, exactly the frozen
+target set for `wrong_boundary`, and the empty set for `not_person`. This construction
+must be invariant to correction order and record which candidate or target triggered
+every baseline removal.
+
+Preserve the 3,126 Revision-9 audited mined negatives as a separate easy-negative
+stratum; “56 semantic negatives” refers only to the corrected real-hard-negative
+inventory. In this frozen audit all 56 `not_person` rows originated as no-overlap real
+negatives; the corrected-inventory builder must assert both that none removes a
+baseline reference and that none overlaps a final corrected reference.
+
+Before constructing that corrected inventory, derive the Revision-13
+conflict-adjudication overlay from all proposed additions: the 77 `exact_person`
+candidate geometries and every frozen target owned by a `wrong_boundary` candidate.
+Exact-deduplicate additions while retaining all owners, form strict-overlap connected
+components, and close each component over every audited candidate overlapping any
+component addition and every addition owned by a newly included candidate until
+stable. Create tasks only for closed components whose initial addition component
+contains non-identical overlapping geometries. The frozen inputs derive exactly four
+such tasks; this is an asserted result of the complete derivation, never a four-task
+filter.
+
+Each immutable conflict task hash-binds all three source manifests, full component
+membership, and complete current-jie text and segments. It shows only neutral,
+deterministically shuffled IDs and source-exact geometries for all included audited
+candidates. It must hide baseline references, original and audited labels, model
+scores, earlier target proposals and rationales, neighboring jies, translations,
+knowledge bases, and unrelated artifacts. The user-authorized Copilot teacher returns
+every exact individual-person span in the same paragraph overlapping any included
+candidate, choosing `targets`, `none`, or `uncertain`. A frozen `targets` decision may
+equal an included candidate; all targets must be unique, source-exact,
+paragraph-local, and pairwise disjoint. Freeze exactly one hash-bound teacher output
+per task. Any uncertainty stops corrected-inventory construction.
+
+For each conflict component, discard all prior additions and classes for every
+included candidate and rebuild them from the immutable baseline plus the canonical
+conflict targets. An included candidate is mechanically `exact_person` when one
+canonical target equals it, `wrong_boundary` when one or more canonical targets
+overlap it without an exact match, and `not_person` when no canonical target overlaps
+it, including a `none` decision. Only its overlapping canonical targets are its
+additions. Preserve non-component decisions. Recompute baseline removals, existence
+labels, and rank pairs; assert complete ownership, no overlap with an audited candidate
+outside the closed component, exact per-candidate final overlap sets, and no residual
+reference conflict. The manifest records derived revised audit counts and binds the
+frozen conflict manifest. This fit-only, user-authorized Copilot-teacher overlay is
+diagnostic and non-formal; it cannot support a production-quality or formal
+evaluation claim.
 
 ## 6. Fresh formal evaluation
 
