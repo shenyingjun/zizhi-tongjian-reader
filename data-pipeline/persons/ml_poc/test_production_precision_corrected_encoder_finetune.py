@@ -68,6 +68,7 @@ def _count_patch():
         EXPECTED_REFERENCES=2,
         EXPECTED_EXISTENCE=6,
         EXPECTED_RANK_PAIRS=3,
+        EXPECTED_RANK_BOUNDARY=2,
         EXPECTED_BOUNDARY=2,
         EXPECTED_SEMANTIC=2,
         EXPECTED_EASY=2,
@@ -122,8 +123,9 @@ class CorrectedEncoderInventoryTest(unittest.TestCase):
         values[3][2] = dict(values[3][0])
         with (
             _count_patch(),
-            patch.object(corrected, "EXPECTED_BOUNDARY", 1),
-            patch.object(corrected, "EXPECTED_INVENTORY", 7),
+            patch.object(corrected, "EXPECTED_RANK_BOUNDARY", 1),
+            patch.object(corrected, "EXPECTED_BOUNDARY", 3),
+            patch.object(corrected, "EXPECTED_INVENTORY", 9),
             self.assertRaisesRegex(ValueError, "reference is unreachable"),
         ):
             corrected._assemble_inventory(*values)

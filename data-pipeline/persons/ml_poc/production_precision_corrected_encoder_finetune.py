@@ -65,11 +65,12 @@ REVISION9_STATUS = (
 EXPECTED_REFERENCES = 2566
 EXPECTED_EXISTENCE = 2696
 EXPECTED_RANK_PAIRS = 7205
-EXPECTED_BOUNDARY = 7197
+EXPECTED_RANK_BOUNDARY = 7197
+EXPECTED_BOUNDARY = 7233
 EXPECTED_SEMANTIC = 59
 EXPECTED_EASY = 3115
 EXPECTED_MINED_BOUNDARIES = 11
-EXPECTED_INVENTORY = 12937
+EXPECTED_INVENTORY = 12973
 
 OUTPUT_FILES = {
     "references": "references.jsonl",
@@ -215,7 +216,7 @@ def _assemble_inventory(
     )
     if not set(pair_positives).issubset(exact):
         raise ValueError("corrected encoder rank positive is not a reference")
-    if len(boundary) != EXPECTED_BOUNDARY:
+    if len(boundary) != EXPECTED_RANK_BOUNDARY:
         raise ValueError("corrected encoder unique rank-negative count differs")
 
     mined = _unique_candidates(
@@ -236,6 +237,24 @@ def _assemble_inventory(
     )
     if len(existence_by_geometry) != EXPECTED_EXISTENCE:
         raise ValueError("corrected encoder duplicate existence geometry")
+    real_boundary_rows = [
+        row
+        for row in existence
+        if int(row["label"]) == 1 and _geometry(row) not in exact
+    ]
+    real_boundary = _unique_candidates(
+        examples,
+        real_boundary_rows,
+        fold_by_juan,
+        "corrected real boundary",
+    )
+    for key, candidate in real_boundary.items():
+        prior = boundary.get(key)
+        if prior is not None and prior != candidate:
+            raise ValueError("corrected boundary candidate geometry differs")
+        boundary[key] = candidate
+    if len(boundary) != EXPECTED_BOUNDARY:
+        raise ValueError("corrected encoder complete boundary count differs")
     semantic_rows = [row for row in existence if int(row["label"]) == 0]
     semantic = _unique_candidates(
         examples, semantic_rows, fold_by_juan, "corrected semantic negative"

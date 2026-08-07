@@ -1418,11 +1418,13 @@ Construct one unique-geometry classifier inventory from the complete corrected
 references, corrected rank-pair negatives, semantic negatives, and easy negatives.
 Every one of the 2,566 corrected references must be reachable in the union of the
 frozen corrected candidate geometries before training. The resulting immutable
-12,937-row inventory is:
+12,973-row inventory is:
 
 - 2,566 corrected exact-person references;
-- 7,197 unique corrected rank-pair negatives, including the 11 corrected mined
-  boundary alternatives, pooled into one boundary-alternative loss stratum;
+- 7,233 unique boundary alternatives: 7,197 corrected rank-pair negatives,
+  including the 11 corrected mined boundary alternatives, plus 36 corrected real
+  boundary candidates absent from the pair inventory; all are pooled into one
+  boundary-alternative loss stratum;
 - 59 corrected semantic not-person rows; and
 - 3,115 remaining easy not-person rows.
 
@@ -1437,7 +1439,8 @@ thresholds using float32 `score >= threshold`. A threshold is fit-eligible only 
 recall over all 2,566 corrected references is at least `0.98`, precision on the
 unchanged 2,696 real-candidate diagnostic subset is at least `0.99`, easy-negative
 rejection is at least `0.99`, semantic-negative rejection at least `0.98`, pooled
-boundary-alternative rejection at least `0.95`, and every fold's exact recall at
+boundary-alternative rejection over all 7,233 rows at least `0.95`, and every fold's
+exact recall at
 least `0.95`. Report worst-fold semantic and boundary rejection but do not impose a
 new small-denominator fold gate. Row-level Wilson intervals remain descriptive only:
 they are not eligibility gates because rows cluster within jie and the same fit data
