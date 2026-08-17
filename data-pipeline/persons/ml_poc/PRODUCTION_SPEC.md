@@ -1506,6 +1506,96 @@ frozen conflict manifest. This fit-only, user-authorized Copilot-teacher overlay
 diagnostic and non-formal; it cannot support a production-quality or formal
 evaluation claim.
 
+### 5.13 Revision-14 blind corrected-OOF error audit
+
+Revision 13 stopped at the fit-only gate. Define `P` as corrected-reference rows whose
+concatenated held-out Revision-13 OOF float32 exact probability is `< float32(0.50)`;
+define `N` as semantic-not-person rows whose probability is `>= float32(0.50)`.
+Require exactly one finite held-out score per unique geometry, verify that each score's
+fold excluded its complete juan from training, and assert `|P|=78`, `|N|=19`,
+`P intersection N` empty, and `|P union N|=97`. Hash-bind the score column, ordered
+rows, fold map, corrected inventory, and selector implementation before task creation.
+
+Before changing model structure, freeze a diagnostic blind audit of those 97
+geometries. Create one stateless task per candidate, in a cryptographically randomized
+order, with an opaque salted task and candidate ID whose salt/mapping is sealed from
+the reviewer. Do not publish progress counts to the adjudicator or group candidates
+from the same jie. The resulting reviewer task must hide which error side selected
+the candidate, its score, expected/frozen class, reference membership, prior teacher
+decisions and rationales, model predictions, neighboring jies, translations,
+knowledge bases, calibration, and confirmation. Its exact schema contains only
+complete current-numbered-jie text and paragraph segments, one neutral source-exact
+candidate geometry, the four allowed judgments, and scope/protocol metadata. Reject
+all extra or recursively forbidden fields at freeze time.
+
+The user-authorized Copilot teacher returns one immutable first judgment:
+`exact_person`, `wrong_boundary`, `not_person`, or `uncertain`, plus a source-grounded
+rationale. Do not request an error family in the judgment task. Freeze task hashes,
+raw outputs, normalized decisions, and the sealed selection side separately. For
+every audited candidate, reconcile the decision mechanically: `exact_person` makes
+the candidate an exact reference; every `wrong_boundary`, regardless of selection
+side, requires a new stateless blind exact-target audit; `not_person` must overlap no
+final reference; and `uncertain` stops the seed-audit/mining phase. Then rerun
+Revision 13's candidate-closed conflict adjudication, immutable-baseline removal,
+reference reconstruction, rank-pair rebuilding, mined-row reconciliation, source
+checks, and correction-order invariance before mining.
+
+Freeze the mining DSL before unsealing judgments. It permits conjunctions of at most
+three atoms drawn only from: candidate-length buckets `1`, `2`, `3`, `4`, `5+`;
+paragraph-relative position buckets `first_quarter`, `middle_half`, `last_quarter`;
+immediate left/right source character classes `jie_edge`, `paragraph_edge`,
+`punctuation`, `han`, `non_han`; same-paragraph geometry relations to another frozen
+lattice candidate `strict_subspan`, `strict_superspan`, `one_character_extension`,
+`adjacent`; and pre-existing generator policy membership. Punctuation uses one frozen
+closed set. Character identity, character n-grams, candidate-surface literals,
+teacher rationale text, learned embeddings, scores, labels, translations, KBs,
+another jie, and juan rosters are forbidden policy inputs.
+
+Derive policies separately for each held-out fold using only audited errors from
+non-held-out juans. A policy requires at least five supporting audited errors from
+three juans and three distinct surfaces; surface is used only to count diversity, not
+as a predicate. Deduplicate canonical predicates, sort lexically, cap each policy at
+200 generated candidates using a frozen geometry-hash order, and apply it exhaustively
+to a frozen eligible current-jie lattice. Held-out labels/errors cannot support,
+filter, or prioritize that fold's policies. A final global policy may be retained only
+if the identical canonical predicate is independently eligible in every fold where
+support is possible. Freeze complete per-fold policies and generated inventories
+before teacher labeling.
+
+Candidate generation remains inside the current numbered jie and source exact.
+Candidate tasks use the same one-candidate blind four-way judgment and expose no
+originating error family, policy, score, or prior decision. Retain all first
+judgments; `uncertain` is excluded from training and blocks any claimed completeness.
+
+Revision 14's model template is frozen before audit judgments are read. Stage 1 uses
+Revision 13's candidate-marked current-jie encoder architecture initialized from the
+untouched Revision-9 base, but with a binary head: existence-positive iff the
+candidate overlaps a final exact reference; non-overlap is negative. Boundary
+alternatives remain existence-positive. Stage 2 is a separately initialized encoder
+of the same input form with a scalar pairwise-margin head; every final exact target is
+compared with every eligible overlapping non-exact candidate, and non-overlap
+negatives never enter Stage 2. The stages share no fitted parameters, optimizer
+state, fold preprocessing, or checkpoint.
+
+Both stages use the frozen seven whole-juan folds and Revision-13 deterministic
+tokenization/optimizer controls. For each fold, mining policies and all fitted state
+exclude its juans. At inference, Stage 1 applies one predeclared OOF-selected
+eligibility threshold, then Stage 2 resolves each same-paragraph connected overlap
+component by highest scalar score with deterministic geometry-order tie breaking;
+hard rule vetoes remain final and cannot be overridden. The fit-only gate requires
+Stage-1 overlap recall at least `0.99`, semantic-negative rejection at least `0.95`,
+easy-negative rejection at least `0.99`, and minimum-fold overlap recall at least
+`0.97`; end-to-end exact recall at least `0.98`, exact precision on the unchanged real
+OOF subset at least `0.99`, boundary-component exact accuracy at least `0.95`, and
+minimum-fold exact recall at least `0.95`. Thresholds are the unchanged 15 values and
+are selected by descending end-to-end exact recall, exact precision, then threshold.
+Failure stops without a final fit.
+
+Neither stage may read calibration or confirmation until that gate passes. Reusing
+Revision-13 OOF scores for evaluation, warm-starting its fine-tuned folds, adapting
+the model or DSL after judgments, or treating this adaptive fit audit as fresh
+generalization evidence is forbidden.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
