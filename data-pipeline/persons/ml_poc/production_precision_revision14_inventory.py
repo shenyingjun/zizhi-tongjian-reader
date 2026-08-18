@@ -42,6 +42,7 @@ OUTPUT_FILES = {
     "corrections": "corrections.jsonl",
     "geometry_additions": "geometry-additions.jsonl",
     "geometry_removals": "geometry-removals.jsonl",
+    "candidate_lattice": "candidate-lattice.jsonl",
 }
 
 
@@ -256,7 +257,11 @@ def build_inventory(
     ):
         raise ValueError("Revision-14 inventory source binding differs")
     old_paths = {key: old_root / name for key, name in OUTPUT_FILES.items() if (
-        key not in {"geometry_additions", "geometry_removals"}
+        key not in {
+            "geometry_additions",
+            "geometry_removals",
+            "candidate_lattice",
+        }
     )}
     for key, path in old_paths.items():
         if old_manifest.get("outputs", {}).get(f"{key}_sha256") != _sha256(path):
@@ -483,6 +488,7 @@ def build_inventory(
         "corrections": all_corrections,
         "geometry_additions": additions,
         "geometry_removals": removals,
+        "candidate_lattice": sorted(lattice.values(), key=_ordered),
     }
 
     output_dir.parent.mkdir(parents=True, exist_ok=True)

@@ -1571,11 +1571,17 @@ Revision 14's model template is frozen before audit judgments are read. Stage 1 
 Revision 13's candidate-marked current-jie encoder architecture initialized from the
 untouched Revision-9 base, but with a binary head: existence-positive iff the
 candidate overlaps a final exact reference; non-overlap is negative. Boundary
-alternatives remain existence-positive. Stage 2 is a separately initialized encoder
-of the same input form with a scalar pairwise-margin head; every final exact target is
-compared with every eligible overlapping non-exact candidate, and non-overlap
-negatives never enter Stage 2. The stages share no fitted parameters, optimizer
-state, fold preprocessing, or checkpoint.
+alternatives remain existence-positive. Stage 1 trains with BCEWithLogitsLoss and
+uniform per-row loss (no stratum weighting). Stage 2 is a separately initialized
+encoder of the same input form with a scalar pairwise-margin head trained with
+margin-ranking hinge loss `max(0, 1.0 - positive_score + negative_score)` (fixed
+margin 1.0, uniform per-pair loss); every final exact target is compared with every
+eligible overlapping non-exact candidate, and non-overlap negatives never enter
+Stage 2. The stages share no fitted parameters, optimizer state, fold preprocessing,
+or checkpoint.
+The untouched Revision-9 encoder/tokenizer files are authenticated directly by
+their frozen file hashes; the calibration-bearing Revision-9 result manifest is
+not loaded or inspected.
 
 Both stages use the frozen seven whole-juan folds and Revision-13 deterministic
 tokenization/optimizer controls. For each fold, mining policies and all fitted state
