@@ -5,6 +5,121 @@ and its Chinese counterpart `SPEC.zh.md`.
 It is isolated from the production two-stage pipeline until the P0/P1 gates are
 met.
 
+The completed POC did not authorize production adoption. The prospective training,
+evaluation, rollout, and rollback contract is in `PRODUCTION_SPEC.md`.
+
+After assembling a complete exact-jie exclusion inventory from the POC artifacts,
+freeze the first candidate-blind production training/development round:
+
+```powershell
+python production_exclusions.py `
+  --artifact <POC-artifact-directory> `
+  --output <exact-jie-exclusions.json>
+
+python production_program.py `
+  --exclusions <exact-jie-exclusions.json> `
+  --seed <prospectively-recorded-seed> `
+  --output <new-round-directory>
+```
+
+The command requires a clean commit, never overwrites a round, and emits tasks that
+contain no model, rules, v1, identity, translation, note, or challenge-role data.
+
+After the two mutually hidden Copilot passes are complete, validate them and freeze
+the focused-review pack:
+
+```powershell
+python production_review.py `
+  --round <frozen-round-directory> `
+  --teachers <pass-a-and-pass-b-directory> `
+  --audit-seed <prospectively-recorded-seed> `
+  --output <new-review-directory>
+```
+
+Merge the independent audit of sampled A/B-negative jies before human review:
+
+```powershell
+python production_negative_audit.py `
+  --review <review-directory> `
+  --audit <negative-audit-pass-directory> `
+  --output <new-complete-review-directory>
+```
+
+Prepare source-hidden third-teacher adjudication tasks. After an independent teacher
+produces one matching output per task, merge its high-confidence accept/reject
+decisions into a new immutable review version:
+
+```powershell
+python production_third_teacher.py prepare `
+  --review <complete-review-directory> `
+  --output <new-third-teacher-task-directory>
+
+python production_third_teacher.py merge `
+  --review <complete-review-directory> `
+  --tasks <third-teacher-task-directory> `
+  --adjudications <third-teacher-output-directory> `
+  --output <new-third-teacher-review-directory>
+```
+
+Before dataset freeze, reduce the training/development A/B-consensus audit to the
+predeclared 5% rate and carry forward any already saved accept decisions:
+
+```powershell
+python production_review_reaudit.py `
+  --review <third-teacher-review-directory> `
+  --state <existing-human-review-state-directory> `
+  --output <new-reduced-audit-review-directory> `
+  --audit-rate 0 `
+  --expected-carried-decisions <recorded-decision-count>
+```
+
+Run the ported local web UI against the immutable third-teacher review pack. Human
+decisions are written only to the separate state directory:
+
+```powershell
+python production_review_server.py `
+  --review-dir <complete-review-directory> `
+  --state-dir <new-human-review-state-directory>
+```
+
+Open `http://127.0.0.1:18766`. Rejecting an audited consensus candidate, accepting
+a negative-jie recall addition, or overriding any automatic third-teacher decision
+expands that task to full union-candidate review before it can be locked.
+
+After every required task is locked, freeze the private train/development split and
+BIO labels:
+
+```powershell
+python production_finalize.py `
+  --review <final-review-directory> `
+  --state <sealed-human-review-state-directory> `
+  --round <original-private-role-round-directory> `
+  --output <new-frozen-dataset-directory>
+```
+
+Train the three predeclared deterministic seeds one at a time:
+
+```powershell
+python production_train.py `
+  --dataset <frozen-dataset-directory> `
+  --seed 20260727 `
+  --output <new-seed-output-directory>
+```
+
+After all three seeds are frozen, consume the one allowed development comparison:
+
+```powershell
+python production_select.py `
+  --dataset <frozen-dataset-directory> `
+  --private-roles <round-directory>\private\selection.json `
+  --run-root <seed-output-parent-directory> `
+  --output <new-selection-output-directory>
+```
+
+If that gate authorizes the one reserved replacement round, first freeze an
+expanded exclusion ledger with `production_replacement_exclusions.py`, then run
+`production_program.py --replacement-round --seed 20260806`.
+
 Run focused tests:
 
 ```powershell

@@ -156,6 +156,10 @@ def train(args: argparse.Namespace) -> dict:
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required for the P1 timing run")
     device = torch.device("cuda")
+    checkpoint_selection = getattr(args, "checkpoint_selection", "best_dev")
+    epoch_evaluation = getattr(args, "epoch_evaluation", True)
+    if checkpoint_selection not in {"best_dev", "final_epoch"}:
+        raise ValueError(f"unsupported checkpoint selection: {checkpoint_selection}")
     tokenizer = AutoTokenizer.from_pretrained(
         args.model,
         revision=args.model_revision,
@@ -296,14 +300,18 @@ def train(args: argparse.Namespace) -> dict:
                 scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
                 update += 1
-        dev_metrics, _ = evaluate(
-            model,
-            tokenizer,
-            dev_examples,
-            device,
-            max_length=args.max_length,
-            stride=args.stride,
-            batch_size=args.eval_batch_size,
+        dev_metrics = (
+            evaluate(
+                model,
+                tokenizer,
+                dev_examples,
+                device,
+                max_length=args.max_length,
+                stride=args.stride,
+                batch_size=args.eval_batch_size,
+            )[0]
+            if epoch_evaluation
+            else None
         )
         history.append({
             "epoch": epoch,
@@ -316,9 +324,13 @@ def train(args: argparse.Namespace) -> dict:
             encoding="utf-8",
         )
         print(json.dumps(history[-1], ensure_ascii=False))
-        dev_f1 = dev_metrics["exact"]["f1"]
-        if dev_f1 > best_dev_f1:
-            best_dev_f1 = dev_f1
+        should_save = checkpoint_selection == "final_epoch" and epoch == args.epochs
+        if checkpoint_selection == "best_dev":
+            dev_f1 = dev_metrics["exact"]["f1"]
+            should_save = dev_f1 > best_dev_f1
+            if should_save:
+                best_dev_f1 = dev_f1
+        if should_save:
             selected_epoch = epoch
             model.save_pretrained(args.output / "model")
             tokenizer.save_pretrained(args.output / "model")
@@ -376,7 +388,8 @@ def train(args: argparse.Namespace) -> dict:
             "warmup_ratio": args.warmup_ratio,
             "seed": args.seed,
             "precision": "fp32",
-            "checkpoint_selection": "highest challenge-dev exact F1",
+            "checkpoint_selection": checkpoint_selection,
+            "epoch_evaluation": epoch_evaluation,
             "selected_epoch": selected_epoch,
             "context_mode": args.context_mode,
         },
@@ -464,6 +477,16 @@ def main() -> int:
     parser.add_argument("--warmup-ratio", type=float, default=0.1)
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=20260727)
+    parser.add_argument(
+        "--checkpoint-selection",
+        choices=("best_dev", "final_epoch"),
+        default="best_dev",
+    )
+    parser.add_argument(
+        "--epoch-evaluation",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     parser.add_argument(
         "--context-mode",
         choices=CONTEXT_MODES,
