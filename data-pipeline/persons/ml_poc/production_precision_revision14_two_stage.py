@@ -1066,6 +1066,76 @@ def _class_balanced_weights(
     }
 
 
+def _three_stratum_weights(
+    labels: np.ndarray,
+    classes: list[str],
+    train_indices: np.ndarray,
+) -> tuple[np.ndarray, dict[str, float | int]]:
+    strata = {
+        "positive": np.asarray(
+            [labels[index] == 1 for index in train_indices], dtype=bool
+        ),
+        "semantic_negative": np.asarray(
+            [classes[index] == "semantic_negative" for index in train_indices],
+            dtype=bool,
+        ),
+        "structural_negative": np.asarray(
+            [
+                classes[index] in {"easy_negative", "reconciled_nonoverlap"}
+                for index in train_indices
+            ],
+            dtype=bool,
+        ),
+    }
+    counts = {name: int(mask.sum()) for name, mask in strata.items()}
+    if not all(counts.values()):
+        raise ValueError("Stage-1 training fold must contain all three strata")
+    if any(
+        int(sum(mask[position] for mask in strata.values())) != 1
+        for position in range(len(train_indices))
+    ):
+        raise ValueError("Stage-1 training row has invalid stratum ownership")
+    target_masses = {
+        "positive": 0.5,
+        "semantic_negative": 0.25,
+        "structural_negative": 0.25,
+    }
+    weights = np.ones(len(labels), dtype=np.float32)
+    inventory: dict[str, float | int] = {}
+    for name, mask in strata.items():
+        weight = target_masses[name] / counts[name]
+        weights[train_indices[mask]] = np.float32(weight)
+        inventory[f"{name}_rows"] = counts[name]
+        inventory[f"{name}_target_mass"] = target_masses[name]
+        inventory[f"{name}_weight"] = weight
+    return weights, inventory
+
+
+def _stage1_training_indices(
+    all_indices: np.ndarray,
+    classes: list[str],
+    real_labels: np.ndarray,
+    *,
+    real_only: bool,
+    structural_negatives: bool,
+) -> np.ndarray:
+    if structural_negatives:
+        return np.asarray(
+            [
+                index for index in all_indices
+                if real_labels[index] >= 0
+                or classes[index] in {
+                    "easy_negative",
+                    "reconciled_nonoverlap",
+                }
+            ],
+            dtype=np.int64,
+        )
+    if real_only:
+        return all_indices[real_labels[all_indices] >= 0]
+    return all_indices
+
+
 def run_revision14_two_stage(
     inventory_root: Path,
     grouped_root: Path,
@@ -1077,8 +1147,16 @@ def run_revision14_two_stage(
     status_selected: str = FINETUNE_STATUS_SELECTED,
     stage1_real_only: bool = False,
     stage1_class_balanced: bool = False,
+    stage1_structural_negatives: bool = False,
+    stage1_three_stratum_balanced: bool = False,
     greedy_resolution: bool = False,
 ) -> dict:
+    if stage1_class_balanced and stage1_three_stratum_balanced:
+        raise ValueError("Stage-1 weighting strategies are mutually exclusive")
+    if stage1_three_stratum_balanced and not stage1_structural_negatives:
+        raise ValueError(
+            "Three-stratum weighting requires structural negatives"
+        )
     if output_dir.exists() or output_dir.is_symlink():
         raise FileExistsError(
             f"revision14 two-stage output exists: {output_dir}"
@@ -1161,11 +1239,13 @@ def run_revision14_two_stage(
         if not len(train_indices) or not len(heldout_indices):
             raise ValueError("revision14 two-stage fold is empty")
 
-        stage1_train_indices = train_indices
-        if stage1_real_only:
-            stage1_train_indices = train_indices[
-                real_labels[train_indices] >= 0
-            ]
+        stage1_train_indices = _stage1_training_indices(
+            train_indices,
+            classes,
+            real_labels,
+            real_only=stage1_real_only,
+            structural_negatives=stage1_structural_negatives,
+        )
         stage1_weights = np.ones(len(rows), dtype=np.float32)
         stage1_weight_inventory = {
             "positive_rows": int(np.sum(
@@ -1184,6 +1264,14 @@ def run_revision14_two_stage(
                     stage1_train_indices,
                 )
             )
+        elif stage1_three_stratum_balanced:
+            stage1_weights, stage1_weight_inventory = (
+                _three_stratum_weights(
+                    binary_labels,
+                    classes,
+                    stage1_train_indices,
+                )
+            )
 
         # Stage 1: binary existence
         model1 = _fit_stage1(
@@ -1193,7 +1281,9 @@ def run_revision14_two_stage(
             encoder_dir,
             device,
             row_weights=(
-                stage1_weights if stage1_class_balanced else None
+                stage1_weights
+                if stage1_class_balanced or stage1_three_stratum_balanced
+                else None
             ),
         )
         scores1 = _score_stage1(model1, records, heldout_indices, device)
@@ -1331,9 +1421,13 @@ def run_revision14_two_stage(
 
         final_fit = None
         if selected is not None:
-            final_stage1_indices = all_indices
-            if stage1_real_only:
-                final_stage1_indices = np.flatnonzero(real_labels >= 0)
+            final_stage1_indices = _stage1_training_indices(
+                all_indices,
+                classes,
+                real_labels,
+                real_only=stage1_real_only,
+                structural_negatives=stage1_structural_negatives,
+            )
             final_stage1_weights = np.ones(len(rows), dtype=np.float32)
             final_stage1_weight_inventory = {
                 "positive_rows": int(np.sum(
@@ -1353,6 +1447,15 @@ def run_revision14_two_stage(
                     binary_labels,
                     final_stage1_indices,
                 )
+            elif stage1_three_stratum_balanced:
+                (
+                    final_stage1_weights,
+                    final_stage1_weight_inventory,
+                ) = _three_stratum_weights(
+                    binary_labels,
+                    classes,
+                    final_stage1_indices,
+                )
             # Final fit on all data
             model1_final = _fit_stage1(
                 records,
@@ -1361,7 +1464,10 @@ def run_revision14_two_stage(
                 encoder_dir,
                 device,
                 row_weights=(
-                    final_stage1_weights if stage1_class_balanced else None
+                    final_stage1_weights
+                    if stage1_class_balanced
+                    or stage1_three_stratum_balanced
+                    else None
                 ),
             )
             stage1_encoder_dir = staging / "stage1-encoder"
@@ -1475,11 +1581,19 @@ def run_revision14_two_stage(
                 "dropout": DROPOUT,
                 "max_grad_norm": MAX_GRAD_NORM,
                 "stage1_loss": (
-                    "BCEWithLogitsLoss_fold_class_balanced_real_candidates"
+                    "BCEWithLogitsLoss_fold_three_stratum_balanced"
+                    if stage1_three_stratum_balanced
+                    else "BCEWithLogitsLoss_fold_class_balanced_real_candidates"
                     if stage1_class_balanced
                     else "BCEWithLogitsLoss_uniform_per_row"
                 ),
-                "stage1_real_candidates_only": stage1_real_only,
+                "stage1_real_candidates_only": (
+                    stage1_real_only and not stage1_structural_negatives
+                ),
+                "stage1_real_candidates_included": (
+                    stage1_real_only or stage1_structural_negatives
+                ),
+                "stage1_structural_negatives": stage1_structural_negatives,
                 "stage2_loss": "margin_ranking_hinge_margin_1.0_uniform_per_pair",
                 "overlap_resolution": (
                     "greedy_nonoverlap_rank_score_then_geometry"

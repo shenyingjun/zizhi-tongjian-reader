@@ -1650,6 +1650,43 @@ Failure stops without final fit and leaves confirmation unread. Only after a fro
 Revision-15 failure may a later revision define additional candidate-blind negative
 mining; Revision 15 does not adaptively mine, relabel, oversample, or add candidates.
 
+### 5.15 Revision-16 source-verified hard-negative expansion
+
+Revision 15 is terminally blocked before final fit. At threshold `0.50`, greedy
+resolution raised end-to-end exact recall to `2512/2560 = 0.981250`, but real-candidate
+precision was `0.977760`. Stage 1 rejected only `15/65 = 0.230769` semantic negatives
+and `233/3115 = 0.074799` easy negatives. The latter collapse is expected because
+Revision 15 deliberately excluded every structural easy negative from Stage-1 loss.
+Confirmation was not read.
+
+Revision 16 freezes one hard-negative expansion before inspecting any Revision-16
+scores. It reuses all Revision-15 inputs and behavior except the Stage-1 training
+inventory and loss weights:
+
+1. Stage-1 positives remain the 2,661 source-bound real OOF generator candidates that
+   overlap a final reference. Stage-1 negatives include all 65 audited semantic
+   negatives, all 3,115 source-verified easy negatives, and the 15 reconciled
+   lattice-only candidates that overlap no final reference.
+2. The 7,219 synthetic boundary alternatives remain excluded from Stage-1 loss unless
+   their exact geometry is one of the real OOF candidates. They remain in Stage-2
+   training and full-lattice evaluation.
+3. Within each whole-juan training fold, assign exactly half of total Stage-1 loss mass
+   to positives, one quarter to semantic negatives, and one quarter to structural
+   negatives (`easy_negative` plus `reconciled_nonoverlap`). Each row in a stratum has
+   weight `target_mass / N_stratum`; accumulated weighted BCE is divided by the sum of
+   the same row weights in that accumulation group. Every fold must contain all three
+   strata or fail closed.
+4. Revision-15 greedy non-overlap resolution, Stage-2 objective, rank pairs,
+   thresholds, fit-only gates, deterministic controls, and exact metric definitions
+   remain unchanged.
+
+These structural negatives are already frozen, source-exact, identity-free, and
+reference-reconciled; Revision 16 does not relabel them, inspect surfaces, derive a
+surface blacklist, or use Revision-15 scores to choose examples or weights. This is a
+fit-only adaptive diagnostic over consumed data, not fresh generalization evidence.
+Failure stops without final fit and leaves confirmation unread. Any later candidate
+mining must be specified and labeled candidate-blind in a new revision.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
