@@ -441,6 +441,7 @@ def _fit_stage1(
     train_indices: np.ndarray,
     encoder_dir: Path,
     device,
+    row_weights: np.ndarray | None = None,
 ) -> object:
     """Train Stage-1 binary existence classifier with uniform per-row loss."""
     import torch
@@ -467,6 +468,15 @@ def _fit_stage1(
         beta1=None,
     )
     generator = np.random.default_rng(SEED)
+    weighted_loss = row_weights is not None
+    if row_weights is None:
+        row_weights = np.ones(len(binary_labels), dtype=np.float32)
+    if (
+        row_weights.shape != binary_labels.shape
+        or not np.isfinite(row_weights).all()
+        or np.any(row_weights <= 0)
+    ):
+        raise ValueError("revision14 Stage-1 row weights are invalid")
     group_size = PHYSICAL_BATCH_SIZE * ACCUMULATION_STEPS
     for _ in range(EPOCHS):
         ordered = generator.permutation(train_indices)
@@ -475,6 +485,7 @@ def _fit_stage1(
             group = ordered[group_start:group_start + group_size]
             model.zero_grad(set_to_none=True)
             divisor = len(group)
+            weight_divisor = float(row_weights[group].sum())
             for start in range(0, divisor, PHYSICAL_BATCH_SIZE):
                 indices = group[start:start + PHYSICAL_BATCH_SIZE]
                 logits = model(*_collate(records, indices, device))
@@ -483,10 +494,23 @@ def _fit_stage1(
                     .float()
                     .to(device)
                 )
-                loss = torch.nn.functional.binary_cross_entropy_with_logits(
-                    logits, targets, reduction="mean"
-                )
-                (loss / (divisor / len(indices))).backward()
+                if weighted_loss:
+                    losses = (
+                        torch.nn.functional.binary_cross_entropy_with_logits(
+                            logits, targets, reduction="none"
+                        )
+                    )
+                    weights = (
+                        torch.from_numpy(row_weights[indices]).float().to(device)
+                    )
+                    ((losses * weights).sum() / weight_divisor).backward()
+                else:
+                    loss = (
+                        torch.nn.functional.binary_cross_entropy_with_logits(
+                            logits, targets, reduction="mean"
+                        )
+                    )
+                    (loss / (divisor / len(indices))).backward()
             torch.nn.utils.clip_grad_norm_(
                 model.parameters(), MAX_GRAD_NORM, foreach=False
             )
@@ -697,6 +721,35 @@ def select_from_components(
     return selected
 
 
+def select_greedy_nonoverlap(
+    candidates: list[dict],
+    scores: np.ndarray,
+    eligible_indices: list[int],
+) -> list[int]:
+    """Greedily retain ranked, pairwise non-overlapping paragraph candidates."""
+    selected = []
+    selected_by_paragraph: dict[tuple[str, int], list[int]] = {}
+    ordered = sorted(
+        eligible_indices,
+        key=lambda index: (
+            -float(scores[index]),
+            _ordered_key(candidates[index]),
+        ),
+    )
+    for index in ordered:
+        candidate = candidates[index]
+        paragraph = (str(candidate["id"]), int(candidate["para_id"]))
+        if any(
+            int(candidate["start"]) < int(candidates[prior]["end"])
+            and int(candidates[prior]["start"]) < int(candidate["end"])
+            for prior in selected_by_paragraph.get(paragraph, [])
+        ):
+            continue
+        selected.append(index)
+        selected_by_paragraph.setdefault(paragraph, []).append(index)
+    return selected
+
+
 def end_to_end_metrics(
     rows: list[dict],
     stage1_scores: np.ndarray,
@@ -706,6 +759,7 @@ def end_to_end_metrics(
     real_labels: np.ndarray,
     exact_geometry_set: set,
     boundary_geometry_set: set,
+    greedy_resolution: bool = False,
 ) -> list[dict]:
     """Compute end-to-end metrics for all 15 thresholds."""
     n = len(rows)
@@ -762,21 +816,27 @@ def end_to_end_metrics(
             min(fold_overlap_recalls) if fold_overlap_recalls else None
         )
 
-        # End-to-end: select via components
-        selected_global_indices = []
-        for component in components:
-            eligible = [i for i in component if admitted[i]]
-            if not eligible:
-                continue
-            selected_global_indices.append(
-                min(
-                    eligible,
-                    key=lambda i: (
-                        -float(stage2_scores[i]),
-                        _ordered_key(rows[i]),
-                    ),
-                )
+        if greedy_resolution:
+            selected_global_indices = select_greedy_nonoverlap(
+                rows,
+                stage2_scores,
+                np.flatnonzero(admitted).tolist(),
             )
+        else:
+            selected_global_indices = []
+            for component in components:
+                eligible = [i for i in component if admitted[i]]
+                if not eligible:
+                    continue
+                selected_global_indices.append(
+                    min(
+                        eligible,
+                        key=lambda i: (
+                            -float(stage2_scores[i]),
+                            _ordered_key(rows[i]),
+                        ),
+                    )
+                )
 
         selected_set = set(selected_global_indices)
         exact_indices = {i for i in range(n) if exact_mask[i]}
@@ -800,7 +860,27 @@ def end_to_end_metrics(
         boundary_component_correct = 0
         for component in boundary_components:
             winners = [i for i in component if i in selected_set]
-            if len(winners) == 1 and winners[0] in exact_indices:
+            component_exact = {
+                i for i in component
+                if i in exact_indices and admitted[i]
+            }
+            if greedy_resolution:
+                overlapping_nonexact = any(
+                    winner not in exact_indices
+                    and any(
+                        int(rows[winner]["start"]) < int(rows[exact]["end"])
+                        and int(rows[exact]["start"]) < int(rows[winner]["end"])
+                        for exact in component_exact
+                    )
+                    for winner in winners
+                )
+                correct = (
+                    component_exact.issubset(selected_set)
+                    and not overlapping_nonexact
+                )
+            else:
+                correct = len(winners) == 1 and winners[0] in exact_indices
+            if correct:
                 boundary_component_correct += 1
         e2e_boundary_accuracy = (
             boundary_component_correct / boundary_component_total
@@ -959,11 +1039,45 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
     )
 
 
+def _class_balanced_weights(
+    labels: np.ndarray,
+    train_indices: np.ndarray,
+) -> tuple[np.ndarray, dict[str, float | int]]:
+    counts = {
+        value: int(np.sum(labels[train_indices] == value))
+        for value in (0.0, 1.0)
+    }
+    if not all(counts.values()):
+        raise ValueError("Stage-1 training fold must contain both classes")
+    total = len(train_indices)
+    class_weights = {
+        value: total / (2.0 * count) for value, count in counts.items()
+    }
+    weights = np.ones(len(labels), dtype=np.float32)
+    for value, weight in class_weights.items():
+        weights[
+            train_indices[labels[train_indices] == value]
+        ] = np.float32(weight)
+    return weights, {
+        "positive_rows": counts[1.0],
+        "negative_rows": counts[0.0],
+        "positive_weight": class_weights[1.0],
+        "negative_weight": class_weights[0.0],
+    }
+
+
 def run_revision14_two_stage(
     inventory_root: Path,
     grouped_root: Path,
     revision9_root: Path,
     output_dir: Path,
+    *,
+    experiment_revision: int = REVISION,
+    status_blocked: str = FINETUNE_STATUS_BLOCKED,
+    status_selected: str = FINETUNE_STATUS_SELECTED,
+    stage1_real_only: bool = False,
+    stage1_class_balanced: bool = False,
+    greedy_resolution: bool = False,
 ) -> dict:
     if output_dir.exists() or output_dir.is_symlink():
         raise FileExistsError(
@@ -1047,9 +1161,40 @@ def run_revision14_two_stage(
         if not len(train_indices) or not len(heldout_indices):
             raise ValueError("revision14 two-stage fold is empty")
 
+        stage1_train_indices = train_indices
+        if stage1_real_only:
+            stage1_train_indices = train_indices[
+                real_labels[train_indices] >= 0
+            ]
+        stage1_weights = np.ones(len(rows), dtype=np.float32)
+        stage1_weight_inventory = {
+            "positive_rows": int(np.sum(
+                binary_labels[stage1_train_indices] == 1
+            )),
+            "negative_rows": int(np.sum(
+                binary_labels[stage1_train_indices] == 0
+            )),
+            "positive_weight": 1.0,
+            "negative_weight": 1.0,
+        }
+        if stage1_class_balanced:
+            stage1_weights, stage1_weight_inventory = (
+                _class_balanced_weights(
+                    binary_labels,
+                    stage1_train_indices,
+                )
+            )
+
         # Stage 1: binary existence
         model1 = _fit_stage1(
-            records, binary_labels, train_indices, encoder_dir, device
+            records,
+            binary_labels,
+            stage1_train_indices,
+            encoder_dir,
+            device,
+            row_weights=(
+                stage1_weights if stage1_class_balanced else None
+            ),
         )
         scores1 = _score_stage1(model1, records, heldout_indices, device)
         oof_stage1[heldout_indices] = scores1
@@ -1074,6 +1219,8 @@ def run_revision14_two_stage(
         fold_inventory.append({
             "fold": fold,
             "train_rows": len(train_indices),
+            "stage1_train_rows": len(stage1_train_indices),
+            "stage1_class_weights": stage1_weight_inventory,
             "heldout_rows": len(heldout_indices),
             "train_pairs": len(train_pairs),
         })
@@ -1090,6 +1237,7 @@ def run_revision14_two_stage(
         real_labels,
         exact_geometry_set,
         boundary_geometry_set,
+        greedy_resolution=greedy_resolution,
     )
 
     eligible = [row for row in table if row["eligible"]]
@@ -1183,9 +1331,38 @@ def run_revision14_two_stage(
 
         final_fit = None
         if selected is not None:
+            final_stage1_indices = all_indices
+            if stage1_real_only:
+                final_stage1_indices = np.flatnonzero(real_labels >= 0)
+            final_stage1_weights = np.ones(len(rows), dtype=np.float32)
+            final_stage1_weight_inventory = {
+                "positive_rows": int(np.sum(
+                    binary_labels[final_stage1_indices] == 1
+                )),
+                "negative_rows": int(np.sum(
+                    binary_labels[final_stage1_indices] == 0
+                )),
+                "positive_weight": 1.0,
+                "negative_weight": 1.0,
+            }
+            if stage1_class_balanced:
+                (
+                    final_stage1_weights,
+                    final_stage1_weight_inventory,
+                ) = _class_balanced_weights(
+                    binary_labels,
+                    final_stage1_indices,
+                )
             # Final fit on all data
             model1_final = _fit_stage1(
-                records, binary_labels, all_indices, encoder_dir, device
+                records,
+                binary_labels,
+                final_stage1_indices,
+                encoder_dir,
+                device,
+                row_weights=(
+                    final_stage1_weights if stage1_class_balanced else None
+                ),
             )
             stage1_encoder_dir = staging / "stage1-encoder"
             stage1_head_path = staging / "stage1-head.safetensors"
@@ -1227,6 +1404,8 @@ def run_revision14_two_stage(
                 "stage2_head_sha256": _sha256(stage2_head_path),
                 "threshold": selected["threshold"],
                 "threshold_role": "eligibility_diagnostic_only",
+                "stage1_train_rows": len(final_stage1_indices),
+                "stage1_class_weights": final_stage1_weight_inventory,
             }
 
         environment = {
@@ -1254,11 +1433,11 @@ def run_revision14_two_stage(
         manifest = {
             "schema_version": 1,
             "status": (
-                FINETUNE_STATUS_SELECTED
+                status_selected
                 if selected is not None
-                else FINETUNE_STATUS_BLOCKED
+                else status_blocked
             ),
-            "revision": REVISION,
+            "revision": experiment_revision,
             "formal_grade": False,
             "eligible_for_production": False,
             "fit_only": True,
@@ -1295,8 +1474,18 @@ def run_revision14_two_stage(
                 "weight_decay": WEIGHT_DECAY,
                 "dropout": DROPOUT,
                 "max_grad_norm": MAX_GRAD_NORM,
-                "stage1_loss": "BCEWithLogitsLoss_uniform_per_row",
+                "stage1_loss": (
+                    "BCEWithLogitsLoss_fold_class_balanced_real_candidates"
+                    if stage1_class_balanced
+                    else "BCEWithLogitsLoss_uniform_per_row"
+                ),
+                "stage1_real_candidates_only": stage1_real_only,
                 "stage2_loss": "margin_ranking_hinge_margin_1.0_uniform_per_pair",
+                "overlap_resolution": (
+                    "greedy_nonoverlap_rank_score_then_geometry"
+                    if greedy_resolution
+                    else "one_winner_per_transitive_component"
+                ),
                 "margin": MARGIN,
                 "sentinels": {
                     "left": LEFT_SENTINEL,
@@ -1324,6 +1513,13 @@ def run_revision14_two_stage(
                 "semantic_negative": sum(
                     1 for c in classes if c == "semantic_negative"
                 ),
+                "stage1_real_candidates": int(np.sum(real_labels >= 0)),
+                "stage1_real_positive": int(np.sum(
+                    (real_labels >= 0) & (binary_labels == 1)
+                )),
+                "stage1_real_negative": int(np.sum(
+                    (real_labels >= 0) & (binary_labels == 0)
+                )),
                 "easy_negative": sum(
                     1 for c in classes if c == "easy_negative"
                 ),

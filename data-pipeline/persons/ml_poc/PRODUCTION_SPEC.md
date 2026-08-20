@@ -1602,6 +1602,54 @@ Revision-13 OOF scores for evaluation, warm-starting its fine-tuned folds, adapt
 the model or DSL after judgments, or treating this adaptive fit audit as fresh
 generalization evidence is forbidden.
 
+### 5.14 Revision-15 real-candidate existence and greedy resolution
+
+Revision 14 is terminally blocked before final fit. At threshold `0.50`, Stage 1
+reached overlap recall `0.990388` but rejected only `15/65 = 0.230769` audited
+semantic negatives. End-to-end exact recall was `2351/2560 = 0.918359`, real-candidate
+precision was `2261/2311 = 0.978364`, and boundary-component accuracy was `0.978027`.
+The exact-recall loss decomposes into 16 exact rows rejected by Stage 1, 36 exact rows
+that lost to a non-exact rank winner, and 157 exact rows suppressed because a
+transitive overlap component contained more than one pairwise-disjoint exact
+reference. Confirmation was not read.
+
+Revision 15 tests two frozen corrections without changing labels, folds, encoder,
+tokenization, optimizer, epoch count, candidate lattice, rank pairs, thresholds, or
+gates:
+
+1. Stage 1 trains only on the 2,726 source-bound real OOF generator candidates in the
+   corrected `existence.jsonl`: 2,661 overlap-positive and 65 semantic-negative rows.
+   Synthetic boundary alternatives, easy negatives, and reconciled lattice-only rows
+   remain available for Stage-2 training and evaluation but never enter Stage-1 loss.
+2. Within each training fold, binary class weights are computed from training rows as
+   `N / (2 * N_class)`. Every fold must contain both classes. For each gradient
+   accumulation group, weighted BCE-with-logits is summed and divided by the sum of
+   the same immutable row weights. No surface, stratum, score, policy, or held-out
+   label changes a weight.
+3. After Stage-1 admission, Stage 2 sorts candidates independently within each
+   paragraph by descending raw float32 rank score, then ascending
+   `(juan,jie_index,para_id,start,end,id)`. It greedily accepts a candidate only when
+   it overlaps no previously accepted candidate. Thus a rejected or lower-ranked
+   bridge cannot force two pairwise-disjoint exact spans into one output choice.
+4. A boundary component is correct only when all admitted exact references in the
+   prospectively frozen full component are selected and no selected non-exact
+   alternative overlaps them. A component containing multiple disjoint exact
+   references no longer receives credit for selecting only one.
+
+The seven whole-juan folds and all thresholds remain unchanged. The Revision-14
+Stage-1 and Stage-2 OOF score files are diagnostic inputs only for the frozen failure
+decomposition above and cannot be reused by Revision 15. Revision 15 retrains both
+stages from the untouched Revision-9 base. Its fit-only gate remains Stage-1 overlap
+recall at least `0.99`, semantic-negative rejection at least `0.95`, easy-negative
+rejection at least `0.99`, minimum-fold overlap recall at least `0.97`, end-to-end
+exact recall at least `0.98`, real-candidate exact precision at least `0.99`,
+boundary-component exact accuracy at least `0.95`, and minimum-fold exact recall at
+least `0.95`.
+
+Failure stops without final fit and leaves confirmation unread. Only after a frozen
+Revision-15 failure may a later revision define additional candidate-blind negative
+mining; Revision 15 does not adaptively mine, relabel, oversample, or add candidates.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
