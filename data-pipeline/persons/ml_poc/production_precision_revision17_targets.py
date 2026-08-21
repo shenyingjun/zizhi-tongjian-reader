@@ -145,7 +145,7 @@ def freeze_target_tasks(
             joined_path,
             sorted(joined, key=lambda row: str(row["task_id"])),
         )
-        task_hashes = []
+        target_task_hashes = []
         if sufficient:
             for row in wrong_rows:
                 source_task_path = (
@@ -199,7 +199,7 @@ def freeze_target_tasks(
                     json.dumps(target_task, ensure_ascii=False, indent=2) + "\n",
                     encoding="utf-8",
                 )
-                task_hashes.append({
+                target_task_hashes.append({
                     "target_task_id": target_task_id,
                     "candidate_id": str(row["candidate_id"]),
                     "source_task_id": str(row["task_id"]),
@@ -208,7 +208,7 @@ def freeze_target_tasks(
         hashes_path = staging / "task-hashes.jsonl"
         _write_jsonl(
             hashes_path,
-            sorted(task_hashes, key=lambda row: row["target_task_id"]),
+            sorted(target_task_hashes, key=lambda row: row["target_task_id"]),
         )
         manifest = {
             "schema_version": 1,
@@ -232,7 +232,7 @@ def freeze_target_tasks(
             },
             "counts": {
                 **counts,
-                "target_tasks": len(task_hashes),
+                "target_tasks": len(target_task_hashes),
             },
             "gate": {
                 "minimum_not_person": MIN_NOT_PERSON,
