@@ -1787,6 +1787,44 @@ metrics. Retrain both stages from untouched initialization. Failure stops withou
 final fit or confirmation read. This adaptive fit-only result is not fresh
 generalization evidence.
 
+### 5.17 Revision-18 blind unresolved-target adjudication
+
+Revision 17 froze 1,093 candidate-blind first judgments: 568 `exact_person`, 325
+`not_person`, 200 `wrong_boundary`, and zero `uncertain`. The semantic-negative gate
+passed with 325 negatives across all 37 mining juans. The subsequent stateless target
+audit resolved 189 exact targets but returned 11 `uncertain` decisions and two
+certain-empty target sets that contradict the `wrong_boundary` premise. Four reported
+surface strings disagreed with otherwise valid source-exact coordinates; preserve the
+raw strings and hashes, derive the canonical surfaces mechanically from the frozen
+coordinates, and report those corrections separately. Revision 17 stops before
+training. Confirmation and the sealed formal reserve remain unread.
+
+Create exactly 13 new stateless tasks from the frozen unresolved candidate IDs. Each
+task contains only the original complete current-numbered-jie text and paragraph
+segments, one neutral source-exact candidate geometry with a new opaque task ID, the
+current-jie-only protocol, and the four labels `exact_person`, `wrong_boundary`,
+`not_person`, and `uncertain`. Hide both prior labels, target outputs, rationales,
+uncertainty/contradiction side, scores, generator support, selection stratum, sibling
+tasks, progress totals, neighboring jies, translation, rules, v1, and person or
+identity KBs.
+
+The user-authorized source-hidden Copilot teacher returns one immutable first
+adjudication with a nonempty same-jie rationale. `exact_person` and `not_person` return
+no target list. `wrong_boundary` returns every exact overlapping individual-person
+geometry in the same response, under the Revision-13 source, overlap, equality,
+pairwise-disjointness, and multi-target containment rules. `uncertain` returns no
+targets and blocks the revision. A certain `wrong_boundary` with no target is an
+unresolved contradiction and also blocks.
+
+Freeze all 13 raw outputs and task hashes before joining them to any prior label or
+selection metadata. If every row resolves, the Revision-18 adjudication supersedes
+only the first-round label and target decision for those 13 candidate IDs. Preserve
+all superseded artifacts and record the complete transition matrix. Then construct
+the Revision-17 training augmentation exactly as section 5.16 specifies, using the
+remaining 1,080 original decisions unchanged and the 13 frozen adjudications. No
+other candidate may be relabeled, reselected, rescored, or reviewed. The unchanged
+Revision-16 OOF inventory remains the sole evaluation set.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
