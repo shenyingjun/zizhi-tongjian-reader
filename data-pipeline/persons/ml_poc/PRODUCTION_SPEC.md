@@ -1687,6 +1687,106 @@ fit-only adaptive diagnostic over consumed data, not fresh generalization eviden
 Failure stops without final fit and leaves confirmation unread. Any later candidate
 mining must be specified and labeled candidate-blind in a new revision.
 
+### 5.16 Revision-17 candidate-blind semantic-negative mining
+
+Revision 16 is terminally blocked before final fit. At threshold `0.50`, Stage 1
+overlap recall was `0.954188`, semantic-negative rejection was `23/65 = 0.353846`,
+easy-negative rejection was `3054/3108 = 0.982665`, and minimum-fold overlap recall
+was `0.937337`. End-to-end exact recall was `2506/2560 = 0.978906`, real-candidate
+precision was `0.980496`, boundary-component accuracy was `0.984489`, and
+minimum-fold exact recall was `0.968992`. Structural hard negatives restored most
+easy-negative rejection, but 65 semantic negatives do not supply enough candidate
+diversity. Confirmation was not read.
+
+Freeze one new training-only mining cohort before generating candidates or reading
+judgments. Begin with the complete Round-2 exact-jie exclusion inventory and add all
+180 Round-2 private selected-jie geometries. Apply the unchanged numbered-jie and
+20--600-codepoint eligibility rules. The resulting frame must contain exactly 1,258
+jies across 37 juans, with exactly 20 foreign-title cohort members.
+
+Before any candidate inference, remove an exact 160-jie formal reserve from that
+frame. Use seed `20260822` and the section-3 raw-text strata and term scores. Reserve
+all 20 foreign-title jies first; then sample 20 role/appellation and 20
+boundary/anaphora jies without replacement from their respective top-200 positive
+term-score cohorts; finally sample 100 uniform jies from the remainder. Within each
+draw, use Python `random.Random(seed + stream).sample` over keys sorted by
+`(juan,jie_index)`, with streams `1`, `2`, and `3` for role, boundary, and uniform.
+A challenge draw with fewer than its required distinct remaining members stops.
+Freeze only reserve geometry, stratum, term score, source hashes, and selector
+bindings in a sealed sibling. Formal-reserve text, model predictions, and labels are
+never created or read by Revision 17. Exactly 1,098 jies must remain available for
+mining.
+
+Generate candidates on all 1,098 mining jies with the three frozen full-fit
+Revision-2 generator models for seeds `20260727`, `20260728`, and `20260729`. Run the
+unchanged target-only `512`-token, stride-`128` inference and take the exact-geometry
+union of emitted spans. Record per geometry only source-verified surface, support
+count, maximum confidence, and the three model/artifact bindings. This inference is
+for training-data discovery only; it is not evaluation or deployment.
+
+Independently fit one mining-only copy of Revision 16 Stage 1 on all frozen
+Revision-16 training rows. Use the same untouched Revision-9 initialization,
+candidate-marked input, three epochs, optimizer, seed, and three-stratum `0.50 /
+0.25 / 0.25` weighting. It may score only the new union candidates and may never be
+used as a production model or metric. The fit must not read Revision-16 OOF scores,
+calibration, confirmation, formal-reserve text, or new judgments.
+
+Select at most 1,200 review candidates in three independently capped strata, in this
+order:
+
+1. up to 600 `hard_disagreement` rows with float32 Stage-1 probability `>= 0.50`,
+   ranked by ascending generator support, ascending maximum generator confidence,
+   descending Stage-1 probability, then a seeded geometry digest;
+2. up to 300 `low_stage1` rows with float32 Stage-1 probability `< 0.50`, ranked by
+   descending generator support, descending maximum generator confidence, descending
+   Stage-1 probability, then the same digest; and
+3. up to 300 `supported_control` rows not already selected, ranked by descending
+   generator support, descending maximum generator confidence, descending Stage-1
+   probability, then the same digest.
+
+Apply a shared cap of four selected candidates per numbered jie and 40 per juan while
+walking each ranking. A geometry can enter only its first eligible stratum. Stop
+before review unless the frozen selection contains at least 800 candidates from at
+least 20 juans and each nonempty stratum contains candidates from at least 10 juans.
+Selection strata, scores, support, confidence, model identity, surface lists, and
+sealed reserve membership are never visible to a reviewer.
+
+Create one immutable, stateless task per selected candidate in a salted
+cryptographically randomized order. Each task contains only complete current-numbered-
+jie text and paragraph segments, one neutral source-exact candidate geometry with an
+opaque ID, the current-jie-only protocol, and four labels: `exact_person`,
+`wrong_boundary`, `not_person`, and `uncertain`. The reviewer must not see another
+task, neighboring jies, a person or identity KB, translation, rules, v1 output,
+generator or verifier output, selection reason, score, support, confidence, expected
+class, progress totals, or prior judgments. Retain every immutable first judgment and
+a nonempty same-jie rationale. The user-authorized source-hidden Copilot teacher may
+act as the diagnostic reviewer; this does not create formal-grade evidence.
+
+Freeze all decisions before joining them to sealed selection metadata. Every
+`wrong_boundary` decision requires a second stateless blind target task that returns
+all exact overlapping individual-person geometries under the Revision-13 validity
+rules. `Uncertain` rows are retained but excluded from training. Revision 17 may
+proceed only with at least 300 `not_person` decisions spanning at least 20 juans and
+no unresolved wrong-boundary target.
+
+For each of the seven unchanged Revision-16 OOF folds, augment training only:
+
+- add reviewed `not_person` rows as semantic negatives;
+- add reviewed `exact_person` candidates and reviewed wrong-boundary targets as
+  overlap-positive Stage-1 rows; and
+- add one Stage-2 pair from every reviewed wrong-boundary target to its reviewed
+  candidate.
+
+If a mined row's juan belongs to the held-out fold, exclude that row from the fold's
+training augmentation; rows from juans absent from the original 28-juan fit partition
+may train every fold. Deduplicate exact geometry and reject contradictory labels.
+Recompute the existing Revision-16 three-stratum weights inside each fold after
+augmentation. The fixed Revision-16 OOF inventory, denominators, folds, thresholds,
+resolver, gates, and metric definitions remain unchanged; mined rows never enter OOF
+metrics. Retrain both stages from untouched initialization. Failure stops without a
+final fit or confirmation read. This adaptive fit-only result is not fresh
+generalization evidence.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
