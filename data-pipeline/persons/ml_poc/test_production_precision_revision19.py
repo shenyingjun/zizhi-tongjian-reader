@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from production_precision_revision19_conflicts import conflict_components
+from production_precision_revision19_freeze import normalize_raw
 
 
 def _decision(candidate_id: str, start: int, end: int) -> dict:
@@ -122,6 +123,49 @@ class Revision19ConflictTests(unittest.TestCase):
             ("juan-001-jie-0001", 7, 1, 4),
             components[0]["geometries"],
         )
+
+    def test_freeze_canonicalizes_surface_and_requires_shown_overlap(self) -> None:
+        task = {
+            "conflict_task_id": "task",
+            "jie": {
+                "text": "甲乙丙丁",
+                "segments": [{
+                    "para_id": 7,
+                    "assembled_start": 0,
+                    "assembled_end": 4,
+                }],
+            },
+            "shown_geometries": [{
+                "para_id": 7,
+                "start": 1,
+                "end": 3,
+                "surface": "乙丙",
+            }],
+        }
+        raw = {
+            "conflict_task_id": "task",
+            "uncertain": False,
+            "exact_people": [{
+                "para_id": 7,
+                "start": 2,
+                "end": 4,
+                "surface": "wrong",
+            }],
+            "rationale": "The overlapping full name is exact.",
+            "reviewer": "copilot-teacher",
+            "model": "gpt-5.6-sol",
+        }
+
+        normalized = normalize_raw(raw, task)
+
+        self.assertEqual(normalized["exact_people"][0]["surface"], "丙丁")
+        self.assertTrue(
+            normalized["exact_people"][0]["surface_corrected"]
+        )
+
+        raw["exact_people"][0].update(start=3, end=4)
+        with self.assertRaisesRegex(ValueError, "coverage"):
+            normalize_raw(raw, task)
 
 
 if __name__ == "__main__":
