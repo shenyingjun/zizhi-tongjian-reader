@@ -1825,6 +1825,46 @@ remaining 1,080 original decisions unchanged and the 13 frozen adjudications. No
 other candidate may be relabeled, reselected, rescored, or reviewed. The unchanged
 Revision-16 OOF inventory remains the sole evaluation set.
 
+### 5.18 Revision-19 blind overlap-conflict adjudication
+
+The resolved Revision-18 overlay contains 574 exact-person decisions, 190
+wrong-boundary decisions with 192 target pairs, and 329 semantic-negative decisions.
+Before training, exhaustive strict-overlap checks found 16 non-identical overlapping
+exact additions and 23 semantic candidates overlapping an exact addition, distributed
+across 35 current-jie paragraphs. Revision 18 stops before training.
+
+Form closed conflict components within each current-jie paragraph. Begin with every
+geometry and owner in the 39 frozen conflicts. Repeatedly add every selected candidate
+in that paragraph whose geometry overlaps any component geometry, every exact addition
+owned by an added candidate, and every owner of an added exact addition until stable.
+Merge components whenever their geometry or owner sets intersect. Freeze and assert the
+resulting component count before review.
+
+Create one source-hidden task per closed component. It contains only complete current-
+numbered-jie text and paragraph segments, neutrally randomized opaque IDs for all
+component candidate and proposed-exact geometries, and a request for the complete set
+of canonical exact individual-person geometries overlapping any shown geometry.
+The task hides prior labels, geometry roles, owners, scores, generator support,
+selection strata, rationales, sibling tasks, progress totals, neighboring jies,
+translation, rules, v1, and person or identity KBs.
+
+The user-authorized source-hidden Copilot teacher returns one immutable judgment:
+`uncertain` plus a list of canonical exact geometries and a nonempty same-jie
+rationale. If `uncertain` is true, the geometry list is empty and the revision blocks.
+Otherwise every exact geometry is nonempty, source exact, unique, and pairwise
+disjoint, and must overlap at least one shown geometry. An empty canonical set is
+permitted when all shown candidates are non-persons.
+
+After all tasks freeze, reclassify only selected candidates owned by a conflict
+component: exact if their geometry equals one canonical geometry, wrong-boundary if
+they overlap one or more canonical geometries, and not-person otherwise. Wrong-boundary
+pairs are rebuilt exhaustively against every overlapping canonical geometry. Replace
+only conflict-component exact additions with the frozen canonical set; preserve all
+non-component decisions and additions byte-for-byte. Record the full old-to-new label
+transition matrix and raw additions/removals separately. Re-run exact-overlap and
+semantic-overlap checks over the complete overlay. Any remaining conflict or
+uncertainty stops before OOF training.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.

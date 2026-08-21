@@ -1,0 +1,128 @@
+from __future__ import annotations
+
+import unittest
+
+from production_precision_revision19_conflicts import conflict_components
+
+
+def _decision(candidate_id: str, start: int, end: int) -> dict:
+    return {
+        "candidate_id": candidate_id,
+        "candidate": {
+            "id": "juan-001-jie-0001",
+            "juan": 1,
+            "jie_index": 1,
+            "para_id": 7,
+            "start": start,
+            "end": end,
+            "surface": "x" * (end - start),
+        },
+    }
+
+
+class Revision19ConflictTests(unittest.TestCase):
+    def test_components_close_over_owners_candidates_and_overlap(self) -> None:
+        decisions = [
+            _decision("wide-owner", 1, 5),
+            _decision("short-owner", 3, 5),
+            _decision("semantic", 0, 2),
+            _decision("overlap-chain", 4, 7),
+            _decision("unrelated", 9, 10),
+        ]
+        exact_owners = [
+            {
+                "geometry": ["juan-001-jie-0001", 7, 1, 5],
+                "candidate_ids": ["wide-owner"],
+            },
+            {
+                "geometry": ["juan-001-jie-0001", 7, 3, 5],
+                "candidate_ids": ["short-owner"],
+            },
+        ]
+        conflicts = [
+            {
+                "type": "overlapping_exact_additions",
+                "left": ["juan-001-jie-0001", 7, 1, 5],
+                "right": ["juan-001-jie-0001", 7, 3, 5],
+            },
+            {
+                "type": "semantic_overlaps_exact_addition",
+                "semantic": ["juan-001-jie-0001", 7, 0, 2],
+                "exact": ["juan-001-jie-0001", 7, 1, 5],
+            },
+        ]
+
+        components = conflict_components(decisions, exact_owners, conflicts)
+
+        self.assertEqual(len(components), 1)
+        self.assertEqual(
+            components[0]["candidate_ids"],
+            ["overlap-chain", "semantic", "short-owner", "wide-owner"],
+        )
+        self.assertNotIn(
+            ("juan-001-jie-0001", 7, 9, 10),
+            components[0]["geometries"],
+        )
+
+    def test_disconnected_conflicts_remain_separate(self) -> None:
+        decisions = [
+            _decision("left", 1, 3),
+            _decision("right", 6, 8),
+        ]
+        exact_owners = [
+            {
+                "geometry": ["juan-001-jie-0001", 7, 1, 3],
+                "candidate_ids": ["left"],
+            },
+            {
+                "geometry": ["juan-001-jie-0001", 7, 6, 8],
+                "candidate_ids": ["right"],
+            },
+        ]
+        conflicts = [
+            {
+                "type": "semantic_overlaps_exact_addition",
+                "semantic": ["juan-001-jie-0001", 7, 0, 2],
+                "exact": ["juan-001-jie-0001", 7, 1, 3],
+            },
+            {
+                "type": "semantic_overlaps_exact_addition",
+                "semantic": ["juan-001-jie-0001", 7, 7, 9],
+                "exact": ["juan-001-jie-0001", 7, 6, 8],
+            },
+        ]
+
+        components = conflict_components(decisions, exact_owners, conflicts)
+
+        self.assertEqual(len(components), 2)
+
+    def test_wrong_boundary_owner_keeps_overlapping_candidate_geometry(self) -> None:
+        decisions = [
+            _decision("wrong-owner", 1, 4),
+            _decision("semantic", 0, 2),
+        ]
+        exact_owners = [{
+            "geometry": ["juan-001-jie-0001", 7, 2, 4],
+            "candidate_ids": ["wrong-owner"],
+        }]
+        conflicts = [{
+            "type": "semantic_overlaps_exact_addition",
+            "semantic": ["juan-001-jie-0001", 7, 0, 2],
+            "exact": ["juan-001-jie-0001", 7, 2, 4],
+        }]
+
+        components = conflict_components(decisions, exact_owners, conflicts)
+
+        self.assertEqual(len(components), 1)
+        self.assertEqual(
+            components[0]["candidate_ids"],
+            ["semantic", "wrong-owner"],
+        )
+        self.assertIn(
+            ("juan-001-jie-0001", 7, 1, 4),
+            components[0]["geometries"],
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
