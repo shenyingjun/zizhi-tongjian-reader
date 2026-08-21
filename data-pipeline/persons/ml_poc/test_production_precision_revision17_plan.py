@@ -1,7 +1,7 @@
 import random
 import unittest
 
-from production_precision_revision17_plan import select_formal_reserve
+from production_precision_revision17_plan import _mining_example, select_formal_reserve
 
 
 class Revision17PlanTest(unittest.TestCase):
@@ -55,6 +55,15 @@ class Revision17PlanTest(unittest.TestCase):
             for row in first
             if row["stratum"] == "foreign_title"
         ))
+
+    def test_mining_examples_use_generator_bio_schema(self):
+        source = self._frame()[0]
+        example = _mining_example(source)
+
+        self.assertEqual(["O"] * len(source["text"]), example["labels"])
+        self.assertEqual(
+            [True] * len(source["text"]), example["target_mask"]
+        )
 
     def test_foreign_reserve_must_exhaust_exact_cohort(self):
         with self.assertRaisesRegex(ValueError, "exactly exhaust"):

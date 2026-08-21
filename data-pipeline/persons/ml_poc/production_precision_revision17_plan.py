@@ -160,7 +160,7 @@ def _mining_example(row: dict) -> dict:
         "jie_index": int(row["jie_index"]),
         "text": text,
         "segments": list(row["segments"]),
-        "labels": [0] * len(text),
+        "labels": ["O"] * len(text),
         "target_mask": [True] * len(text),
     }
 
