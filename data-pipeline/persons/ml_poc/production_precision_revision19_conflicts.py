@@ -21,6 +21,7 @@ REVISION = 19
 TASK_STATUS = "ml_production_precision_revision19_conflict_task"
 TASKS_STATUS = "ml_production_precision_revision19_conflict_tasks"
 EXPECTED_CONFLICTS = 39
+EXPECTED_COMPONENTS = 36
 EXPECTED_PARAGRAPHS = 35
 
 
@@ -236,7 +237,7 @@ def freeze_tasks(overlay_root: Path, output_dir: Path) -> dict:
         _read_jsonl(conflicts_path),
     )
     if (
-        len(components) != EXPECTED_PARAGRAPHS
+        len(components) != EXPECTED_COMPONENTS
         or len({
             (row["geometries"][0][0], row["geometries"][0][1])
             for row in components

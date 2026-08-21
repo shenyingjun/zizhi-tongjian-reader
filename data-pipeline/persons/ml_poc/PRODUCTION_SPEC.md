@@ -1838,7 +1838,7 @@ geometry and owner in the 39 frozen conflicts. Repeatedly add every selected can
 in that paragraph whose geometry overlaps any component geometry, every exact addition
 owned by an added candidate, and every owner of an added exact addition until stable.
 Merge components whenever their geometry or owner sets intersect. Freeze and assert the
-resulting component count before review.
+resulting 36 components across 35 paragraphs before review.
 
 Create one source-hidden task per closed component. It contains only complete current-
 numbered-jie text and paragraph segments, neutrally randomized opaque IDs for all
