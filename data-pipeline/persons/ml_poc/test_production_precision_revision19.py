@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 from production_precision_revision19_conflicts import conflict_components
 from production_precision_revision19_freeze import normalize_raw
+from production_precision_revision19_overlay import reconcile_overlay
 
 
 def _decision(candidate_id: str, start: int, end: int) -> dict:
@@ -166,6 +168,104 @@ class Revision19ConflictTests(unittest.TestCase):
         raw["exact_people"][0].update(start=3, end=4)
         with self.assertRaisesRegex(ValueError, "coverage"):
             normalize_raw(raw, task)
+
+    def test_reconciliation_replaces_only_component_geometry(self) -> None:
+        decisions = [
+            {
+                **_decision("wide", 1, 4),
+                "label": "exact_person",
+                "decision_source": "old",
+                "targets": [],
+            },
+            {
+                **_decision("short", 2, 4),
+                "label": "not_person",
+                "decision_source": "old",
+                "targets": [],
+            },
+            {
+                **_decision("untouched", 6, 8),
+                "label": "exact_person",
+                "decision_source": "old",
+                "targets": [],
+            },
+        ]
+        exact = [
+            {
+                **decisions[0]["candidate"],
+                "class": "mined_exact_reference",
+                "existence_label": 1,
+            },
+            {
+                **decisions[2]["candidate"],
+                "class": "mined_exact_reference",
+                "existence_label": 1,
+            },
+        ]
+        owners = [
+            {
+                "geometry": list((
+                    "juan-001-jie-0001", 7, 1, 4
+                )),
+                "candidate_ids": ["wide"],
+            },
+            {
+                "geometry": list((
+                    "juan-001-jie-0001", 7, 6, 8
+                )),
+                "candidate_ids": ["untouched"],
+            },
+        ]
+        components = [{
+            "conflict_task_id": "task",
+            "candidate_ids": ["wide", "short"],
+            "geometries": [
+                ["juan-001-jie-0001", 7, 1, 4],
+                ["juan-001-jie-0001", 7, 2, 4],
+            ],
+        }]
+        adjudications = [{
+            "conflict_task_id": "task",
+            "uncertain": False,
+            "exact_people": [{
+                "para_id": 7,
+                "start": 2,
+                "end": 4,
+                "surface": "xx",
+            }],
+        }]
+        examples = [{
+            "id": "juan-001-jie-0001",
+            "juan": 1,
+            "jie_index": 1,
+        }]
+
+        with (
+            mock.patch(
+                "production_precision_revision19_overlay.EXPECTED_DECISIONS", 3
+            ),
+            mock.patch(
+                "production_precision_revision19_overlay.EXPECTED_COMPONENTS", 1
+            ),
+        ):
+            result = reconcile_overlay(
+                decisions,
+                exact,
+                owners,
+                examples,
+                components,
+                adjudications,
+            )
+
+        by_id = {
+            row["candidate_id"]: row for row in result["final_decisions"]
+        }
+        self.assertEqual(by_id["wide"]["label"], "wrong_boundary")
+        self.assertEqual(by_id["short"]["label"], "exact_person")
+        self.assertIs(by_id["untouched"], decisions[2])
+        self.assertEqual(len(result["raw_additions"]), 1)
+        self.assertEqual(len(result["raw_removals"]), 1)
+        self.assertEqual(result["conflicts"], [])
 
 
 if __name__ == "__main__":
