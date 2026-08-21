@@ -95,17 +95,19 @@ def normalize_target_raw(value: dict, task: dict) -> dict:
             raise ValueError("Revision-17 target geometry bounds differ")
         assembled_start = int(segment["assembled_start"]) + start
         assembled_end = int(segment["assembled_start"]) + end
-        surface = str(target["surface"])
+        reported_surface = str(target["surface"])
+        source_surface = task["jie"]["text"][assembled_start:assembled_end]
         normalized_target = {
             "para_id": para_id,
             "start": start,
             "end": end,
-            "surface": surface,
+            "surface": source_surface,
+            "reported_surface": reported_surface,
+            "surface_corrected": reported_surface != source_surface,
         }
         key = para_id, start, end
         if (
             key in seen
-            or task["jie"]["text"][assembled_start:assembled_end] != surface
             or not _overlaps(normalized_target, wrong)
             or (
                 para_id == int(wrong["para_id"])
@@ -237,6 +239,11 @@ def freeze_targets(
                 "contradictions": contradiction_count,
                 "exact_targets": sum(
                     len(row["targets"]) for row in decisions
+                ),
+                "surface_corrections": sum(
+                    target["surface_corrected"]
+                    for row in decisions
+                    for target in row["targets"]
                 ),
             },
             "outputs": {

@@ -136,6 +136,45 @@ class Revision17TargetsTest(unittest.TestCase):
         self.assertTrue(result["contradiction"])
         self.assertEqual([], result["targets"])
 
+    def test_canonicalizes_redundant_surface_without_changing_geometry(self):
+        task = {
+            "target_task_id": "target",
+            "candidate_id": "candidate",
+            "jie": {
+                "text": "甲乙丙",
+                "segments": [{
+                    "para_id": 7,
+                    "assembled_start": 0,
+                    "assembled_end": 3,
+                }],
+            },
+            "wrong_candidate": {
+                "candidate_id": "candidate",
+                "para_id": 7,
+                "start": 1,
+                "end": 2,
+                "surface": "乙",
+            },
+        }
+        result = normalize_target_raw({
+            "target_task_id": "target",
+            "candidate_id": "candidate",
+            "uncertain": False,
+            "targets": [{
+                "para_id": 7,
+                "start": 0,
+                "end": 2,
+                "surface": "甲",
+            }],
+            "rationale": "The exact person occupies the first two characters.",
+            "reviewer": "copilot-teacher",
+            "model": "gpt-5.6-sol",
+        }, task)
+
+        self.assertEqual("甲乙", result["targets"][0]["surface"])
+        self.assertEqual("甲", result["targets"][0]["reported_surface"])
+        self.assertTrue(result["targets"][0]["surface_corrected"])
+
 
 if __name__ == "__main__":
     unittest.main()
