@@ -16,7 +16,7 @@ from production_train import _make_read_only
 
 REVISION = 17
 FROZEN_STATUS = "ml_production_precision_revision17_targets_frozen"
-BLOCKED_STATUS = "ml_production_precision_revision17_targets_blocked_uncertain"
+BLOCKED_STATUS = "ml_production_precision_revision17_targets_blocked_unresolved"
 RAW_KEYS = {
     "target_task_id",
     "candidate_id",
@@ -70,8 +70,9 @@ def normalize_target_raw(value: dict, task: dict) -> dict:
         raise ValueError("Revision-17 target raw decision differs")
     uncertain = value["uncertain"]
     targets = value["targets"]
-    if uncertain == bool(targets):
+    if uncertain and targets:
         raise ValueError("Revision-17 target uncertainty/geometry differs")
+    contradiction = not uncertain and not targets
 
     wrong = task["wrong_candidate"]
     segments = {
@@ -135,6 +136,7 @@ def normalize_target_raw(value: dict, task: dict) -> dict:
         "target_task_id": str(value["target_task_id"]),
         "candidate_id": str(value["candidate_id"]),
         "uncertain": uncertain,
+        "contradiction": contradiction,
         "targets": normalized,
         "rationale": value["rationale"].strip(),
     }
@@ -196,6 +198,7 @@ def freeze_targets(
         raise ValueError("Revision-17 target tasks are missing")
 
     uncertain_count = sum(row["uncertain"] for row in decisions)
+    contradiction_count = sum(row["contradiction"] for row in decisions)
     git_commit = _git_commit_clean()
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
@@ -212,7 +215,9 @@ def freeze_targets(
         frozen = {
             "schema_version": 1,
             "status": (
-                BLOCKED_STATUS if uncertain_count else FROZEN_STATUS
+                BLOCKED_STATUS
+                if uncertain_count or contradiction_count
+                else FROZEN_STATUS
             ),
             "revision": REVISION,
             "fit_only": True,
@@ -229,6 +234,7 @@ def freeze_targets(
             "counts": {
                 "tasks": len(decisions),
                 "uncertain": uncertain_count,
+                "contradictions": contradiction_count,
                 "exact_targets": sum(
                     len(row["targets"]) for row in decisions
                 ),

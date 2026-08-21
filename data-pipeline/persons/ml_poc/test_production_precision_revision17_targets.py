@@ -103,6 +103,39 @@ class Revision17TargetsTest(unittest.TestCase):
                 "model": "gpt-5.6-sol",
             }, task)
 
+    def test_retains_certain_empty_target_as_contradiction(self):
+        task = {
+            "target_task_id": "target",
+            "candidate_id": "candidate",
+            "jie": {
+                "text": "甲乙",
+                "segments": [{
+                    "para_id": 7,
+                    "assembled_start": 0,
+                    "assembled_end": 2,
+                }],
+            },
+            "wrong_candidate": {
+                "candidate_id": "candidate",
+                "para_id": 7,
+                "start": 0,
+                "end": 1,
+                "surface": "甲",
+            },
+        }
+        result = normalize_target_raw({
+            "target_task_id": "target",
+            "candidate_id": "candidate",
+            "uncertain": False,
+            "targets": [],
+            "rationale": "No overlapping person is present.",
+            "reviewer": "copilot-teacher",
+            "model": "gpt-5.6-sol",
+        }, task)
+
+        self.assertTrue(result["contradiction"])
+        self.assertEqual([], result["targets"])
+
 
 if __name__ == "__main__":
     unittest.main()
