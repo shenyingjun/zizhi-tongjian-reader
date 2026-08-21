@@ -1136,6 +1136,229 @@ def _stage1_training_indices(
     return all_indices
 
 
+def _validate_augmentation_candidate(
+    examples: dict[str, dict],
+    row: dict,
+) -> dict:
+    candidate = {
+        "id": str(row["id"]),
+        "juan": int(row["juan"]),
+        "jie_index": int(row["jie_index"]),
+        "para_id": int(row["para_id"]),
+        "start": int(row["start"]),
+        "end": int(row["end"]),
+        "surface": str(row["surface"]),
+    }
+    example = examples.get(candidate["id"])
+    if (
+        example is None
+        or int(example["juan"]) != candidate["juan"]
+        or int(example["jie_index"]) != candidate["jie_index"]
+    ):
+        raise ValueError("two-stage augmentation candidate jie differs")
+    segment = next(
+        (
+            value for value in example["segments"]
+            if int(value["para_id"]) == candidate["para_id"]
+        ),
+        None,
+    )
+    if segment is None:
+        raise ValueError("two-stage augmentation paragraph differs")
+    paragraph = example["text"][
+        int(segment["assembled_start"]):int(segment["assembled_end"])
+    ]
+    if (
+        not 0 <= candidate["start"] < candidate["end"] <= len(paragraph)
+        or paragraph[candidate["start"]:candidate["end"]]
+        != candidate["surface"]
+    ):
+        raise ValueError("two-stage augmentation source geometry differs")
+    return candidate
+
+
+def _prepare_training_augmentation(
+    inventory: dict,
+    base_examples: dict[str, dict],
+    augmentation_examples: list[dict],
+    exact_rows: list[dict],
+    semantic_rows: list[dict],
+    rank_pairs: list[dict],
+) -> dict:
+    examples = dict(base_examples)
+    for example in augmentation_examples:
+        example_id = str(example["id"])
+        prior = examples.get(example_id)
+        if prior is not None:
+            for key in ("id", "juan", "jie_index", "text", "segments"):
+                if prior[key] != example[key]:
+                    raise ValueError(
+                        "two-stage augmentation example binding differs"
+                    )
+        else:
+            examples[example_id] = example
+
+    rows = list(inventory["rows"])
+    binary_labels = inventory["binary_labels"].tolist()
+    classes = list(inventory["classes"])
+    weight_classes = list(classes)
+    real_labels = inventory["real_labels"].tolist()
+    row_by_geometry = {
+        _geometry(row): index for index, row in enumerate(rows)
+    }
+    if len(row_by_geometry) != len(rows):
+        raise ValueError("two-stage augmentation base geometry differs")
+    stage1_indices = set()
+    added_indices = set()
+    exact_geometries = set()
+
+    for source in exact_rows:
+        candidate = _validate_augmentation_candidate(examples, source)
+        geometry = _geometry(candidate)
+        if geometry in exact_geometries:
+            raise ValueError("two-stage augmentation duplicate exact geometry")
+        exact_geometries.add(geometry)
+        index = row_by_geometry.get(geometry)
+        if index is not None:
+            if binary_labels[index] != 1:
+                raise ValueError(
+                    "two-stage augmentation exact conflicts with base label"
+                )
+        else:
+            index = len(rows)
+            row_by_geometry[geometry] = index
+            rows.append({
+                **candidate,
+                "class": "reviewed_exact_reference",
+                "existence_label": 1,
+            })
+            binary_labels.append(1.0)
+            classes.append("reviewed_exact_reference")
+            weight_classes.append("reviewed_exact_reference")
+            real_labels.append(-1)
+            added_indices.add(index)
+        stage1_indices.add(index)
+
+    semantic_geometries = set()
+    for source in semantic_rows:
+        candidate = _validate_augmentation_candidate(examples, source)
+        geometry = _geometry(candidate)
+        if (
+            geometry in semantic_geometries
+            or geometry in exact_geometries
+        ):
+            raise ValueError(
+                "two-stage augmentation semantic geometry conflicts"
+            )
+        semantic_geometries.add(geometry)
+        index = row_by_geometry.get(geometry)
+        if index is not None:
+            if binary_labels[index] != 0:
+                raise ValueError(
+                    "two-stage augmentation semantic conflicts with base label"
+                )
+            weight_classes[index] = "semantic_negative"
+        else:
+            index = len(rows)
+            row_by_geometry[geometry] = index
+            rows.append({
+                **candidate,
+                "class": "semantic_negative",
+                "existence_label": 0,
+            })
+            binary_labels.append(0.0)
+            classes.append("semantic_negative")
+            weight_classes.append("semantic_negative")
+            real_labels.append(-1)
+            added_indices.add(index)
+        stage1_indices.add(index)
+
+    augmentation_pairs = []
+    pair_keys = set()
+    for pair in rank_pairs:
+        positive = _validate_augmentation_candidate(
+            examples, pair["positive"]
+        )
+        negative = _validate_augmentation_candidate(
+            examples, pair["negative"]
+        )
+        positive_geometry = _geometry(positive)
+        negative_geometry = _geometry(negative)
+        if (
+            positive_geometry not in exact_geometries
+            or positive["id"] != negative["id"]
+            or positive["para_id"] != negative["para_id"]
+            or positive["juan"] != negative["juan"]
+            or not _overlaps(positive_geometry, negative_geometry)
+            or positive_geometry == negative_geometry
+        ):
+            raise ValueError("two-stage augmentation rank pair differs")
+        positive_index = row_by_geometry[positive_geometry]
+        negative_index = row_by_geometry.get(negative_geometry)
+        if negative_index is not None:
+            if (
+                negative_geometry in exact_geometries
+                or negative_geometry in inventory["exact_by_geometry"]
+            ):
+                raise ValueError(
+                    "two-stage augmentation rank negative is exact"
+                )
+        else:
+            negative_index = len(rows)
+            row_by_geometry[negative_geometry] = negative_index
+            rows.append({
+                **negative,
+                "class": "reviewed_boundary_alternative",
+                "existence_label": 1,
+            })
+            binary_labels.append(1.0)
+            classes.append("reviewed_boundary_alternative")
+            weight_classes.append("reviewed_boundary_alternative")
+            real_labels.append(-1)
+            added_indices.add(negative_index)
+        pair_key = (positive_index, negative_index)
+        if pair_key in pair_keys:
+            raise ValueError("two-stage augmentation duplicate rank pair")
+        pair_keys.add(pair_key)
+        augmentation_pairs.append((
+            positive_index,
+            negative_index,
+            int(positive["juan"]),
+        ))
+
+    return {
+        "examples": examples,
+        "rows": rows,
+        "binary_labels": np.asarray(binary_labels, dtype=np.float32),
+        "classes": classes,
+        "weight_classes": weight_classes,
+        "real_labels": np.asarray(real_labels, dtype=np.int8),
+        "stage1_indices": np.asarray(
+            sorted(stage1_indices), dtype=np.int64
+        ),
+        "pair_indices": augmentation_pairs,
+        "added_indices": np.asarray(
+            sorted(added_indices), dtype=np.int64
+        ),
+    }
+
+
+def _fold_local_augmentation_indices(
+    indices: np.ndarray,
+    rows: list[dict],
+    fold_by_juan: dict[int, int],
+    heldout_fold: int,
+) -> np.ndarray:
+    return np.asarray(
+        [
+            int(index) for index in indices
+            if fold_by_juan.get(int(rows[int(index)]["juan"]))
+            != heldout_fold
+        ],
+        dtype=np.int64,
+    )
+
+
 def run_revision14_two_stage(
     inventory_root: Path,
     grouped_root: Path,
@@ -1150,6 +1373,8 @@ def run_revision14_two_stage(
     stage1_structural_negatives: bool = False,
     stage1_three_stratum_balanced: bool = False,
     greedy_resolution: bool = False,
+    augmentation_root: Path | None = None,
+    augmentation_status: str | None = None,
 ) -> dict:
     if stage1_class_balanced and stage1_three_stratum_balanced:
         raise ValueError("Stage-1 weighting strategies are mutually exclusive")
@@ -1182,11 +1407,11 @@ def run_revision14_two_stage(
         inv_rows["candidate_lattice"],
         fold_by_juan,
     )
-    rows = inventory["rows"]
-    binary_labels = inventory["binary_labels"]
-    classes = inventory["classes"]
+    evaluation_rows = inventory["rows"]
+    evaluation_binary_labels = inventory["binary_labels"]
+    evaluation_classes = inventory["classes"]
     fold_ids = inventory["fold_ids"]
-    real_labels = inventory["real_labels"]
+    evaluation_real_labels = inventory["real_labels"]
     exact_by_geometry = inventory["exact_by_geometry"]
     boundary_by_geometry = inventory["boundary_by_geometry"]
     pair_records = inventory["pair_records"]
@@ -1200,6 +1425,69 @@ def run_revision14_two_stage(
         if pos_idx is None or neg_idx is None:
             raise ValueError("revision14 two-stage pair index missing")
         pair_index_list.append((pos_idx, neg_idx))
+
+    augmentation_manifest = None
+    augmentation_paths = {}
+    augmentation = {
+        "examples": examples,
+        "rows": evaluation_rows,
+        "binary_labels": evaluation_binary_labels,
+        "classes": evaluation_classes,
+        "weight_classes": evaluation_classes,
+        "real_labels": evaluation_real_labels,
+        "stage1_indices": np.asarray([], dtype=np.int64),
+        "pair_indices": [],
+        "added_indices": np.asarray([], dtype=np.int64),
+    }
+    if augmentation_root is not None:
+        if augmentation_status is None:
+            raise ValueError("two-stage augmentation status is required")
+        augmentation_manifest_path = augmentation_root / "manifest.json"
+        augmentation_manifest = _read(augmentation_manifest_path)
+        augmentation_names = {
+            "examples": "examples.jsonl",
+            "exact_additions": "exact-additions.jsonl",
+            "semantic_negatives": "semantic-negatives.jsonl",
+            "rank_pairs": "rank-pairs.jsonl",
+        }
+        augmentation_rows = {}
+        for key, name in augmentation_names.items():
+            path = augmentation_root / name
+            if (
+                augmentation_manifest.get("outputs", {}).get(
+                    f"{key}_sha256"
+                )
+                != _sha256(path)
+            ):
+                raise ValueError(
+                    "two-stage augmentation output binding differs"
+                )
+            augmentation_paths[key] = path
+            augmentation_rows[key] = _read_jsonl(path)
+        if (
+            augmentation_manifest.get("status") != augmentation_status
+            or augmentation_manifest.get("fit_only") is not True
+            or augmentation_manifest.get("confirmation_read") is not False
+            or augmentation_manifest.get("formal_reserve_text_read") is not False
+            or augmentation_manifest.get("counts", {}).get("conflicts") != 0
+        ):
+            raise ValueError("two-stage augmentation manifest differs")
+        augmentation = _prepare_training_augmentation(
+            inventory,
+            examples,
+            augmentation_rows["examples"],
+            augmentation_rows["exact_additions"],
+            augmentation_rows["semantic_negatives"],
+            augmentation_rows["rank_pairs"],
+        )
+
+    examples = augmentation["examples"]
+    rows = augmentation["rows"]
+    binary_labels = augmentation["binary_labels"]
+    classes = augmentation["classes"]
+    weight_classes = augmentation["weight_classes"]
+    real_labels = augmentation["real_labels"]
+    evaluation_count = len(evaluation_rows)
 
     git_commit = _git_commit_clean()
     import safetensors
@@ -1226,25 +1514,35 @@ def run_revision14_two_stage(
         for row in rows
     ]
 
-    all_indices = np.arange(len(rows), dtype=np.int64)
-    oof_stage1 = np.zeros(len(rows), dtype=np.float32)
-    oof_stage2 = np.zeros(len(rows), dtype=np.float32)
+    all_evaluation_indices = np.arange(evaluation_count, dtype=np.int64)
+    oof_stage1 = np.zeros(evaluation_count, dtype=np.float32)
+    oof_stage2 = np.zeros(evaluation_count, dtype=np.float32)
     fold_inventory = []
 
     for fold in range(FOLDS):
-        train_mask = fold_ids != fold
-        heldout_mask = fold_ids == fold
-        train_indices = np.flatnonzero(train_mask)
-        heldout_indices = np.flatnonzero(heldout_mask)
+        train_indices = np.flatnonzero(fold_ids != fold)
+        heldout_indices = np.flatnonzero(fold_ids == fold)
         if not len(train_indices) or not len(heldout_indices):
             raise ValueError("revision14 two-stage fold is empty")
 
         stage1_train_indices = _stage1_training_indices(
             train_indices,
-            classes,
-            real_labels,
+            evaluation_classes,
+            evaluation_real_labels,
             real_only=stage1_real_only,
             structural_negatives=stage1_structural_negatives,
+        )
+        fold_augmentation_indices = _fold_local_augmentation_indices(
+            augmentation["stage1_indices"],
+            rows,
+            fold_by_juan,
+            fold,
+        )
+        stage1_train_indices = np.asarray(
+            sorted(set(stage1_train_indices.tolist()).union(
+                fold_augmentation_indices.tolist()
+            )),
+            dtype=np.int64,
         )
         stage1_weights = np.ones(len(rows), dtype=np.float32)
         stage1_weight_inventory = {
@@ -1268,7 +1566,7 @@ def run_revision14_two_stage(
             stage1_weights, stage1_weight_inventory = (
                 _three_stratum_weights(
                     binary_labels,
-                    classes,
+                    weight_classes,
                     stage1_train_indices,
                 )
             )
@@ -1298,6 +1596,12 @@ def run_revision14_two_stage(
             for pos, neg in pair_index_list
             if pos in train_set and neg in train_set
         ]
+        train_pairs.extend(
+            (pos, neg)
+            for pos, neg, juan in augmentation["pair_indices"]
+            if fold_by_juan.get(juan) != fold
+        )
+        train_pairs = sorted(set(train_pairs))
         if not train_pairs:
             raise ValueError("revision14 two-stage fold has no training pairs")
         model2 = _fit_stage2(records, train_pairs, encoder_dir, device)
@@ -1309,22 +1613,27 @@ def run_revision14_two_stage(
         fold_inventory.append({
             "fold": fold,
             "train_rows": len(train_indices),
+            "augmentation_stage1_rows": len(fold_augmentation_indices),
             "stage1_train_rows": len(stage1_train_indices),
             "stage1_class_weights": stage1_weight_inventory,
             "heldout_rows": len(heldout_indices),
             "train_pairs": len(train_pairs),
+            "augmentation_train_pairs": sum(
+                fold_by_juan.get(juan) != fold
+                for _, _, juan in augmentation["pair_indices"]
+            ),
         })
 
     # Compute metrics
     exact_geometry_set = set(exact_by_geometry)
     boundary_geometry_set = set(boundary_by_geometry)
     table = end_to_end_metrics(
-        rows,
+        evaluation_rows,
         oof_stage1,
         oof_stage2,
-        classes,
+        evaluation_classes,
         fold_ids,
-        real_labels,
+        evaluation_real_labels,
         exact_geometry_set,
         boundary_geometry_set,
         greedy_resolution=greedy_resolution,
@@ -1351,7 +1660,7 @@ def run_revision14_two_stage(
     ) as temporary:
         staging = Path(temporary)
         inventory_path = staging / "inventory.jsonl"
-        _write_jsonl(inventory_path, rows)
+        _write_jsonl(inventory_path, evaluation_rows)
         pair_inventory_path = staging / "pair-inventory.jsonl"
         _write_jsonl(
             pair_inventory_path,
@@ -1378,7 +1687,62 @@ def run_revision14_two_stage(
                     "segment_a_indices": record["segment_a_indices"],
                     "occurrence_indices": record["occurrence_indices"],
                 }
-                for row, record in zip(rows, records)
+                for row, record in zip(
+                    evaluation_rows, records[:evaluation_count]
+                )
+            ],
+        )
+        augmentation_inventory_path = staging / "augmentation-inventory.jsonl"
+        _write_jsonl(
+            augmentation_inventory_path,
+            [
+                {
+                    "row_index": int(index),
+                    **rows[int(index)],
+                    "stage1_training": (
+                        int(index)
+                        in set(augmentation["stage1_indices"].tolist())
+                    ),
+                }
+                for index in augmentation["added_indices"]
+            ],
+        )
+        augmentation_pairs_path = staging / "augmentation-pairs.jsonl"
+        _write_jsonl(
+            augmentation_pairs_path,
+            [
+                {
+                    "positive_index": int(pos),
+                    "negative_index": int(neg),
+                    "juan": int(juan),
+                }
+                for pos, neg, juan in augmentation["pair_indices"]
+            ],
+        )
+        augmentation_tokens_path = staging / "augmentation-input-tokens.jsonl"
+        _write_jsonl(
+            augmentation_tokens_path,
+            [
+                {
+                    "row_index": int(index),
+                    "id": str(rows[int(index)]["id"]),
+                    "juan": int(rows[int(index)]["juan"]),
+                    "jie_index": int(rows[int(index)]["jie_index"]),
+                    "para_id": int(rows[int(index)]["para_id"]),
+                    "start": int(rows[int(index)]["start"]),
+                    "end": int(rows[int(index)]["end"]),
+                    "slice_start": int(records[int(index)]["slice_start"]),
+                    "slice_end": int(records[int(index)]["slice_end"]),
+                    "input_ids": records[int(index)]["input_ids"],
+                    "attention_mask": records[int(index)]["attention_mask"],
+                    "segment_a_indices": records[int(index)][
+                        "segment_a_indices"
+                    ],
+                    "occurrence_indices": records[int(index)][
+                        "occurrence_indices"
+                    ],
+                }
+                for index in augmentation["added_indices"]
             ],
         )
         stage1_scores_path = staging / "oof-stage1-scores.jsonl"
@@ -1397,7 +1761,7 @@ def run_revision14_two_stage(
                     "fold": int(fold_ids[i]),
                     "oof_stage1_probability": float(oof_stage1[i]),
                 }
-                for i, row in enumerate(rows)
+                for i, row in enumerate(evaluation_rows)
             ],
         )
         stage2_scores_path = staging / "oof-stage2-scores.jsonl"
@@ -1415,18 +1779,24 @@ def run_revision14_two_stage(
                     "fold": int(fold_ids[i]),
                     "oof_stage2_score": float(oof_stage2[i]),
                 }
-                for i, row in enumerate(rows)
+                for i, row in enumerate(evaluation_rows)
             ],
         )
 
         final_fit = None
         if selected is not None:
             final_stage1_indices = _stage1_training_indices(
-                all_indices,
-                classes,
-                real_labels,
+                all_evaluation_indices,
+                evaluation_classes,
+                evaluation_real_labels,
                 real_only=stage1_real_only,
                 structural_negatives=stage1_structural_negatives,
+            )
+            final_stage1_indices = np.asarray(
+                sorted(set(final_stage1_indices.tolist()).union(
+                    augmentation["stage1_indices"].tolist()
+                )),
+                dtype=np.int64,
             )
             final_stage1_weights = np.ones(len(rows), dtype=np.float32)
             final_stage1_weight_inventory = {
@@ -1453,7 +1823,7 @@ def run_revision14_two_stage(
                     final_stage1_weight_inventory,
                 ) = _three_stratum_weights(
                     binary_labels,
-                    classes,
+                    weight_classes,
                     final_stage1_indices,
                 )
             # Final fit on all data
@@ -1485,8 +1855,15 @@ def run_revision14_two_stage(
             del model1_final
             torch.cuda.empty_cache()
 
+            final_pair_indices = sorted(set(
+                pair_index_list
+                + [
+                    (pos, neg)
+                    for pos, neg, _ in augmentation["pair_indices"]
+                ]
+            ))
             model2_final = _fit_stage2(
-                records, pair_index_list, encoder_dir, device
+                records, final_pair_indices, encoder_dir, device
             )
             stage2_encoder_dir = staging / "stage2-encoder"
             stage2_head_path = staging / "stage2-head.safetensors"
@@ -1512,6 +1889,7 @@ def run_revision14_two_stage(
                 "threshold_role": "eligibility_diagnostic_only",
                 "stage1_train_rows": len(final_stage1_indices),
                 "stage1_class_weights": final_stage1_weight_inventory,
+                "stage2_train_pairs": len(final_pair_indices),
             }
 
         environment = {
@@ -1566,6 +1944,28 @@ def run_revision14_two_stage(
                 "input_tokens_sha256": _sha256(tokens_path),
                 "oof_stage1_scores_sha256": _sha256(stage1_scores_path),
                 "oof_stage2_scores_sha256": _sha256(stage2_scores_path),
+                "augmentation_inventory_sha256": _sha256(
+                    augmentation_inventory_path
+                ),
+                "augmentation_pairs_sha256": _sha256(
+                    augmentation_pairs_path
+                ),
+                "augmentation_input_tokens_sha256": _sha256(
+                    augmentation_tokens_path
+                ),
+                **(
+                    {
+                        "augmentation_manifest_sha256": _sha256(
+                            augmentation_root / "manifest.json"
+                        ),
+                        "augmentation_outputs": {
+                            key: _sha256(path)
+                            for key, path in augmentation_paths.items()
+                        },
+                    }
+                    if augmentation_manifest is not None
+                    else {}
+                ),
             },
             "control": {
                 "seed": SEED,
@@ -1594,6 +1994,12 @@ def run_revision14_two_stage(
                     stage1_real_only or stage1_structural_negatives
                 ),
                 "stage1_structural_negatives": stage1_structural_negatives,
+                "training_augmentation": augmentation_manifest is not None,
+                "augmentation_fold_policy": (
+                    "exclude_same_heldout_juan_else_train_every_fold"
+                    if augmentation_manifest is not None
+                    else "absent"
+                ),
                 "stage2_loss": "margin_ranking_hinge_margin_1.0_uniform_per_pair",
                 "overlap_resolution": (
                     "greedy_nonoverlap_rank_score_then_geometry"
@@ -1617,30 +2023,66 @@ def run_revision14_two_stage(
             },
             "environment": environment,
             "inventory": {
-                "rows": len(rows),
+                "rows": len(evaluation_rows),
                 "exact_reference": sum(
-                    1 for c in classes if c == "exact_reference"
+                    1 for c in evaluation_classes if c == "exact_reference"
                 ),
                 "boundary_alternative": sum(
-                    1 for c in classes if c == "boundary_alternative"
+                    1
+                    for c in evaluation_classes
+                    if c == "boundary_alternative"
                 ),
                 "semantic_negative": sum(
-                    1 for c in classes if c == "semantic_negative"
+                    1
+                    for c in evaluation_classes
+                    if c == "semantic_negative"
                 ),
-                "stage1_real_candidates": int(np.sum(real_labels >= 0)),
+                "stage1_real_candidates": int(np.sum(
+                    evaluation_real_labels >= 0
+                )),
                 "stage1_real_positive": int(np.sum(
-                    (real_labels >= 0) & (binary_labels == 1)
+                    (evaluation_real_labels >= 0)
+                    & (evaluation_binary_labels == 1)
                 )),
                 "stage1_real_negative": int(np.sum(
-                    (real_labels >= 0) & (binary_labels == 0)
+                    (evaluation_real_labels >= 0)
+                    & (evaluation_binary_labels == 0)
                 )),
                 "easy_negative": sum(
-                    1 for c in classes if c == "easy_negative"
+                    1 for c in evaluation_classes if c == "easy_negative"
                 ),
                 "total_rank_pairs": len(pair_index_list),
                 "candidate_lattice": inventory_manifest.get(
                     "counts", {}
                 ).get("candidate_lattice"),
+            },
+            "augmentation": {
+                "enabled": augmentation_manifest is not None,
+                "source_exact_rows": (
+                    augmentation_manifest.get("counts", {}).get(
+                        "unique_exact_additions"
+                    )
+                    if augmentation_manifest is not None
+                    else 0
+                ),
+                "source_semantic_rows": (
+                    augmentation_manifest.get("counts", {}).get(
+                        "not_person_decisions"
+                    )
+                    if augmentation_manifest is not None
+                    else 0
+                ),
+                "source_rank_pairs": (
+                    augmentation_manifest.get("counts", {}).get("rank_pairs")
+                    if augmentation_manifest is not None
+                    else 0
+                ),
+                "distinct_stage1_indices": len(
+                    augmentation["stage1_indices"]
+                ),
+                "added_training_rows": len(augmentation["added_indices"]),
+                "rank_pairs": len(augmentation["pair_indices"]),
+                "evaluation_rows_added": 0,
             },
             "folds": fold_inventory,
             "table": table,
@@ -1652,6 +2094,15 @@ def run_revision14_two_stage(
                 "input_tokens_sha256": _sha256(tokens_path),
                 "oof_stage1_scores_sha256": _sha256(stage1_scores_path),
                 "oof_stage2_scores_sha256": _sha256(stage2_scores_path),
+                "augmentation_inventory_sha256": _sha256(
+                    augmentation_inventory_path
+                ),
+                "augmentation_pairs_sha256": _sha256(
+                    augmentation_pairs_path
+                ),
+                "augmentation_input_tokens_sha256": _sha256(
+                    augmentation_tokens_path
+                ),
             },
             "claim_limit": (
                 "Fit-only, non-formal, non-production two-stage "
