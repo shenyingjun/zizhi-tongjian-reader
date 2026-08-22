@@ -1865,6 +1865,36 @@ transition matrix and raw additions/removals separately. Re-run exact-overlap an
 semantic-overlap checks over the complete overlay. Any remaining conflict or
 uncertainty stops before OOF training.
 
+### 5.19 Revision-20 overlap-positive admission correction
+
+Revision 19 completed the unchanged seven-fold OOF evaluation without an eligible
+threshold. At threshold `0.50`, reviewed augmentation increased semantic-negative
+rejection from `0.353846` to `0.738462` and real precision from `0.980496` to
+`0.990033`, but reduced overlap recall from `0.954188` to `0.923919` and exact recall
+from `0.978906` to `0.961328`. Exact geometry comparison found no cross-overlay
+positive/negative overlap. Candidate-level comparison found 391 previously admitted
+overlap positives became rejected while 95 became admitted; the regressions were
+dominated by boundary alternatives, especially in folds 1 and 2.
+
+The Revision-17 augmentation contract gave each reviewed wrong-boundary target to
+Stage 1 as an overlap positive but gave its overlapping candidate only to Stage 2 as
+the lower-ranked member. This mismatches the two-stage roles: Stage 1 decides whether
+a candidate overlaps a person, while Stage 2 decides which exact boundary wins.
+
+Revision 20 makes one frozen correction. Every reviewed wrong-boundary candidate is
+also an overlap-positive Stage-1 training row, while retaining its target-over-candidate
+Stage-2 pair. Its Stage-1 label is positive and its three-stratum ownership is the
+positive stratum. Exact additions and semantic negatives remain unchanged. A candidate
+that collides with any negative training geometry blocks rather than being relabeled.
+The same-held-out-juan exclusion applies to the candidate and pair together; candidates
+from juans outside the original fit partition may train every fold.
+
+All Revision-19 source artifacts, evaluation rows, seven folds, model initialization,
+tokenization, optimizer, epochs, `0.50 / 0.25 / 0.25` fold-local stratum masses,
+thresholds, resolver, gates, denominators, and metric definitions remain unchanged.
+The run uses a new output directory. No additional mining, review, confirmation, or
+formal-reserve read is permitted.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.

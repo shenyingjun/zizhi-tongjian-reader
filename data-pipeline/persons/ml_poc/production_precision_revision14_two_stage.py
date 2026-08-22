@@ -1184,6 +1184,8 @@ def _prepare_training_augmentation(
     exact_rows: list[dict],
     semantic_rows: list[dict],
     rank_pairs: list[dict],
+    *,
+    boundary_stage1_positive: bool = False,
 ) -> dict:
     examples = dict(base_examples)
     for example in augmentation_examples:
@@ -1303,6 +1305,14 @@ def _prepare_training_augmentation(
                 raise ValueError(
                     "two-stage augmentation rank negative is exact"
                 )
+            if (
+                boundary_stage1_positive
+                and binary_labels[negative_index] != 1
+            ):
+                raise ValueError(
+                    "two-stage augmentation overlap-positive conflicts "
+                    "with base label"
+                )
         else:
             negative_index = len(rows)
             row_by_geometry[negative_geometry] = negative_index
@@ -1316,6 +1326,8 @@ def _prepare_training_augmentation(
             weight_classes.append("reviewed_boundary_alternative")
             real_labels.append(-1)
             added_indices.add(negative_index)
+        if boundary_stage1_positive:
+            stage1_indices.add(negative_index)
         pair_key = (positive_index, negative_index)
         if pair_key in pair_keys:
             raise ValueError("two-stage augmentation duplicate rank pair")
@@ -1375,6 +1387,7 @@ def run_revision14_two_stage(
     greedy_resolution: bool = False,
     augmentation_root: Path | None = None,
     augmentation_status: str | None = None,
+    augmentation_boundary_stage1_positive: bool = False,
 ) -> dict:
     if stage1_class_balanced and stage1_three_stratum_balanced:
         raise ValueError("Stage-1 weighting strategies are mutually exclusive")
@@ -1479,6 +1492,7 @@ def run_revision14_two_stage(
             augmentation_rows["exact_additions"],
             augmentation_rows["semantic_negatives"],
             augmentation_rows["rank_pairs"],
+            boundary_stage1_positive=augmentation_boundary_stage1_positive,
         )
 
     examples = augmentation["examples"]
@@ -1999,6 +2013,9 @@ def run_revision14_two_stage(
                     "exclude_same_heldout_juan_else_train_every_fold"
                     if augmentation_manifest is not None
                     else "absent"
+                ),
+                "augmentation_boundary_stage1_positive": (
+                    augmentation_boundary_stage1_positive
                 ),
                 "stage2_loss": "margin_ranking_hinge_margin_1.0_uniform_per_pair",
                 "overlap_resolution": (

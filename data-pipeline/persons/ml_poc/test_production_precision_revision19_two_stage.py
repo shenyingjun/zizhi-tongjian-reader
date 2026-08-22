@@ -105,10 +105,11 @@ class Revision19AugmentationTest(unittest.TestCase):
             exact,
             semantic,
             rank_pairs,
+            boundary_stage1_positive=True,
         )
 
         self.assertEqual(len(result["rows"]), 5)
-        self.assertEqual(result["stage1_indices"].tolist(), [0, 1, 3])
+        self.assertEqual(result["stage1_indices"].tolist(), [0, 1, 3, 4])
         self.assertEqual(result["weight_classes"][1], "semantic_negative")
         self.assertEqual(len(result["pair_indices"]), 1)
         fold_zero = _fold_local_augmentation_indices(
@@ -124,7 +125,7 @@ class Revision19AugmentationTest(unittest.TestCase):
             {1: 0},
             1,
         )
-        self.assertEqual(fold_one.tolist(), [0, 1, 3])
+        self.assertEqual(fold_one.tolist(), [0, 1, 3, 4])
 
     def test_augmented_training_preserves_three_stratum_mass(self) -> None:
         result = _prepare_training_augmentation(
@@ -179,6 +180,28 @@ class Revision19AugmentationTest(unittest.TestCase):
         self.assertAlmostEqual(float(weights[structural].sum()), 0.25)
         self.assertEqual(counts["positive_rows"], 1)
         self.assertEqual(len(self.inventory["rows"]), 3)
+
+    def test_overlap_positive_collision_with_negative_blocks(self) -> None:
+        positive = _row(
+            1,
+            3,
+            row_class="reviewed_exact_reference",
+            label=1,
+        )
+
+        with self.assertRaisesRegex(ValueError, "conflicts with base label"):
+            _prepare_training_augmentation(
+                self.inventory,
+                self.examples,
+                [],
+                [positive],
+                [],
+                [{
+                    "positive": positive,
+                    "negative": {**self.base_rows[1]},
+                }],
+                boundary_stage1_positive=True,
+            )
 
 
 if __name__ == "__main__":
