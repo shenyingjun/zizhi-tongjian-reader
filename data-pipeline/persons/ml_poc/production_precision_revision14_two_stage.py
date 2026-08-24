@@ -1211,6 +1211,9 @@ def _prepare_training_augmentation(
     if len(row_by_geometry) != len(rows):
         raise ValueError("two-stage augmentation base geometry differs")
     stage1_indices = set()
+    augmentation_positive_indices = set()
+    augmentation_semantic_indices = set()
+    augmentation_boundary_indices = set()
     added_indices = set()
     exact_geometries = set()
 
@@ -1240,6 +1243,7 @@ def _prepare_training_augmentation(
             real_labels.append(-1)
             added_indices.add(index)
         stage1_indices.add(index)
+        augmentation_positive_indices.add(index)
 
     semantic_geometries = set()
     for source in semantic_rows:
@@ -1274,6 +1278,7 @@ def _prepare_training_augmentation(
             real_labels.append(-1)
             added_indices.add(index)
         stage1_indices.add(index)
+        augmentation_semantic_indices.add(index)
 
     augmentation_pairs = []
     pair_keys = set()
@@ -1328,6 +1333,8 @@ def _prepare_training_augmentation(
             added_indices.add(negative_index)
         if boundary_stage1_positive:
             stage1_indices.add(negative_index)
+            augmentation_positive_indices.add(negative_index)
+            augmentation_boundary_indices.add(negative_index)
         pair_key = (positive_index, negative_index)
         if pair_key in pair_keys:
             raise ValueError("two-stage augmentation duplicate rank pair")
@@ -1347,6 +1354,15 @@ def _prepare_training_augmentation(
         "real_labels": np.asarray(real_labels, dtype=np.int8),
         "stage1_indices": np.asarray(
             sorted(stage1_indices), dtype=np.int64
+        ),
+        "positive_indices": np.asarray(
+            sorted(augmentation_positive_indices), dtype=np.int64
+        ),
+        "semantic_indices": np.asarray(
+            sorted(augmentation_semantic_indices), dtype=np.int64
+        ),
+        "boundary_indices": np.asarray(
+            sorted(augmentation_boundary_indices), dtype=np.int64
         ),
         "pair_indices": augmentation_pairs,
         "added_indices": np.asarray(

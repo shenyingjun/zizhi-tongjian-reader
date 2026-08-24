@@ -1895,6 +1895,44 @@ thresholds, resolver, gates, denominators, and metric definitions remain unchang
 The run uses a new output directory. No additional mining, review, confirmation, or
 formal-reserve read is permitted.
 
+### 5.20 Revision-21 independent specialist veto heads
+
+Revision 20 showed that changing membership inside one binary Stage-1 loss continued
+to trade recall for rejection. A frozen-score cascade and a fold-local sparse
+character/context gate were also tested diagnostically and could not approach the
+joint gates. Revision 15 remains the strongest frozen recall anchor at threshold
+`0.50`, with overlap recall `0.991512`, while Revision 20 provides stronger rejection
+but only `0.923919` overlap recall. Do not blend or reweight these scores further.
+
+Revision 21 separates the objectives into two independently initialized encoder
+classifiers:
+
+1. the semantic specialist trains on all overlap-positive exact and boundary rows
+   versus semantic negatives only; and
+2. the structural specialist trains on the same overlap-positive rows versus easy
+   negatives and reconciled non-overlap rows only.
+
+Each specialist is a binary overlap-probability model using the unchanged Revision-9
+encoder initialization, tokenization, optimizer, epochs, seed, and whole-juan folds.
+Within each specialist and fold, overlap-positive and veto-negative rows receive
+exactly `0.50` total loss mass each. The specialists share no fitted parameters,
+optimizer state, or fold state.
+
+Reviewed exact additions, wrong-boundary targets, and wrong-boundary candidates are
+overlap positives for both specialists. Reviewed not-person rows are negatives only
+for the semantic specialist. Apply the same-held-out-juan exclusion to every reviewed
+row; reviewed rows from juans outside the original fit partition may train every fold.
+Contradictory geometry blocks.
+
+For each original evaluation row, define the combined admission score as the minimum
+of the frozen Revision-15 Stage-1 OOF probability, semantic-specialist overlap
+probability, and structural-specialist overlap probability. Use the unchanged 15
+thresholds. Reuse the frozen Revision-15 Stage-2 OOF score and unchanged greedy
+resolver. The original 12,974 evaluation rows, labels, folds, denominators, gates, and
+metric definitions remain byte-identical. Reviewed rows are training-only. This is an
+adaptive fit-only OOF architecture diagnostic; it reads neither confirmation nor
+formal-reserve text and performs no final full fit.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
