@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "status": "ml_production_precision_pre_redesign_diagnostic_frozen",
+  "selected_revision": 20,
+  "selection_role": "precision_oriented_adaptive_diagnostic_baseline",
+  "artifact_name": "ml-production-revision20-two-stage-oof-v1",
+  "artifact_manifest_sha256": "e505f45e9f3f0140e5d2bcbd1fd522570cf9ed10799fc6efc7e3cd96d30fc17a",
+  "implementation_git_commit": "2d10948a9152480ab892d8bc937bb256f679ee21",
+  "source_status": "ml_production_precision_revision20_two_stage_blocked",
+  "threshold": 0.5,
+  "metrics": {
+    "stage1_overlap_recall": 0.9239186010839554,
+    "stage1_semantic_rejection": 0.8153846153846154,
+    "stage1_easy_rejection": 0.9845906902086677,
+    "stage1_min_fold_overlap_recall": 0.8653061224489796,
+    "e2e_exact_recall": 0.955859375,
+    "e2e_real_precision": 0.9924812030075187,
+    "e2e_boundary_component_accuracy": 0.984058595433003,
+    "e2e_min_fold_exact_recall": 0.9180952380952381
+  },
+  "bindings": {
+    "inventory_manifest_sha256": "ae0970514181501e9a3d97dcd25ba0dea5353875ced8098a687cd418505c9743",
+    "grouped_manifest_sha256": "26d5cb1f0bab89d782cb8a7ed86de72d73eb92a62407c1a5586da86ade57008f",
+    "augmentation_manifest_sha256": "1180d9fb08573783c2973c9840140307d04506ed67e93433ace3c4ff4839f5ed",
+    "revision9_base_encoder_sha256": "c91ecf9d7fd5544984cc8c86f68e51914a96fc32d7847f0b3c3e7d257950d877",
+    "ordered_inventory_sha256": "52da38b4e6d9b2493cb13ba5df1a5da208f03929da970294710eb99300451b70",
+    "pair_inventory_sha256": "cf138793682d7bfbd3e8c2f959ba79e1d97755f429e628851446a691a64ca5bb",
+    "input_tokens_sha256": "94fdd3e312b3c48fe23b4ba238cc2a82bca81ab8fe30eac602f2f64b2e5ce104",
+    "oof_stage1_scores_sha256": "7b192abe90b6a5961341b5eee06560eb1edac681be6f1bf6f134e848033cb1b9",
+    "oof_stage2_scores_sha256": "e2224867d73dc929035c633387d5c5a310e457d52ee9fd02ab41b011d1202418",
+    "augmentation_inventory_sha256": "4287cbbc3e250f0fd3339471212c2b5a6238a6a844ad029516f22a7cfc5a566d",
+    "augmentation_pairs_sha256": "ab2cfbcd12d94585771a0f27bfbd15f099bcb47fafd5dff4890213a907f076c1",
+    "augmentation_input_tokens_sha256": "a5df2fa0a9ff1a98c1106b94a5d1e0966aaf737e643c7e30a8f6fbf7783d51ea"
+  },
+  "selection_basis": [
+    "highest semantic-negative rejection among reviewed-augmentation revisions 19 through 21",
+    "highest easy-negative rejection among reviewed-augmentation revisions 19 through 21",
+    "highest end-to-end real precision among reviewed-augmentation revisions 19 through 21"
+  ],
+  "limitations": [
+    "failed unchanged Stage-1 and end-to-end gates",
+    "adaptive fit-only diagnostic, not fresh generalization evidence",
+    "no selected threshold or final-fit deployable model",
+    "not formal-grade and not eligible for production",
+    "confirmation and formal-reserve text were not read"
+  ]
+}

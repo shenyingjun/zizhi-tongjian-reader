@@ -1933,6 +1933,22 @@ metric definitions remain byte-identical. Reviewed rows are training-only. This 
 adaptive fit-only OOF architecture diagnostic; it reads neither confirmation nor
 formal-reserve text and performs no final full fit.
 
+### 5.21 Frozen pre-redesign diagnostic baseline
+
+Before beginning the token-core/boundary-refinement redesign, freeze Revision 20 as
+the precision-oriented comparison baseline. Among reviewed-augmentation Revisions
+19–21 at threshold `0.50`, it has the highest semantic-negative rejection
+(`0.815385`), easy-negative rejection (`0.984591`), and end-to-end real precision
+(`0.992481`). Its overlap recall is `0.923919` and exact recall is `0.955859`.
+
+The canonical binding is
+`production_precision_pre_redesign_baseline.json`, which authenticates the immutable
+Revision-20 manifest, inputs, token inventory, augmentation, and OOF scores. This
+selection does not override the blocked status: Revision 20 failed the unchanged
+Stage-1 and end-to-end gates, has no selected threshold or final-fit model, and is not
+formal-grade or production-eligible. It is frozen only as the comparison point that a
+redesigned architecture must improve without silently changing the evaluation.
+
 ## 6. Fresh formal evaluation
 
 Formal evaluation is sampled and completely labeled before candidate inference.
